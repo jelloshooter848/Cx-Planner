@@ -10,7 +10,7 @@
 import { existsSync } from 'node:fs';
 import { basename } from 'node:path';
 import { applyCommand, CommandError, computeSchedule, renumberTasks, TemplateInvalidError, type Command, type Id, type Project, type Template } from '@cx/core';
-import { TemplateImportError, TemplateNotFoundError, type ProjectStore, type TemplateSummary, type WorkspaceStore } from '@cx/storage';
+import { TemplateImportError, TemplateNotFoundError, type NewPrintRecord, type PrintRecord, type ProjectStore, type TemplateSummary, type WorkspaceStore } from '@cx/storage';
 import type { ApiErrorCode, ApiResult, AppState, EditOutcome, TaskScheduleSummary } from '../shared/api.js';
 
 /** How many edits Undo can go back. */
@@ -175,6 +175,25 @@ export class Session {
     if (!this.doc) return;
     this.closeDoc();
     this.notify();
+  }
+
+  // -------------------------------------------------------------------------------------
+  // Prints
+
+  /** Template snapshots stored in the open project (empty with none open). */
+  templateSnapshots(): Template[] {
+    return this.doc?.store.getTemplateSnapshots() ?? [];
+  }
+
+  /** Prints issued from the open project, oldest first (empty with none open). */
+  printHistory(): PrintRecord[] {
+    return this.doc?.store.listPrints() ?? [];
+  }
+
+  /** Records an issued print in the open project. */
+  recordPrint(p: NewPrintRecord): void {
+    if (!this.doc) throw new Error('No project is open');
+    this.doc.store.recordPrint(p);
   }
 
   // -------------------------------------------------------------------------------------

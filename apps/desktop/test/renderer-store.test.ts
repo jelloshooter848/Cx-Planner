@@ -131,6 +131,34 @@ describe('renderer store', () => {
     expect(store.getSnapshot().ui.dialog).toBe('add-assets');
   });
 
+  it('opens the Print dialog from the menu, on the kind asked for or the last one', async () => {
+    const f = fakeApi(appState());
+    const store = createStore(f.api);
+    await tick();
+    await store.dispatch({ type: 'print' });
+    expect(store.getSnapshot().ui.dialog).toBeNull();
+    f.push(appState({ seq: 2, project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp' }));
+    f.menu('print');
+    expect(store.getSnapshot().ui).toMatchObject({ dialog: 'print', printKind: 'lookahead' });
+    store.closeDialog();
+    await store.dispatch({ type: 'print', kind: 'test-sheets' });
+    expect(store.getSnapshot().ui).toMatchObject({ dialog: 'print', printKind: 'test-sheets' });
+    store.closeDialog();
+    await store.dispatch({ type: 'print' });
+    expect(store.getSnapshot().ui.printKind).toBe('test-sheets');
+  });
+
+  it('keeps the asset filter for one project only', async () => {
+    const f = fakeApi(appState({ seq: 1, project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp' }));
+    const store = createStore(f.api);
+    await tick();
+    store.setAssetFilter(['swgr-1a']);
+    f.push(appState({ seq: 2, project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp', revision: 3 }));
+    expect(store.getSnapshot().ui.assetFilter).toEqual(['swgr-1a']);
+    f.push(appState({ seq: 3, project: { ...riversideProject(), id: 'other' }, filePath: '/o.cxp', fileName: 'o.cxp' }));
+    expect(store.getSnapshot().ui.assetFilter).toBeNull();
+  });
+
   it('calls exit for File > Exit', async () => {
     const exit = vi.fn();
     const store = createStore(fakeApi(appState()).api, { exit });

@@ -31,10 +31,10 @@ export function menuKey(s: AppState): string {
 /**
  * The application menu. On macOS it is the system menu bar. On Windows and Linux the window
  * shows its own menu row (renderer components/MenuBar.tsx) and this menu is hidden, so its
- * shortcuts are hints only: the renderer binds Ctrl+N / Ctrl+O / Ctrl+Shift+S, and Ctrl+Z /
+ * shortcuts are hints only: the renderer binds Ctrl+N / Ctrl+O / Ctrl+Shift+S / Ctrl+P, and Ctrl+Z /
  * Ctrl+Y when focus is not in a text field (text fields keep their own undo).
  *
- * One owner per key and platform: on macOS this menu registers Cmd+N / Cmd+O / Cmd+Shift+S
+ * One owner per key and platform: on macOS this menu registers Cmd+N / Cmd+O / Cmd+Shift+S / Cmd+P
  * and the renderer leaves those keys alone (shortcutAction's `mac` flag), so they never run
  * twice. Cmd+Z / Cmd+Shift+Z stay with the renderer outside text fields (it prevents default),
  * and with the Undo Typing / Redo Typing roles inside them.
@@ -59,6 +59,8 @@ export function buildMenu(ctx: MenuContext, s: AppState): Menu {
         { type: 'separator' },
         { label: 'Save As…', ...hint('CmdOrCtrl+Shift+S'), enabled: open, click: () => void files.saveAs() },
         { label: 'Close Project', enabled: open, click: () => files.close() },
+        { type: 'separator' },
+        { label: 'Print / Export PDF…', ...hint('CmdOrCtrl+P'), enabled: open, click: () => ctx.toRenderer('print') },
         { type: 'separator' },
         { label: 'Workspace Folder…', click: () => void files.chooseWorkspace() },
         ...(isMac ? [] : [{ type: 'separator' as const }, { role: 'quit' as const, label: 'E&xit' }]),

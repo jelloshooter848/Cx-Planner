@@ -110,6 +110,22 @@ describe('ProjectStore', () => {
     s.close();
   });
 
+  it('lists issued prints per kind with their notes', () => {
+    const s = ProjectStore.open(file, { create: true });
+    s.replaceProject(riversideProject());
+    s.recordPrint({ kind: 'lookahead', rev: 'A', issued: '2026-11-02', paper: 'tabloid', sheets: 1, dataDate: '2026-11-02', note: 'Issued for coordination', title: '3-Week Look-Ahead' });
+    s.recordPrint({ kind: 'test-sheets', rev: 'A', issued: '2026-11-02', paper: 'letter', sheets: 4, dataDate: '2026-11-02' });
+    s.recordPrint({ kind: 'lookahead', rev: 'B', issued: '2026-11-06', paper: 'letter', sheets: 2, dataDate: '2026-11-06', note: 'Progress update' });
+    expect(s.listPrints('lookahead').map((p) => [p.rev, p.note, p.paper])).toEqual([
+      ['A', 'Issued for coordination', 'tabloid'],
+      ['B', 'Progress update', 'letter'],
+    ]);
+    expect(s.listPrints('lookahead')[0]).toMatchObject({ title: '3-Week Look-Ahead', sheets: 1, dataDate: '2026-11-02' });
+    expect(s.listPrints('test-sheets')[0]).toMatchObject({ note: '', title: '' });
+    expect(s.listPrints()).toHaveLength(3);
+    s.close();
+  });
+
   it('keeps the change log append-only', () => {
     const s = ProjectStore.open(file, { create: true });
     s.replaceProject(riversideProject());

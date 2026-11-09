@@ -6,7 +6,7 @@
 import { formatIso, isInternalCommand, parseIso, type Command, type Template } from '@cx/core';
 import { PAPER, type PaperId } from '@cx/render';
 import { templateFromFile, TEMPLATE_FILE_FORMAT, TEMPLATE_FILE_VERSION, TemplateImportError } from '@cx/storage';
-import type { NewProjectInput } from '../shared/api.js';
+import { FULL_SCHEDULE_PAPERS, LOOK_AHEAD_PAPERS, LOOK_AHEAD_WEEKS, type NewProjectInput, type PrintRequest } from '../shared/api.js';
 import { InputError } from './session.js';
 
 const MAX_NAME = 200;
@@ -109,5 +109,52 @@ export function checkTemplate(v: unknown): Template {
   } catch (e) {
     if (e instanceof TemplateImportError) throw new InputError(e.problems.join('\n'), 'invalid-template');
     throw e;
+  }
+}
+
+const MAX_NOTE = 200;
+const MAX_IDS = 100_000;
+/** Day widths the full schedule accepts, in inches (the dialog offers a few in between). */
+export const DAY_WIDTH_RANGE = { min: 0.1, max: 2 } as const;
+
+function checkIds(v: unknown, what: string): string[] {
+  if (!Array.isArray(v) || v.length > MAX_IDS) throw new InputError(`Invalid ${what}`);
+  return v.map((id) => checkId(id, what));
+}
+
+function checkOneOf<T extends string | number>(v: unknown, options: readonly T[], what: string): T {
+  if (!(options as readonly unknown[]).includes(v)) throw new InputError(`Invalid ${what}`);
+  return v as T;
+}
+
+/** A print from the Print dialog. Unknown fields are dropped. */
+export function checkPrintRequest(v: unknown): PrintRequest {
+  if (!isObject(v)) throw new InputError('Invalid print request');
+  if (typeof v.note !== 'string' || v.note.length > MAX_NOTE) throw new InputError(`The revision note is too long (at most ${MAX_NOTE} characters)`);
+  const note = v.note.trim();
+  const assetIds = () => (v.assetIds === null ? null : checkIds(v.assetIds, 'asset id'));
+  switch (v.kind) {
+    case 'lookahead':
+      if (typeof v.showTimes !== 'boolean') throw new InputError('Invalid TIMES setting');
+      return {
+        kind: 'lookahead',
+        paper: checkOneOf(v.paper, LOOK_AHEAD_PAPERS, 'paper size for a look-ahead'),
+        weeks: checkOneOf(v.weeks, LOOK_AHEAD_WEEKS, 'number of weeks'),
+        start: checkDate(v.start, 'look-ahead start'),
+        assetIds: assetIds(),
+        showTimes: v.showTimes,
+        note,
+      };
+    case 'full-schedule': {
+      const w = v.dayWidthIn;
+      if (w !== null && (typeof w !== 'number' || !Number.isFinite(w) || w < DAY_WIDTH_RANGE.min || w > DAY_WIDTH_RANGE.max)) {
+        throw new InputError(`The day width must be between ${DAY_WIDTH_RANGE.min} and ${DAY_WIDTH_RANGE.max} inches`);
+      }
+      return { kind: 'full-schedule', paper: checkOneOf(v.paper, FULL_SCHEDULE_PAPERS, 'paper size for the full schedule'), dayWidthIn: w, assetIds: assetIds(), note };
+    }
+    case 'test-sheets':
+      return { kind: 'test-sheets', taskIds: checkIds(v.taskIds, 'task id'), note };
+    default:
+      throw new InputError('Unknown kind of print');
   }
 }

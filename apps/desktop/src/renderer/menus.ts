@@ -67,6 +67,8 @@ export function buildMenus(state: AppState | null, view: ViewId | 'welcome', mac
     item('Save As…', { type: 'save-as' }, { enabled: open, shortcut: 'Ctrl+Shift+S' }),
     item('Close project', { type: 'close-project' }, { enabled: open }),
     sep,
+    item('Print / Export PDF…', { type: 'print' }, { enabled: open, shortcut: 'Ctrl+P' }),
+    sep,
     item('Workspace folder…', { type: 'choose-workspace' }),
     sep,
     item('Exit', { type: 'exit' }),

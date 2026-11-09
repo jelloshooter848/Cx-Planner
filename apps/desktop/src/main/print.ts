@@ -2,52 +2,36 @@ import { BrowserWindow } from 'electron';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { computeSchedule, type Project } from '@cx/core';
-import { layoutSchedulePrint, lookAheadTitle, lookAheadWindow, printDocumentHtml, type PaperId, type PrintLayout } from '@cx/render';
+import type { Project } from '@cx/core';
+import type { Paper } from '@cx/render';
 import { interFontCss } from '@cx/render/fonts-node';
-
-export interface LookAheadRequest {
-  paper: PaperId;
-  weeks: number;
-  /** Data date the look-ahead starts from (its Monday) and the sheet's Issued date. Defaults to the project's data date. */
-  dataDate?: string;
-  assetIds?: string[];
-  showCriticalPath?: boolean;
-  showTimes?: boolean;
-}
+import { buildPrint, type BuiltPrint } from './print-jobs.js';
 
 let fontCss: string | undefined;
 export function setFontDir(dir: string): void {
   fontCss = interFontCss(dir);
 }
 
-export function lookAheadDocument(project: Project, req: LookAheadRequest): { html: string; layout: PrintLayout; title: string } {
-  const schedule = computeSchedule(project);
-  const dataDate = req.dataDate ?? project.dataDate;
-  const window = lookAheadWindow(dataDate, req.weeks, schedule.calendar);
-  const title = lookAheadTitle(window, req.weeks);
-  const layout = layoutSchedulePrint({
-    project, schedule, paper: req.paper, title, window,
-    assetIds: req.assetIds, showCriticalPath: req.showCriticalPath, showTimes: req.showTimes,
-    revision: { rev: 'B', issued: dataDate, baseline: 'Rev A' },
-    revisions: [
-      { rev: 'A', date: '2026-11-02', note: 'Issued for coordination' },
-      { rev: 'B', date: '2026-11-06', note: 'Progress update' },
-    ],
-  });
-  return { html: printDocumentHtml(layout, { title, fontCss }), layout, title };
+/** The bundled Inter @font-face rules for print documents (undefined until setFontDir). */
+export function printFontCss(): string | undefined {
+  return fontCss;
 }
 
-export function fullScheduleDocument(project: Project, paper: PaperId): { html: string; layout: PrintLayout } {
-  const layout = layoutSchedulePrint({
-    project, schedule: computeSchedule(project), paper, title: 'Full Commissioning Schedule', dayWidthIn: 0.42,
-    revision: { rev: 'A', issued: project.dataDate, baseline: 'Rev A' },
+/** A look-ahead of a project with no print history (spikes and smoke tests). */
+export function lookAheadDocument(project: Project, req: { paper: 'letter' | 'tabloid'; weeks: 2 | 3 | 4 | 6 }): BuiltPrint {
+  return buildPrint({
+    project, templates: [], history: [], fontCss,
+    request: { kind: 'lookahead', paper: req.paper, weeks: req.weeks, start: project.dataDate, assetIds: null, showTimes: true, note: '' },
   });
-  return { html: printDocumentHtml(layout, { title: 'Full schedule', fontCss }), layout };
 }
 
-/** Render an HTML print document to PDF in an offscreen window, using the document's CSS page size. */
-export async function htmlToPdf(html: string): Promise<Buffer> {
+/** The full schedule of a project with no print history (spikes and smoke tests). */
+export function fullScheduleDocument(project: Project, paper: 'tabloid' | 'ansi-d' | 'arch-d'): BuiltPrint {
+  return buildPrint({ project, templates: [], history: [], fontCss, request: { kind: 'full-schedule', paper, dayWidthIn: 0.42, assetIds: null, note: '' } });
+}
+
+/** Loads an HTML print document in an offscreen window, runs `fn` on it, then closes it. */
+async function withPrintWindow<T>(html: string, fn: (win: BrowserWindow) => Promise<T>): Promise<T> {
   const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
   // A temp file, not a data: URL: large-format documents exceed Chromium's data URL limit.
   const dir = mkdtempSync(join(tmpdir(), 'cx-print-'));
@@ -56,9 +40,46 @@ export async function htmlToPdf(html: string): Promise<Buffer> {
   try {
     await win.loadFile(file);
     await win.webContents.executeJavaScript('document.fonts.ready.then(() => true)').catch(() => true);
-    return await win.webContents.printToPDF({ preferCSSPageSize: true, printBackground: true, margins: { top: 0, bottom: 0, left: 0, right: 0 } });
+    return await fn(win);
   } finally {
     win.destroy();
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+/** Render an HTML print document to PDF in an offscreen window, using the document's CSS page size. */
+export function htmlToPdf(html: string): Promise<Buffer> {
+  return withPrintWindow(html, (win) =>
+    win.webContents.printToPDF({ preferCSSPageSize: true, printBackground: true, margins: { top: 0, bottom: 0, left: 0, right: 0 } }),
+  );
+}
+
+const MICRONS_PER_IN = 25_400;
+
+/**
+ * Shows the system print dialog for an HTML print document at its paper size, no margins.
+ * Resolves true when it was sent to a printer, false when the user cancelled.
+ */
+export function printHtml(html: string, paper: Paper): Promise<boolean> {
+  return withPrintWindow(
+    html,
+    (win) =>
+      new Promise<boolean>((resolve, reject) => {
+        win.webContents.print(
+          {
+            silent: false,
+            printBackground: true,
+            landscape: paper.widthIn > paper.heightIn,
+            // Chromium takes the page size portrait (width < height) and turns it with `landscape`.
+            pageSize: { width: Math.round(Math.min(paper.widthIn, paper.heightIn) * MICRONS_PER_IN), height: Math.round(Math.max(paper.widthIn, paper.heightIn) * MICRONS_PER_IN) },
+            margins: { marginType: 'none' },
+          },
+          (success, reason) => {
+            if (success) resolve(true);
+            else if (/cancel/i.test(reason)) resolve(false);
+            else reject(new Error(`Could not print: ${reason}`));
+          },
+        );
+      }),
+  );
 }
