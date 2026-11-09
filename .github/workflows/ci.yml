@@ -34,11 +34,31 @@ jobs:
           pnpm --filter @cx/desktop run build
           cd apps/desktop
           xvfb-run -a pnpm exec electron . --no-sandbox --spike-sqlite --spike-pdf --out ../../spike-output/electron-linux
+      # Drives the built app with Playwright under xvfb; the harness launches Electron with
+      # --no-sandbox. The M1 flow test leaves its PDFs in spike-output/desktop-e2e/m1-flow/.
+      - name: Desktop end-to-end (Electron + Playwright, xvfb)
+        run: pnpm desktop:e2e
+        env:
+          CX_E2E_NO_BUILD: '1'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: prints-linux
-          path: spike-output/
+          path: |
+            spike-output/
+            !spike-output/desktop-e2e/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-e2e-linux
+          path: spike-output/desktop-e2e/
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: m1-pdfs-linux
+          path: spike-output/desktop-e2e/m1-flow/*.pdf
+          if-no-files-found: warn
 
   windows:
     name: Desktop spikes and packaging (Windows)
