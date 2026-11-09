@@ -36,6 +36,8 @@ export interface Asset {
   location?: string;
   system?: string;
   templateId?: string;
+  /** Version of the template snapshot the asset's tasks were created from. */
+  templateVersion?: number;
 }
 
 export interface Task {
@@ -54,6 +56,8 @@ export interface Task {
   actualStart?: IsoDate;
   actualFinish?: IsoDate;
   readiness?: Readiness;
+  /** Key of the template task this task was created from (stable within the template). */
+  templateKey?: string;
 }
 
 export interface CalendarDef {
