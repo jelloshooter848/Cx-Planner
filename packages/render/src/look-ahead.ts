@@ -45,14 +45,27 @@ export function lookAheadWindow(dataDate: IsoDate, weeks: number, calendar: Work
 }
 
 /**
- * Sheet title for a look-ahead, e.g. "3-Week Look-Ahead: Nov 2 – Nov 20, 2026".
- * The year is written once when both ends share it, on both ends otherwise
- * ("Dec 28, 2026 – Jan 15, 2027").
+ * A date range for a sheet title, e.g. "Nov 2 – Nov 20, 2026". The year is written once when
+ * both ends share it, on both ends otherwise ("Dec 28, 2026 – Jan 15, 2027").
+ */
+export function formatDateRange(range: LookAheadWindow): string {
+  const sameYear = range.start.slice(0, 4) === range.end.slice(0, 4);
+  return sameYear ? `${shortDate(range.start)} – ${longDate(range.end)}` : `${longDate(range.start)} – ${longDate(range.end)}`;
+}
+
+/**
+ * Sheet title for a look-ahead, e.g. "3-Week Look-Ahead: Nov 2 – Nov 20, 2026"
+ * (dates as in formatDateRange).
  */
 export function lookAheadTitle(window: LookAheadWindow, weeks: number): string {
-  const sameYear = window.start.slice(0, 4) === window.end.slice(0, 4);
-  const range = sameYear
-    ? `${shortDate(window.start)} – ${longDate(window.end)}`
-    : `${longDate(window.start)} – ${longDate(window.end)}`;
-  return `${weeks}-Week Look-Ahead: ${range}`;
+  return `${weeks}-Week Look-Ahead: ${formatDateRange(window)}`;
+}
+
+/**
+ * Sheet title for the full schedule, with the date range of the printed tasks, e.g.
+ * "Full Commissioning Schedule: Nov 2, 2026 – Jan 20, 2027". No range (nothing to print)
+ * leaves the bare title.
+ */
+export function fullScheduleTitle(range: LookAheadWindow | null): string {
+  return range ? `Full Commissioning Schedule: ${formatDateRange(range)}` : 'Full Commissioning Schedule';
 }

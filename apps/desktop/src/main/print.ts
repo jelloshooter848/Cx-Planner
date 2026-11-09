@@ -26,8 +26,9 @@ export function lookAheadDocument(project: Project, req: { paper: 'letter' | 'ta
 }
 
 /** The full schedule of a project with no print history (spikes and smoke tests). */
-export function fullScheduleDocument(project: Project, paper: 'tabloid' | 'ansi-d' | 'arch-d'): BuiltPrint {
-  return buildPrint({ project, templates: [], history: [], fontCss, request: { kind: 'full-schedule', paper, dayWidthIn: 0.42, assetIds: null, note: '' } });
+/** Full schedule as the Print dialog sends it by default: fit to sheet width (`dayWidthIn: null`). */
+export function fullScheduleDocument(project: Project, paper: 'tabloid' | 'ansi-d' | 'arch-d', dayWidthIn: number | null = null): BuiltPrint {
+  return buildPrint({ project, templates: [], history: [], fontCss, request: { kind: 'full-schedule', paper, dayWidthIn, assetIds: null, note: '' } });
 }
 
 /** Loads an HTML print document in an offscreen window, runs `fn` on it, then closes it. */

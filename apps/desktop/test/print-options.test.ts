@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Task } from '@cx/core';
 import {
   currentLookAheadWindow,
+  DAY_WIDTHS,
   defaultSettings,
   defaultTestSheetTasks,
   fitScale,
@@ -30,8 +31,14 @@ describe('print dialog options', () => {
   it('builds each kind of request from the settings', () => {
     const s = { ...defaultSettings('2026-11-06', ['t1', 't2'], false), note: 'Progress update' };
     expect(printRequest('lookahead', s, null)).toEqual({ kind: 'lookahead', paper: 'tabloid', weeks: 3, start: '2026-11-02', assetIds: null, showTimes: true, note: 'Progress update' });
-    expect(printRequest('full-schedule', s, null)).toEqual({ kind: 'full-schedule', paper: 'ansi-d', dayWidthIn: 0.42, assetIds: null, note: 'Progress update' });
+    expect(printRequest('full-schedule', s, null)).toEqual({ kind: 'full-schedule', paper: 'ansi-d', dayWidthIn: null, assetIds: null, note: 'Progress update' });
     expect(printRequest('test-sheets', s, null)).toEqual({ kind: 'test-sheets', taskIds: ['t1', 't2'], note: 'Progress update' });
+  });
+
+  it('fits the full schedule to the sheet width by default', () => {
+    const s = defaultSettings('2026-11-06', [], false);
+    expect(s.fullSchedule.dayWidthIn).toBeNull();
+    expect(DAY_WIDTHS.find(([w]) => w === s.fullSchedule.dayWidthIn)?.[1]).toBe('Fit to sheet width');
   });
 
   it('limits schedule prints to the asset filter only when one is set and chosen', () => {

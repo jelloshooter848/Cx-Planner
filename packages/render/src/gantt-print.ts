@@ -25,6 +25,11 @@ export interface SchedulePrintOptions {
   assetIds?: string[];
   /** Draw critical tasks with a heavy outline and list it in the legend. Default true. */
   showCriticalPath?: boolean;
+  /**
+   * Print a "Dur" column (working days, e.g. "4 d"; milestones "0 d"). Default true for the full
+   * schedule (no `window`), false for look-aheads. It is the first column dropped on narrow sheets.
+   */
+  showDuration?: boolean;
   /** Print the T I M E S readiness columns and their legend line. Default true. */
   showTimes?: boolean;
   /**
@@ -64,7 +69,11 @@ interface Column {
   label: string;
   widthIn: number;
   align?: 'start' | 'middle' | 'end';
-  optional?: boolean;
+  /**
+   * Optional columns are dropped on narrow sheets, lowest number first, until the timeline is
+   * usable (at least 5 in wide, and, when fitting to the sheet, at least the minimum day width).
+   */
+  dropOrder?: number;
 }
 
 const INK = '#111';
@@ -82,7 +91,8 @@ const FONT = 12; // px (9pt)
 const BASE_COLUMNS: Column[] = [
   { key: 'id', label: 'ID', widthIn: 0.48 },
   { key: 'task', label: 'Task', widthIn: 2.75 },
-  { key: 'responsible', label: 'Responsible', widthIn: 1.55, optional: true },
+  { key: 'responsible', label: 'Responsible', widthIn: 1.55, dropOrder: 2 },
+  { key: 'dur', label: 'Dur', widthIn: 0.5, align: 'end', dropOrder: 1 },
   { key: 'start', label: 'Start', widthIn: 0.65 },
   { key: 'finish', label: 'Finish', widthIn: 0.65 },
   { key: 'pct', label: '%', widthIn: 0.52, align: 'end' },
@@ -99,16 +109,7 @@ export function layoutSchedulePrint(opts: SchedulePrintOptions): PrintLayout {
   const contentW = pageW - 2 * MARGIN;
 
   // Which tasks, and over what working-day range?
-  const inWindow = (t: Task): boolean => {
-    if (!opts.window) return true;
-    const s = schedule.tasks.get(t.id)!;
-    const a = cal.indexOf(opts.window.start);
-    const b = cal.indexOf(opts.window.end);
-    const last = Math.max(s.es, s.ef - 1);
-    return s.es <= b && last >= a;
-  };
-  const assetFilter = opts.assetIds ? new Set(opts.assetIds) : undefined;
-  const tasks = project.tasks.filter((t) => (!assetFilter || assetFilter.has(t.assetId)) && inWindow(t));
+  const tasks = printedTasks(opts);
   let first: number;
   let last: number; // inclusive working-day indexes
   if (opts.window) {
@@ -125,13 +126,26 @@ export function layoutSchedulePrint(opts: SchedulePrintOptions): PrintLayout {
   const dayCount = Math.max(1, last - first + 1);
 
   // Columns: drop optional ones on small sheets so the timeline keeps a usable width.
-  let columns = opts.showTimes === false ? BASE_COLUMNS.filter((c) => !c.key.startsWith('times-')) : BASE_COLUMNS;
+  const showDuration = opts.showDuration ?? !opts.window;
+  let columns = BASE_COLUMNS.filter(
+    (c) => !(opts.showTimes === false && c.key.startsWith('times-')) && !(!showDuration && c.key === 'dur'),
+  );
   const tableWidth = (cols: Column[]) => cols.reduce((n, c) => n + inch(c.widthIn), 0);
-  if (contentW - tableWidth(columns) < inch(5)) columns = columns.filter((c) => !c.optional);
+  const minDay = inch(opts.minDayWidthIn ?? 0.2);
+  const narrow = (cols: Column[]) => {
+    const tl = contentW - tableWidth(cols);
+    // Fit-to-width full schedules also keep each day at least minDay wide; look-aheads (a window)
+    // and fixed day widths only need the 5 in timeline floor.
+    return tl < inch(5) || (!opts.window && opts.dayWidthIn === undefined && tl / dayCount < minDay);
+  };
+  const dropOrder = columns.filter((c) => c.dropOrder !== undefined).sort((a, b) => a.dropOrder! - b.dropOrder!);
+  for (const c of dropOrder) {
+    if (!narrow(columns)) break;
+    columns = columns.filter((x) => x !== c);
+  }
   const tableW = tableWidth(columns);
   const timelineW = contentW - tableW;
 
-  const minDay = inch(opts.minDayWidthIn ?? 0.2);
   const dayW = opts.dayWidthIn !== undefined ? inch(opts.dayWidthIn) : Math.max(minDay, timelineW / dayCount);
   const daysPerSheet = Math.max(1, Math.floor((timelineW + 0.01) / dayW));
   const timeBands = packWeeks(first, last, daysPerSheet, (i) => cal.dateAt(i));
@@ -168,6 +182,39 @@ export function layoutSchedulePrint(opts: SchedulePrintOptions): PrintLayout {
     });
   });
   return { paper, sheets, rowBands: rowBands.length, timeBands: timeBands.length, taskCount: tasks.length };
+}
+
+/** The tasks a schedule print shows, in project order: asset filter, then date window. */
+export function printedTasks(opts: Pick<SchedulePrintOptions, 'project' | 'schedule' | 'window' | 'assetIds'>): Task[] {
+  const { project, schedule } = opts;
+  const cal = schedule.calendar;
+  const inWindow = (t: Task): boolean => {
+    if (!opts.window) return true;
+    const s = schedule.tasks.get(t.id)!;
+    const a = cal.indexOf(opts.window.start);
+    const b = cal.indexOf(opts.window.end);
+    const last = Math.max(s.es, s.ef - 1);
+    return s.es <= b && last >= a;
+  };
+  const assetFilter = opts.assetIds ? new Set(opts.assetIds) : undefined;
+  return project.tasks.filter((t) => (!assetFilter || assetFilter.has(t.assetId)) && inWindow(t));
+}
+
+/**
+ * First start and last finish (inclusive dates) of the tasks a schedule print shows, for its
+ * title. Null when no task is printed.
+ */
+export function printedTaskRange(
+  opts: Pick<SchedulePrintOptions, 'project' | 'schedule' | 'window' | 'assetIds'>,
+): { start: IsoDate; end: IsoDate } | null {
+  let start: IsoDate | undefined;
+  let end: IsoDate | undefined;
+  for (const t of printedTasks(opts)) {
+    const s = opts.schedule.tasks.get(t.id)!;
+    if (start === undefined || s.start < start) start = s.start;
+    if (end === undefined || s.finish > end) end = s.finish;
+  }
+  return start !== undefined && end !== undefined ? { start, end } : null;
 }
 
 /** Split [first, last] into bands of at most `cap` days, breaking at week starts when possible. */
@@ -394,6 +441,7 @@ function drawTaskRow(
       case 'id': val(t.code); break;
       case 'task': val(t.name); break;
       case 'responsible': val(t.responsible ?? ''); break;
+      case 'dur': val(`${t.durationDays} d`); break;
       case 'start': val(shortDate(s.start)); break;
       case 'finish': val(shortDate(s.finish)); break;
       case 'pct': out.push(text(cx + w - 8, baseline, `${Math.round(t.percentComplete)}%`, { size: FONT, anchor: 'end' })); break;
