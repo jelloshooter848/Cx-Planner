@@ -14,7 +14,7 @@ import type {
 } from './model.js';
 import { TIMES_KEYS } from './model.js';
 import { ScheduleCycleError, topologicalOrder } from './schedule.js';
-import { instantiateTemplate, TemplateInvalidError, type Template } from './template.js';
+import { instantiateTemplate, TemplateInvalidError, templateEndpoints, type InstantiatedAsset, type Template } from './template.js';
 import { isEmptyReapplyPlan, reapplyTemplate as reapply, UnknownAssetError } from './reapply.js';
 
 /**
@@ -60,6 +60,7 @@ export type CommandErrorCode =
   | 'unknown-task'
   | 'unknown-dependency'
   | 'duplicate-id'
+  | 'duplicate-tag'
   | 'duplicate-dependency'
   | 'self-link'
   | 'cycle'
@@ -131,6 +132,11 @@ export type Command =
       kind: 'addAssetsFromTemplate';
       template: Template;
       assets: NewAssetInput[];
+      /**
+       * Link each new asset's first task finish-to-start after the previous new asset's
+       * last task (see `templateEndpoints`), so the assets are worked one after another.
+       */
+      followPrevious?: boolean;
     }
   | { kind: 'removeAsset'; id: Id }
   /** Undo of removeAsset: puts an asset, its tasks and links back where they were. */
@@ -315,13 +321,20 @@ function addAssetsFromTemplate(
     if (typeof input.tag !== 'string') throw new CommandError('invalid-field', 'Each new asset needs a tag');
     if (typeof input.description !== 'string') throw new CommandError('invalid-field', 'Each new asset needs a description');
   }
+  if (cmd.followPrevious !== undefined && typeof cmd.followPrevious !== 'boolean') {
+    throw new CommandError('invalid-field', 'followPrevious must be true or false');
+  }
   const assetIds = new Set(project.assets.map((a) => a.id));
   const taskIds = new Set(project.tasks.map((t) => t.id));
+  const tagsUsed = new Set(project.assets.map((a) => tagKey(a.tag)));
   const assets = [...project.assets];
   const tasks = [...project.tasks];
   const dependencies = [...project.dependencies];
+  let previous: InstantiatedAsset | null = null;
   for (const input of cmd.assets) {
     if (input.tag.trim() === '') throw new CommandError('empty-name', 'Each new asset needs a tag');
+    if (tagsUsed.has(tagKey(input.tag))) throw new CommandError('duplicate-tag', `Tag "${input.tag.trim()}" is already used`);
+    tagsUsed.add(tagKey(input.tag));
     let id: Id;
     if (input.id !== undefined) {
       if (assetIds.has(input.id)) throw new CommandError('duplicate-id', `Asset id "${input.id}" is already used`);
@@ -356,6 +369,13 @@ function addAssetsFromTemplate(
     assets.push(made.asset);
     tasks.push(...made.tasks);
     dependencies.push(...made.dependencies);
+    if (cmd.followPrevious === true && previous) {
+      const ends = templateEndpoints(cmd.template);
+      const pred = ends && previous.tasks.find((t) => t.templateKey === ends.last);
+      const succ = ends && made.tasks.find((t) => t.templateKey === ends.first);
+      if (pred && succ) dependencies.push({ predecessorId: pred.id, successorId: succ.id, type: 'FS', lagDays: 0 });
+    }
+    previous = made;
   }
   const added = assets.slice(project.assets.length);
   const tags = added.map((a) => a.tag).join(', ');
@@ -1346,6 +1366,14 @@ function fieldLabel(key: string): string {
 
 function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
+/**
+ * How tags are compared for duplicates: trimmed, case-insensitive. "PNL-1a" and "PNL-1A"
+ * name the same piece of equipment.
+ */
+export function tagKey(tag: string): string {
+  return tag.trim().toUpperCase();
 }
 
 function slug(tag: string): string {

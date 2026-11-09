@@ -184,6 +184,28 @@ describe('Session', () => {
     expect(v).toEqual({ schedule: {}, projectFinish: null, scheduleError: null });
   });
 
+  it('adds assets from a template as one undoable step and stores the template snapshot', () => {
+    session.setWorkspace(WorkspaceStore.open(join(dir, 'ws'), { create: true }));
+    const store = openProject();
+    const tpl = session.getTemplate('starter-panelboard');
+    if (!tpl.ok) throw new Error(tpl.message);
+    const before = session.project!;
+    const r = session.apply({
+      kind: 'addAssetsFromTemplate', template: tpl.value, followPrevious: true,
+      assets: ['PNL-T-1', 'PNL-T-2', 'PNL-T-3'].map((tag) => ({ tag, description: 'Panelboard' })),
+    });
+    expect(r).toMatchObject({ ok: true, value: { changed: true } });
+    expect(session.project!.tasks.length).toBe(before.tasks.length + 12);
+    expect(store.getTemplateSnapshots()).toEqual([tpl.value]);
+    expect(session.undo()).toMatchObject({ ok: true });
+    expect(session.project).toEqual(before);
+    expect(last().canRedo).toBe(true);
+    // The snapshot stays: it is history of what the project used.
+    expect(store.getTemplateSnapshots()).toEqual([tpl.value]);
+    expect(session.apply({ kind: 'addAssetsFromTemplate', template: tpl.value, assets: [{ tag: before.assets[0]!.tag, description: '' }] }))
+      .toMatchObject({ ok: false, code: 'duplicate-tag' });
+  });
+
   describe('templates', () => {
     it('needs a workspace', () => {
       expect(session.listTemplates()).toMatchObject({ ok: false, code: 'no-workspace' });

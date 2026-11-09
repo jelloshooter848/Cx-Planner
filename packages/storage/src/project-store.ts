@@ -259,9 +259,14 @@ export class ProjectStore {
    * Dependencies are logged as entity "dependency" with id "pred->succ"; holidays as
    * entity "holiday" with the date as id; project fields as entity "project".
    * A save that finds nothing to change writes nothing.
+   *
+   * `options.templates` are template snapshots to store in the same transaction (see
+   * saveTemplateSnapshot), e.g. the template an add-assets edit used, so the edit and its
+   * snapshot land under one revision.
    */
-  saveProject(next: Project, source: string, summary?: string): SaveResult {
+  saveProject(next: Project, source: string, summary?: string, options: { templates?: Template[] } = {}): SaveResult {
     this.tx(summary, () => {
+      for (const t of options.templates ?? []) this.writeTemplateSnapshot(t, source);
       const db = this.db;
       const log = (entity: string, id: string, field: string | null, oldValue: unknown, newValue: unknown) =>
         this.log(source, entity, id, field, oldValue, newValue);
@@ -411,17 +416,19 @@ export class ProjectStore {
    * older snapshot with the same id. Logged as entity "template", field "version".
    */
   saveTemplateSnapshot(template: Template, source = 'user', summary?: string): void {
+    this.tx(summary, () => this.writeTemplateSnapshot(template, source));
+  }
+
+  private writeTemplateSnapshot(template: Template, source: string): void {
     const json = JSON.stringify(template);
-    this.tx(summary, () => {
-      const row = this.stmt('SELECT version, json FROM project_template WHERE id = ?').get(template.id) as { version: number; json: string } | undefined;
-      if (row?.json === json) return;
-      this.stmt('INSERT INTO project_template (id, version, json) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET version = excluded.version, json = excluded.json').run(
-        template.id,
-        template.version,
-        json,
-      );
-      this.log(source, 'template', template.id, 'version', row?.version, template.version);
-    });
+    const row = this.stmt('SELECT version, json FROM project_template WHERE id = ?').get(template.id) as { version: number; json: string } | undefined;
+    if (row?.json === json) return;
+    this.stmt('INSERT INTO project_template (id, version, json) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET version = excluded.version, json = excluded.json').run(
+      template.id,
+      template.version,
+      json,
+    );
+    this.log(source, 'template', template.id, 'version', row?.version, template.version);
   }
 
   /** Template snapshots stored in this project, by id. */

@@ -284,6 +284,24 @@ describe('template snapshots', () => {
     expect(again.getTemplateSnapshots()).toEqual([v3]);
     again.close();
   });
+
+  it('stores snapshots passed to saveProject in the same revision as the edit', () => {
+    const s = storeWith(riversideProject());
+    const before = s.getRevisionState();
+    const next = riversideProject();
+    next.name = 'Renamed job';
+    const r = s.saveProject(next, 'user', 'Added assets', { templates: [template] });
+    expect(r.revision).toBe(before.revision + 1);
+    expect(s.getTemplateSnapshots()).toEqual([template]);
+    const events = s.changesSince(before.lastChangeSeq);
+    expect(events.map((e) => [e.entity, e.revision, e.summary])).toEqual([
+      ['template', r.revision, 'Added assets'],
+      ['project', r.revision, 'Added assets'],
+    ]);
+    // An unchanged snapshot with no project change writes nothing.
+    expect(s.saveProject(next, 'user', 'Again', { templates: [template] })).toEqual({ changes: 0, revision: r.revision });
+    s.close();
+  });
 });
 
 describe('migrations', () => {

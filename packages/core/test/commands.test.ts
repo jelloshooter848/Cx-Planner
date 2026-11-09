@@ -136,7 +136,7 @@ describe('addAssetsFromTemplate', () => {
     const base = sample();
     const r = applyCommand(base, {
       kind: 'addAssetsFromTemplate', template: panelTemplate(),
-      assets: [{ tag: 'A1', description: '' }, { tag: 'a1', description: '' }, { id: 'mine', tag: 'X', description: '' }],
+      assets: [{ tag: 'A1', description: '' }, { tag: 'A1+', description: '' }, { id: 'mine', tag: 'X', description: '' }],
     });
     expect(r.project.assets.slice(2).map((a) => a.id)).toEqual(['a1-2', 'a1-3', 'mine']);
   });
@@ -149,6 +149,25 @@ describe('addAssetsFromTemplate', () => {
     expectError(sample(), { kind: 'addAssetsFromTemplate', template: tpl, assets: [{ tag: 'X', description: '', startNoEarlierThan: '2026-13-01' }] }, 'invalid-date');
     const bad = { ...tpl, tasks: [tt('a', 1, ['b']), tt('b', 1, ['a'])] };
     expectError(sample(), { kind: 'addAssetsFromTemplate', template: bad, assets: [{ tag: 'X', description: '' }] }, 'invalid-template');
+  });
+
+  it('refuses tags already in the project or repeated in the command', () => {
+    const tpl = panelTemplate();
+    expectError(sample(), { kind: 'addAssetsFromTemplate', template: tpl, assets: [{ tag: ' swgr-1a ', description: '' }] }, 'duplicate-tag');
+    expectError(sample(), { kind: 'addAssetsFromTemplate', template: tpl, assets: [{ tag: 'P1', description: '' }, { tag: 'p1', description: '' }] }, 'duplicate-tag');
+  });
+
+  it('chains each asset after the previous one with followPrevious, and undoes', () => {
+    const r = roundTrip(sample(), {
+      kind: 'addAssetsFromTemplate', template: panelTemplate(), followPrevious: true,
+      assets: [{ tag: 'P1', description: '' }, { tag: 'P2', description: '' }, { tag: 'P3', description: '' }],
+    });
+    const added = r.project.dependencies.slice(sample().dependencies.length);
+    expect(added.filter((d) => d.predecessorId.split(':')[0] !== d.successorId.split(':')[0])).toEqual([
+      { predecessorId: 'p1:energize', successorId: 'p2:vmi', type: 'FS', lagDays: 0 },
+      { predecessorId: 'p2:energize', successorId: 'p3:vmi', type: 'FS', lagDays: 0 },
+    ]);
+    expectError(sample(), { kind: 'addAssetsFromTemplate', template: panelTemplate(), followPrevious: 'yes' as never, assets: [{ tag: 'P1', description: '' }] }, 'invalid-field');
   });
 });
 
