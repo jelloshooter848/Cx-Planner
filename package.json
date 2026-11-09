@@ -19,7 +19,7 @@
     "dev:field": "pnpm --filter @cx/field run dev",
     "print:samples": "tsx scripts/print-samples.ts",
     "field:e2e": "tsx scripts/field-e2e.ts",
-    "desktop:e2e": "tsx scripts/desktop-e2e.ts",
+    "desktop:e2e": "pnpm --filter @cx/desktop e2e",
     "icons": "tsx scripts/make-icons.ts"
   },
   "devDependencies": {

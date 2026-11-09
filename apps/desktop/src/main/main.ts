@@ -91,6 +91,11 @@ function startApp(): void {
       width: 1400,
       height: 900,
       title: 'Cx Planner',
+      backgroundColor: '#eef0f3',
+      // The page draws the dark title bar and the menu row (see renderer TitleBar/MenuBar);
+      // the OS draws only the window buttons over it.
+      titleBarStyle: 'hidden',
+      ...(process.platform === 'darwin' ? {} : { titleBarOverlay: { color: '#1b1f24', symbolColor: '#c9ced6', height: 36 } }),
       webPreferences: { preload: join(dist, 'preload/preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false },
     });
     // The title is ours (it names the open file), not the page's.
@@ -98,6 +103,8 @@ function startApp(): void {
     // No navigation away from the bundled page and no new windows.
     win.webContents.on('will-navigate', (e) => e.preventDefault());
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    // Windows/Linux: the in-window menu row replaces the native menu bar.
+    if (process.platform !== 'darwin') win.setMenuBarVisibility(false);
     win.on('closed', () => (win = undefined));
     session.notify();
     await win.loadFile(join(dist, 'renderer/index.html'));
