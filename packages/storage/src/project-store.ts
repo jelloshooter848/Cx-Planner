@@ -19,6 +19,34 @@ export class ProjectFileCorruptError extends Error {
   }
 }
 
+/**
+ * The project already holds a snapshot of this template id and version with different
+ * content (e.g. a starter edited separately in two workspaces up to the same version).
+ * The stored snapshot is kept, since assets on that version read their checklist from it.
+ */
+export class TemplateSnapshotConflictError extends Error {
+  constructor(
+    readonly templateId: string,
+    readonly version: number,
+    name: string,
+  ) {
+    super(
+      `This project already holds a different version ${version} of the template "${name}" (likely from another workspace). ` +
+        'Change and save the template so it gets a new version, then try again.',
+    );
+    this.name = 'TemplateSnapshotConflictError';
+  }
+}
+
+/** JSON with object keys sorted, so equal content compares equal whatever the key order. */
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_k, v: unknown) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  );
+}
+
 export interface OpenOptions {
   /** Create the file if it does not exist. */
   create?: boolean;
@@ -415,9 +443,12 @@ export class ProjectStore {
 
   /**
    * Store the snapshot of a template used by this project (decision D4). Every version is
-   * kept, keyed by (id, version); saving the same id and version again replaces it.
-   * Logged as entity "template", field "version" (old value set when a stored snapshot of
-   * the same version was replaced).
+   * kept, keyed by (id, version). Saving the same id and version again with the same
+   * content does nothing. A snapshot is never replaced: assets on that version read their
+   * checklist from it, and the workspace gives every content change a new version, so
+   * different content under a stored (id, version) means a clash between workspaces; that
+   * throws TemplateSnapshotConflictError and rolls the transaction back.
+   * Logged as entity "template", field "version".
    */
   saveTemplateSnapshot(template: Template, source = 'user', summary?: string): void {
     this.tx(summary, () => this.writeTemplateSnapshot(template, source));
@@ -426,13 +457,12 @@ export class ProjectStore {
   private writeTemplateSnapshot(template: Template, source: string): void {
     const json = JSON.stringify(template);
     const row = this.stmt('SELECT json FROM project_template WHERE id = ? AND version = ?').get(template.id, template.version) as { json: string } | undefined;
-    if (row?.json === json) return;
-    this.stmt('INSERT INTO project_template (id, version, json) VALUES (?, ?, ?) ON CONFLICT(id, version) DO UPDATE SET json = excluded.json').run(
-      template.id,
-      template.version,
-      json,
-    );
-    this.log(source, 'template', template.id, 'version', row ? template.version : undefined, template.version);
+    if (row) {
+      if (canonicalJson(JSON.parse(row.json)) === canonicalJson(template)) return;
+      throw new TemplateSnapshotConflictError(template.id, template.version, template.name);
+    }
+    this.stmt('INSERT INTO project_template (id, version, json) VALUES (?, ?, ?)').run(template.id, template.version, json);
+    this.log(source, 'template', template.id, 'version', undefined, template.version);
   }
 
   /** Every template snapshot stored in this project, by id then version. */

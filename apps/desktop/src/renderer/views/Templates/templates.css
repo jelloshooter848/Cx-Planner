@@ -112,8 +112,33 @@
 .tpl-tasks {
   overflow: hidden;
 }
+/* Same look as the Schedule grid: tinted header band, a hairline under every row. */
+.tpl-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs);
+}
+.tpl-grid th {
+  height: 28px;
+  padding: 0 8px;
+  text-align: left;
+  white-space: nowrap;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  color: var(--ink-muted);
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--line);
+}
+.tpl-grid td {
+  padding: 0 8px;
+  white-space: nowrap;
+}
 .tpl-grid tbody tr {
   cursor: pointer;
+  border-bottom: 1px solid var(--line-soft);
+}
+.tpl-grid tbody tr:last-child {
+  border-bottom: 0;
 }
 .tpl-grid tbody tr:hover {
   background: var(--bg-hover);
@@ -143,8 +168,20 @@
 .tpl-grid .col-sheet {
   width: 80px;
 }
+.tpl-grid .type-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tpl-grid .col-trade {
+  width: 104px;
+  max-width: 104px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .tpl-grid .col-actions {
-  width: 92px;
+  width: 84px;
+  padding: 0 4px;
   text-align: right;
 }
 .tpl-task-name {

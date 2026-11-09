@@ -95,6 +95,27 @@ describe('template editor model', () => {
     expect(stepDraft({ ...gone, selectedKey: t.tasks[1]!.key }, 'undo')!.selectedKey).toBe(t.tasks[1]!.key);
   });
 
+  it('makes typing in one field a single undo step', () => {
+    const t = starter();
+    const key = t.tasks[0]!.key;
+    const rename = (d: ReturnType<typeof freshDraft>, name: string, field = `name:${key}`) =>
+      editDraft(d, { ...d.draft, tasks: d.draft.tasks.map((x) => (x.key === key ? { ...x, name } : x)) }, d.selectedKey, field);
+    let d = freshDraft(t);
+    for (const name of ['P', 'Pr', 'Pre']) d = rename(d, name);
+    expect(d.past).toEqual([t]);
+    expect(d.draft.tasks[0]!.name).toBe('Pre');
+    // Another field, or an edit with no key, starts a new step.
+    const typed = d.draft;
+    d = rename(d, 'Pre', `trade:${key}`);
+    d = editDraft(d, { ...d.draft, tasks: d.draft.tasks.map((x) => (x.key === key ? { ...x, trade: 'Elec' } : x)) }, d.selectedKey, `trade:${key}`);
+    expect(d.past).toEqual([t, typed]);
+    const cleared = editDraft(d, { ...d.draft, name: 'X' });
+    expect(rename(cleared, 'Again').past).toHaveLength(4);
+    // Undo then typing again does not merge into the undone step.
+    const u = stepDraft(d, 'undo')!;
+    expect(rename(u, 'Prez').past).toEqual([t, typed]);
+  });
+
   it('describes the library in the status bar', () => {
     expect(libraryStatus([{ kind: 'starter' }, { kind: 'starter' }, { kind: 'custom' }]).left).toBe('Library: 2 starters · 1 custom');
     expect(libraryStatus([{ kind: 'starter' }]).left).toBe('Library: 1 starter · 0 custom');

@@ -33,10 +33,12 @@ export function TaskProperties({
   template: Template;
   task: TemplateTask;
   index: number;
-  onChange: (t: Template) => void;
+  onChange: (t: Template, coalesce?: string) => void;
 }) {
   const id = useId();
-  const update = (patch: Partial<Omit<TemplateTask, 'key'>>) => onChange(updateTemplateTask(template, task.key, patch));
+  /** `field` set for typing in a text field: keystrokes there make one undo step. */
+  const update = (patch: Partial<Omit<TemplateTask, 'key'>>, field?: string) =>
+    onChange(updateTemplateTask(template, task.key, patch), field && `${field}:${task.key}`);
   const formatted = formatTemplatePredecessors(template, task);
   const [predText, setPredText] = useState(formatted);
   const [predError, setPredError] = useState('');
@@ -82,7 +84,7 @@ export function TaskProperties({
       <h2 className="section-label">Task {index + 1} · Properties</h2>
       <label className="field">
         <span className="field-label">Task name</span>
-        <input className="input" value={task.name} onChange={(e) => update({ name: e.target.value })} />
+        <input className="input" value={task.name} onChange={(e) => update({ name: e.target.value }, 'name')} />
       </label>
       <div className="field-row">
         <label className="field">
@@ -143,7 +145,7 @@ export function TaskProperties({
         </label>
         <label className="field">
           <span className="field-label">Trade</span>
-          <input className="input" value={task.trade} onChange={(e) => update({ trade: e.target.value })} placeholder="e.g. Electrical" />
+          <input className="input" value={task.trade} onChange={(e) => update({ trade: e.target.value }, 'trade')} placeholder="e.g. Electrical" />
         </label>
       </div>
       <div className="field-row">
@@ -152,7 +154,7 @@ export function TaskProperties({
           <input
             className="input"
             value={task.testForm ?? ''}
-            onChange={(e) => update({ testForm: e.target.value })}
+            onChange={(e) => update({ testForm: e.target.value }, 'testForm')}
             placeholder="Optional"
           />
         </label>
@@ -175,7 +177,7 @@ export function TaskProperties({
         label="Checklist item"
         noun="checklist item"
         items={task.checklist}
-        onChange={(checklist) => update({ checklist })}
+        onChange={(checklist, c) => update({ checklist }, c && `checklist-${c}`)}
         text={(c) => c.text}
         withText={(c, text) => ({ ...c, text })}
         create={(items) => ({ id: newChecklistItemId(items, task.key), text: '' })}
@@ -189,7 +191,7 @@ export function TaskProperties({
         label="Certification"
         noun="certification"
         items={task.requiredCerts}
-        onChange={(requiredCerts) => update({ requiredCerts })}
+        onChange={(requiredCerts, c) => update({ requiredCerts }, c && `certs-${c}`)}
         text={(s) => s}
         withText={(_s, text) => text}
         create={() => ''}

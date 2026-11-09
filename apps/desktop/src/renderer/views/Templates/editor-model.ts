@@ -92,6 +92,11 @@ export interface Draft {
   past: Template[];
   /** Drafts undone, next first (Ctrl+Y). */
   future: Template[];
+  /**
+   * Coalesce key of the last edit (e.g. "name:<taskKey>"), or null. Typing in one field
+   * makes one undo step, not one per keystroke.
+   */
+  lastEdit: string | null;
 }
 
 /** How many template edits Ctrl+Z can go back. */
@@ -99,13 +104,19 @@ export const DRAFT_UNDO_LIMIT = 100;
 
 /** A clean draft of `t` (just opened or saved): no history. */
 export function freshDraft(t: Template, selectedKey: string | null = t.tasks[0]?.key ?? null): Draft {
-  return { base: t, draft: t, selectedKey, past: [], future: [] };
+  return { base: t, draft: t, selectedKey, past: [], future: [], lastEdit: null };
 }
 
-/** `d` with `draft` as its new content, the old one kept for undo. */
-export function editDraft(d: Draft, draft: Template, selectedKey: string | null = d.selectedKey): Draft {
+/**
+ * `d` with `draft` as its new content, the old one kept for undo. Edits with the same
+ * `coalesce` key in a row (keystrokes in one text field) share one undo step: only the
+ * content before the first of them is kept.
+ */
+export function editDraft(d: Draft, draft: Template, selectedKey: string | null = d.selectedKey, coalesce: string | null = null): Draft {
   if (draft === d.draft) return { ...d, selectedKey };
-  return { ...d, draft, selectedKey, past: [...d.past, d.draft].slice(-DRAFT_UNDO_LIMIT), future: [] };
+  const merge = coalesce !== null && coalesce === d.lastEdit && d.past.length > 0;
+  const past = merge ? d.past : [...d.past, d.draft].slice(-DRAFT_UNDO_LIMIT);
+  return { ...d, draft, selectedKey, past, future: [], lastEdit: coalesce };
 }
 
 /** Steps the draft back (or forward) one edit; null when there is nothing to step to. */
@@ -115,8 +126,8 @@ export function stepDraft(d: Draft, dir: 'undo' | 'redo'): Draft | null {
   if (!to) return null;
   const selectedKey = d.selectedKey && to.tasks.some((t) => t.key === d.selectedKey) ? d.selectedKey : (to.tasks[0]?.key ?? null);
   return dir === 'undo'
-    ? { ...d, draft: to, selectedKey, past: d.past.slice(0, -1), future: [d.draft, ...d.future] }
-    : { ...d, draft: to, selectedKey, past: [...d.past, d.draft], future: d.future.slice(1) };
+    ? { ...d, draft: to, selectedKey, past: d.past.slice(0, -1), future: [d.draft, ...d.future], lastEdit: null }
+    : { ...d, draft: to, selectedKey, past: [...d.past, d.draft], future: d.future.slice(1), lastEdit: null };
 }
 
 /** Status bar line for the Templates view, e.g. "Library: 8 starters · 1 custom". */

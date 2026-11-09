@@ -73,7 +73,7 @@ export function TaskTable({
             <th className="col-dur">Dur</th>
             <th className="col-pred">Pred</th>
             <th className="col-type">Type</th>
-            <th>Trade</th>
+            <th className="col-trade">Trade</th>
             <th className="col-sheet">Sheet</th>
             <th className="col-actions">
               <span className="visually-hidden">Actions</span>
@@ -111,7 +111,9 @@ export function TaskTable({
                     {taskTypeLabel(t.type)}
                   </span>
                 </td>
-                <td>{t.trade || '—'}</td>
+                <td className="col-trade" title={t.trade || undefined}>
+                  {t.trade || '—'}
+                </td>
                 <td className="col-sheet">{t.checklist.length > 0 ? plural(t.checklist.length, 'item') : '—'}</td>
                 <td className="col-actions">
                   <span className="row-actions">

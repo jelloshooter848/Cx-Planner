@@ -55,8 +55,8 @@ describe('template editor', () => {
     expect(await summary.textContent()).toContain('Unsaved changes');
     await h.screenshot('templates-edited');
 
-    // Save: the workspace has the new version and the editor is clean again.
-    await editor.getByRole('button', { name: 'Save', exact: true }).click();
+    // Save with Ctrl+S, from inside the field: the workspace has the new version and the editor is clean again.
+    await props.getByLabel('Duration (days)').press('Control+s');
     await page.getByRole('status').filter({ hasText: 'Saved as version 2' }).waitFor();
     expect(await summary.textContent()).not.toContain('Unsaved changes');
     const stored = await page.evaluate(async () => {
@@ -280,6 +280,17 @@ describe('template editor', () => {
     expect(await editor.getByRole('button', { name: 'Save', exact: true }).isDisabled()).toBe(true);
     const after = await h.state();
     expect([after.revision, after.undoLabel]).toEqual([before.revision, before.undoLabel]);
+
+    // Typing in a field is one undo step: Ctrl+Z outside the field restores the whole name.
+    await relay.click();
+    const nameField = page.getByRole('region', { name: 'Task properties' }).getByLabel('Task name');
+    await nameField.press('End');
+    await nameField.pressSequentially(' (bench)');
+    expect(await nameField.inputValue()).toBe('Relay settings & calibration (bench)');
+    await relay.click();
+    await page.keyboard.press('Control+z');
+    expect(await nameField.inputValue()).toBe('Relay settings & calibration');
+    expect(await editor.getByRole('button', { name: 'Save', exact: true }).isDisabled()).toBe(true);
 
     // Typing a predecessor applies it at once, so Save is ready without leaving the field.
     await grid.getByRole('row').filter({ hasText: 'Functional' }).click();

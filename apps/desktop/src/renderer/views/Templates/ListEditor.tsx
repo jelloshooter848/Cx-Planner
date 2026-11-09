@@ -5,7 +5,8 @@ export interface ListEditorProps<T> {
   /** Accessible name of the list, e.g. "Checklist items". */
   label: string;
   items: readonly T[];
-  onChange(items: T[]): void;
+  /** `coalesce` is set for typing in an entry ("text:<item key>"), so callers can merge keystrokes into one undo step. */
+  onChange(items: T[], coalesce?: string): void;
   text(item: T): string;
   withText(item: T, text: string): T;
   /** A new empty item. */
@@ -42,7 +43,11 @@ export function ListEditor<T>({
     listRef.current?.querySelectorAll<HTMLTextAreaElement>('textarea')[focusIndex]?.focus();
     setFocusIndex(null);
   }, [focusIndex]);
-  const set = (i: number, value: string) => onChange(items.map((it, j) => (j === i ? withText(it, value) : it)));
+  const set = (i: number, value: string) =>
+    onChange(
+      items.map((it, j) => (j === i ? withText(it, value) : it)),
+      `text:${itemKey ? itemKey(items[i]!, i) : i}`,
+    );
   const move = (i: number, to: number) => {
     onChange(moveItem(items, i, to));
     setFocusIndex(Math.max(0, Math.min(items.length - 1, to)));

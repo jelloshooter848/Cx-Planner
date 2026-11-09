@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Project, Template } from '@cx/core';
 import { largeProject, riversideProject } from '@cx/fixtures';
-import { APPLICATION_ID, MIGRATIONS, ProjectStore } from '../src/index.js';
+import { APPLICATION_ID, MIGRATIONS, ProjectStore, TemplateSnapshotConflictError } from '../src/index.js';
 
 let file: string;
 beforeEach(() => {
@@ -276,19 +276,23 @@ describe('template snapshots', () => {
     expect(s.getTemplateSnapshot('tpl-lv-swgr', 2)).toEqual(template);
     expect(s.getTemplateSnapshot('tpl-lv-swgr', 3)).toEqual(v3);
     expect(s.getTemplateSnapshot('tpl-lv-swgr', 4)).toBeUndefined();
+    // Same content with keys in another order is the same snapshot.
+    const reordered = Object.fromEntries(Object.entries(v3).reverse()) as typeof v3;
+    s.saveTemplateSnapshot(reordered, 'user');
+    // Different content under a stored (id, version), e.g. from another workspace, is refused
+    // and the stored snapshot kept, since assets on version 3 read it.
     const v3b = { ...v3, name: 'LV switchgear (renamed)' };
-    s.saveTemplateSnapshot(v3b, 'user');
-    expect(s.getTemplateSnapshot('tpl-lv-swgr', 3)).toEqual(v3b);
+    expect(() => s.saveTemplateSnapshot(v3b, 'user')).toThrow(TemplateSnapshotConflictError);
+    expect(s.getTemplateSnapshot('tpl-lv-swgr', 3)).toEqual(v3);
     expect(s.changesSince(seq).map((e) => [e.entity, e.entityId, e.field, e.oldValue, e.newValue])).toEqual([
       ['template', 'tpl-lv-swgr', 'version', undefined, 2],
       ['template', 'tpl-lv-swgr', 'version', undefined, 3],
-      ['template', 'tpl-lv-swgr', 'version', 3, 3],
     ]);
     // A project save leaves the snapshots alone.
     s.saveProject(riversideProject(), 'autosave');
     s.close();
     const again = ProjectStore.open(file, { backup: false });
-    expect(again.getTemplateSnapshots()).toEqual([template, v3b]);
+    expect(again.getTemplateSnapshots()).toEqual([template, v3]);
     again.close();
   });
 
@@ -305,6 +309,13 @@ describe('template snapshots', () => {
     const bad = { ...riversideProject(), tasks: [{ ...riversideProject().tasks[0]!, durationDays: -1 }] };
     expect(() => s.saveProject(bad, 'user', 'Bad', { templates: [{ ...template, version: 9 }] })).toThrow();
     expect(s.getTemplateSnapshot(template.id, 9)).toBeUndefined();
+    // A clashing snapshot rolls the whole save back, project edit included.
+    const p2 = riversideProject();
+    p2.name = 'Renamed again';
+    const clash = { ...template, name: 'Same version, other content' };
+    expect(() => s.saveProject(p2, 'user', 'Apply template', { templates: [clash] })).toThrow(TemplateSnapshotConflictError);
+    expect(s.loadProject().name).toBe('Renamed');
+    expect(s.getTemplateSnapshots()).toEqual([template]);
     s.close();
   });
 

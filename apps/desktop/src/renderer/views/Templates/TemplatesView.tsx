@@ -144,11 +144,12 @@ export function TemplatesView() {
 
   // From `kept`, which setDoc updates at once, so two changes in one event (remove a row,
   // then select its neighbour) both land.
-  const edit = (draft: Template) => {
-    if (kept) setDoc(editDraft(kept, draft));
+  // `coalesce` merges keystrokes in one text field into one undo step (see editDraft).
+  const edit = (draft: Template, coalesce?: string) => {
+    if (kept) setDoc(editDraft(kept, draft, kept.selectedKey, coalesce ?? null));
   };
   const select = (selectedKey: string | null) => {
-    if (kept) setDoc({ ...kept, selectedKey });
+    if (kept) setDoc({ ...kept, selectedKey, lastEdit: null });
   };
   /** Ctrl+Z / Ctrl+Y in this view step through template edits, not the project's. */
   const step = (dir: 'undo' | 'redo') => {
@@ -163,8 +164,15 @@ export function TemplatesView() {
   useEffect(() => {
     if (modalOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey || isTextField(e.target) || store.getSnapshot().ui.dialog) return;
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || store.getSnapshot().ui.dialog) return;
       const k = e.key.toLowerCase();
+      // Ctrl+S saves the draft, from a text field too (it is the only screen with a Save).
+      if (k === 's' && !e.shiftKey) {
+        e.preventDefault();
+        saveKeyRef.current();
+        return;
+      }
+      if (isTextField(e.target)) return;
       const dir = k === 'z' && !e.shiftKey ? 'undo' : (k === 'y' && !e.shiftKey) || (k === 'z' && e.shiftKey) ? 'redo' : null;
       if (!dir) return;
       e.preventDefault();
@@ -198,6 +206,11 @@ export function TemplatesView() {
     say(`Saved as version ${r.value.version}`);
     await refresh();
     return true;
+  };
+
+  const saveKeyRef = useRef(() => {});
+  saveKeyRef.current = () => {
+    if (dirty && !busy) void save();
   };
 
   const names = list?.map((t) => t.name) ?? [];
@@ -336,7 +349,7 @@ export function TemplatesView() {
                   className="tpl-name"
                   aria-label="Template name"
                   value={doc.draft.name}
-                  onChange={(e) => edit({ ...doc.draft, name: e.target.value })}
+                  onChange={(e) => edit({ ...doc.draft, name: e.target.value }, 'template-name')}
                 />
                 <p className="hint" data-testid="template-summary">
                   {doc.base.kind === 'starter' ? 'Starter template' : 'My template'} · {plural(doc.draft.tasks.length, 'task')} · {span}
@@ -368,7 +381,7 @@ export function TemplatesView() {
                 >
                   Export template file
                 </button>
-                <button type="button" className="btn btn-primary" disabled={busy || !dirty} onClick={() => void save()}>
+                <button type="button" className="btn btn-primary" disabled={busy || !dirty} title="Save (Ctrl+S)" onClick={() => void save()}>
                   Save
                 </button>
               </div>
@@ -438,7 +451,7 @@ export function TemplatesView() {
                   className="input"
                   value={doc.draft.assetDescription}
                   placeholder="e.g. Low-voltage switchgear lineup"
-                  onChange={(e) => edit({ ...doc.draft, assetDescription: e.target.value })}
+                  onChange={(e) => edit({ ...doc.draft, assetDescription: e.target.value }, 'asset-description')}
                 />
               </label>
               <div className="tpl-details-lists">
@@ -448,7 +461,7 @@ export function TemplatesView() {
                     label="Stage"
                     noun="stage"
                     items={doc.draft.stages}
-                    onChange={(stages) => edit({ ...doc.draft, stages })}
+                    onChange={(stages, c) => edit({ ...doc.draft, stages }, c && `stages-${c}`)}
                     text={(s) => s}
                     withText={(_s, t) => t}
                     create={() => ''}
@@ -462,7 +475,7 @@ export function TemplatesView() {
                     label="Document"
                     noun="document"
                     items={doc.draft.requiredDocs}
-                    onChange={(requiredDocs) => edit({ ...doc.draft, requiredDocs })}
+                    onChange={(requiredDocs, c) => edit({ ...doc.draft, requiredDocs }, c && `docs-${c}`)}
                     text={(s) => s}
                     withText={(_s, t) => t}
                     create={() => ''}

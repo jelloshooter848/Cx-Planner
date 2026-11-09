@@ -143,7 +143,7 @@ function AssetPlan({
   return (
     <li className="reapply-asset">
       <label className="reapply-head">
-        <input type="checkbox" checked={checked} disabled={empty} onChange={(e) => onToggle(e.target.checked)} />
+        <input type="checkbox" checked={checked && !empty} disabled={empty} onChange={(e) => onToggle(e.target.checked)} />
         <b>{asset.tag}</b>
         <span className="muted">{asset.description}</span>
         <span className="muted small reapply-version">{empty ? 'Up to date' : `v${asset.templateVersion ?? '—'} → v${version}`}</span>
