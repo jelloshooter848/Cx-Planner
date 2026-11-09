@@ -90,11 +90,13 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
     // A getState() answer can arrive after a newer push; keep the newer one.
     if (prev && prev.seq > state.seq) return;
     const ui = { ...snapshot.ui };
-    // A file change leaves no dialog over the new file. Closing a project, or opening one from
-    // the welcome screen, starts on the schedule; going straight from one open file to another
-    // (Save As, or opening a second project) keeps the current view.
+    // A file change leaves no dialog over the new file. Closing a project always lands on the
+    // welcome screen (view 'schedule' with no project, see effectiveView). Opening one from the
+    // welcome screen starts on the schedule, or stays on Templates if that was showing. Going
+    // straight from one open file to another (Save As, a second project) keeps the view.
     if (prev && prev.filePath !== state.filePath) {
-      if (!(prev.project && state.project)) ui.view = ui.view === 'templates' ? 'templates' : 'schedule';
+      if (prev.project && !state.project) ui.view = 'schedule';
+      else if (!prev.project && state.project) ui.view = ui.view === 'templates' ? 'templates' : 'schedule';
       if (state.filePath) ui.dialog = null;
     }
     snapshot = { app: state, ui };
@@ -269,7 +271,10 @@ export function useCommand(): CommandApi {
   );
 }
 
-/** The view to draw: the welcome screen when no project is open (templates work without one). */
+/**
+ * The view to draw: the welcome screen when no project is open (templates work without one).
+ * With no project, setView('schedule') is how the user gets back to the welcome screen.
+ */
 export function effectiveView(s: Snapshot): ViewId | 'welcome' {
   if (s.app?.project) return s.ui.view;
   return s.ui.view === 'templates' && s.app?.workspacePath ? 'templates' : 'welcome';

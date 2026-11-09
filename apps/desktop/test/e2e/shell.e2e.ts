@@ -157,6 +157,73 @@ describe('desktop shell', () => {
     await page.getByRole('table', { name: 'Tasks' }).waitFor();
   });
 
+  it('gets back to the welcome screen from Templates, and closing from Templates shows it', async () => {
+    h = await launchApp();
+    const { page } = h;
+    const bar = page.getByRole('menubar');
+    const welcome = page.getByRole('main', { name: 'Welcome' });
+    const library = page.getByRole('complementary', { name: 'Template library' });
+    await welcome.waitFor();
+
+    // Templates work without a project; the Schedule tab leads back to the welcome screen.
+    await bar.getByRole('menuitem', { name: 'Templates', exact: true }).click();
+    await library.getByText('Starter templates').waitFor();
+    expect(await bar.getByRole('menuitem', { name: 'Schedule', exact: true }).isEnabled()).toBe(true);
+    await bar.getByRole('menuitem', { name: 'Schedule', exact: true }).click();
+    await welcome.waitFor();
+
+    // View > Start page, and the link in the Templates view, do the same.
+    await bar.getByRole('menuitem', { name: 'Templates', exact: true }).click();
+    await library.waitFor();
+    await bar.getByRole('menuitem', { name: 'View', exact: true }).click();
+    await page.getByRole('menu', { name: 'View' }).getByRole('menuitemcheckbox', { name: 'Start page' }).click();
+    await welcome.waitFor();
+    await bar.getByRole('menuitem', { name: 'Templates', exact: true }).click();
+    await h.screenshot('templates-no-project');
+    await page.getByRole('button', { name: 'Back to start page' }).click();
+    await welcome.waitFor();
+
+    // Open a project, go to Templates, close: the welcome screen shows.
+    const path = join(h.workspace, 'Close.cxp');
+    const store = ProjectStore.open(path, { create: true });
+    store.replaceProject(riversideProject(), 'e2e');
+    store.close();
+    await h.answerOpen(path);
+    await page.keyboard.press('Control+o');
+    await page.getByRole('table', { name: 'Tasks' }).waitFor();
+    await bar.getByRole('menuitem', { name: 'Templates', exact: true }).click();
+    await library.waitFor();
+    expect(await page.getByRole('button', { name: 'Back to start page' }).count()).toBe(0);
+    await bar.getByRole('menuitem', { name: 'File', exact: true }).click();
+    await page.getByRole('menu', { name: 'File' }).getByRole('menuitem', { name: 'Close project' }).click();
+    await welcome.waitFor();
+  });
+
+  it('makes the menu row one tab stop reached with F10 or Alt', async () => {
+    h = await launchApp();
+    const { page } = h;
+    await page.getByRole('main', { name: 'Welcome' }).waitFor();
+    const bar = page.getByRole('menubar');
+    const tabStops = () => bar.evaluate((el) => [...el.querySelectorAll('[data-top]')].filter((b) => (b as HTMLElement).tabIndex === 0).map((b) => b.textContent));
+    expect(await tabStops()).toEqual(['File']);
+    const focusedTop = () => page.evaluate(() => (document.activeElement?.closest('[role="menubar"]') ? document.activeElement.textContent : null));
+
+    await page.keyboard.press('F10');
+    expect(await focusedTop()).toBe('File');
+    await page.keyboard.press('ArrowRight');
+    expect(await focusedTop()).toBe('Edit');
+    expect(await tabStops()).toEqual(['Edit']);
+    // A lone Alt leaves the row; the next one comes back to the item last used.
+    await page.keyboard.press('Alt');
+    expect(await focusedTop()).toBeNull();
+    await page.keyboard.press('Alt');
+    expect(await focusedTop()).toBe('Edit');
+    // Tab leaves the row in one step, to the first control of the welcome screen.
+    await page.keyboard.press('Tab');
+    expect(await focusedTop()).toBeNull();
+    expect(await page.evaluate(() => document.activeElement?.textContent)).toBe('New project…');
+  });
+
   it('lists a project opened from the command line under Open recent', async () => {
     h = await launchApp({ project: 'riverside' });
     const { page } = h;

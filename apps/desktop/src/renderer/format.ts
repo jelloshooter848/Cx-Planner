@@ -48,5 +48,8 @@ export function statusText(
   if (s.scheduleError) left.push(`Schedule not computed: ${s.scheduleError}`);
   else if (s.projectFinish) left.push(`Critical path ends ${shortDate(s.projectFinish)}`);
   const savedDetail = `${s.lastSavedAt ? `Last edit saved at ${formatTime(s.lastSavedAt)}` : 'No edits this session'} · Revision ${s.revision}`;
+  // "Saved" holds because the main process commits every edit (apply/undo/redo) to the file
+  // before it pushes the new state. If saving ever becomes deferred or can fail after the push,
+  // derive this word from a save-state field in AppState instead.
   return { left: left.join(' · '), right: `Data as of ${longDate(p.dataDate)} · Saved`, savedDetail };
 }

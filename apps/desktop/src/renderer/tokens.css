@@ -2,6 +2,10 @@
  * Design tokens for the desktop app: colours, type, spacing and sizes taken from the
  * mockups (docs/design/mockups). Light theme only. Components use these variables, never
  * raw values, so a later theme only has to change this file.
+ *
+ * --bg-app, --bg-chrome, --ink-inverse-muted and --titlebar-h are also used by the main
+ * process for the window background and title bar overlay: keep src/shared/chrome.ts in
+ * step (test/chrome.test.ts checks it).
  */
 :root {
   /* Type */

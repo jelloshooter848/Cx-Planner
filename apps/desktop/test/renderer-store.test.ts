@@ -154,4 +154,20 @@ describe('renderer store', () => {
     f.push(appState({ seq: 5, project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp' }));
     expect(effectiveView(store.getSnapshot())).toBe('schedule');
   });
+
+  it('shows the welcome screen after a close from Templates, and Schedule leads back to it', async () => {
+    const f = fakeApi(appState());
+    const store = createStore(f.api);
+    await tick();
+    store.setView('templates');
+    expect(effectiveView(store.getSnapshot())).toBe('templates');
+    store.setView('schedule');
+    expect(effectiveView(store.getSnapshot())).toBe('welcome');
+    store.setView('templates');
+    // Opening from Templates stays on Templates.
+    f.push(appState({ seq: 2, project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp' }));
+    expect(effectiveView(store.getSnapshot())).toBe('templates');
+    f.push(appState({ seq: 3 }));
+    expect(effectiveView(store.getSnapshot())).toBe('welcome');
+  });
 });

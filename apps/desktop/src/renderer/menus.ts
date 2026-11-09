@@ -75,8 +75,10 @@ export function buildMenus(state: AppState | null, view: ViewId | 'welcome', mac
     item(state?.undoLabel ? `Undo ${state.undoLabel}` : 'Undo', { type: 'undo' }, { enabled: !!state?.canUndo, shortcut: 'Ctrl+Z' }),
     item(state?.redoLabel ? `Redo ${state.redoLabel}` : 'Redo', { type: 'redo' }, { enabled: !!state?.canRedo, shortcut: 'Ctrl+Y' }),
   ];
+  // With no project open, Schedule (tab and View item) leads back to the welcome screen.
   const viewItems: MenuItem[] = [
-    item('Schedule', { type: 'view', view: 'schedule' }, { enabled: open, checked: view === 'schedule' }),
+    ...(open ? [] : [item('Start page', { type: 'view', view: 'schedule' }, { checked: view === 'welcome' })]),
+    item('Schedule', { type: 'view', view: 'schedule' }, { checked: view === 'schedule' }),
     item('Templates', { type: 'view', view: 'templates' }, { enabled: open || hasWorkspace, checked: view === 'templates' }),
   ];
   const reports: MenuItem[] = [item('3-week look-ahead', { type: 'view', view: 'lookahead' }, { enabled: open, checked: view === 'lookahead' })];
@@ -86,7 +88,7 @@ export function buildMenus(state: AppState | null, view: ViewId | 'welcome', mac
     { id: 'file', label: 'File', items: file, enabled: true },
     { id: 'edit', label: 'Edit', items: edit, enabled: true },
     { id: 'view', label: 'View', items: viewItems, enabled: true },
-    { id: 'schedule', label: 'Schedule', view: 'schedule', active: view === 'schedule', enabled: open },
+    { id: 'schedule', label: 'Schedule', view: 'schedule', active: view === 'schedule', enabled: true },
     { id: 'templates', label: 'Templates', view: 'templates', active: view === 'templates', enabled: open || hasWorkspace },
     { id: 'reports', label: 'Reports', items: reports, enabled: true },
     { id: 'help', label: 'Help', items: help, enabled: true },

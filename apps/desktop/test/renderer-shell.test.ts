@@ -123,7 +123,10 @@ describe('menu row', () => {
     expect(find(f, 'Close project')?.enabled).toBe(false);
     expect(find(f, 'New project…')?.enabled).toBe(true);
     expect(find(f, 'Open recent')).toMatchObject({ kind: 'submenu', enabled: false });
-    expect(closed.find((m) => m.id === 'schedule')?.enabled).toBe(false);
+    // Schedule stays enabled with no project: it leads back to the welcome screen.
+    expect(closed.find((m) => m.id === 'schedule')?.enabled).toBe(true);
+    expect(find(items(closed, 'view'), 'Start page')).toMatchObject({ enabled: true, checked: true, action: { type: 'view', view: 'schedule' } });
+    expect(find(items(buildMenus(base, 'schedule'), 'view'), 'Start page')).toBeUndefined();
     expect(closed.find((m) => m.id === 'templates')?.enabled).toBe(true);
   });
 

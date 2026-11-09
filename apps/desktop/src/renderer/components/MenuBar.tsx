@@ -9,10 +9,56 @@ const ITEMS = ':scope > [role^="menuitem"]:not(:disabled), :scope > .menu-sub > 
  * The menu row under the title bar (File, Edit, View, Schedule, Templates, Reports, Help).
  * Schedule and Templates switch views; the others open dropdowns. Mouse: click to open,
  * hover to move between open menus. Keyboard: arrows move, Enter/Space choose, Escape closes.
+ *
+ * The row is one tab stop (roving tabindex: only the current top item has tabIndex 0). F10, or
+ * a lone Alt press, moves focus to it, as the hidden native menu bar would on Windows/Linux;
+ * a lone Alt while the row has focus closes any menu and gives focus back to the page.
  */
 export function MenuBar({ menus, onAction }: { menus: MenuDef[]; onAction: (a: Action) => void }) {
   const [openId, setOpenId] = useState<string | null>(null);
+  const [currentId, setCurrentId] = useState<string | null>(null);
   const barRef = useRef<HTMLElement>(null);
+  const rovingId = (menus.find((m) => m.enabled && m.id === currentId) ?? menus.find((m) => m.enabled))?.id;
+
+  // F10 or a lone Alt press: focus the menu row (or leave it, for Alt while it has focus).
+  const rovingRef = useRef(rovingId);
+  rovingRef.current = rovingId;
+  useEffect(() => {
+    let altArmed = false;
+    const blocked = () => !!document.querySelector('[role="dialog"]');
+    const focusBar = () => barRef.current?.querySelector<HTMLElement>(`[data-top="${rovingRef.current}"]`)?.focus();
+    const onKeyDown = (e: globalThis.KeyboardEvent) => {
+      altArmed = e.key === 'Alt' && !e.repeat && !e.ctrlKey && !e.shiftKey && !e.metaKey;
+      if (e.key === 'F10' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && !blocked()) {
+        e.preventDefault();
+        focusBar();
+      }
+    };
+    const onKeyUp = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Alt' || !altArmed) return;
+      altArmed = false;
+      if (blocked()) return;
+      e.preventDefault();
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && barRef.current?.contains(active)) {
+        setOpenId(null);
+        active.blur();
+      } else {
+        focusBar();
+      }
+    };
+    const disarm = () => (altArmed = false);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('mousedown', disarm);
+    window.addEventListener('blur', disarm);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('mousedown', disarm);
+      window.removeEventListener('blur', disarm);
+    };
+  }, []);
 
   useEffect(() => {
     if (!openId) return;
@@ -105,6 +151,8 @@ export function MenuBar({ menus, onAction }: { menus: MenuDef[]; onAction: (a: A
               type="button"
               role="menuitem"
               data-top={m.id}
+              tabIndex={m.id === rovingId ? 0 : -1}
+              onFocus={() => setCurrentId(m.id)}
               className={`menubar-item${m.active ? ' is-active' : ''}`}
               aria-current={m.active ? 'page' : undefined}
               disabled={!m.enabled}
@@ -122,6 +170,8 @@ export function MenuBar({ menus, onAction }: { menus: MenuDef[]; onAction: (a: A
               type="button"
               role="menuitem"
               data-top={m.id}
+              tabIndex={m.id === rovingId ? 0 : -1}
+              onFocus={() => setCurrentId(m.id)}
               className={`menubar-item${isOpen ? ' is-open' : ''}`}
               aria-haspopup="menu"
               aria-expanded={isOpen}

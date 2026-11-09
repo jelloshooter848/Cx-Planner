@@ -46,6 +46,11 @@ export function TemplatesView() {
         <div className="empty">
           <h2>Templates</h2>
           <p className="hint">The template editor will open here. Starters are editable copies stored in your workspace.</p>
+          {!app?.project && (
+            <button type="button" className="btn-link" onClick={() => store.setView('schedule')}>
+              Back to start page
+            </button>
+          )}
         </div>
       </main>
     </div>
