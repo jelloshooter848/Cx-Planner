@@ -42,6 +42,18 @@ describe('taskChecklists', () => {
     expect(r[1]!.asset.tag).toBe('PNL-1');
   });
 
+  it('keeps acceptance criteria from the snapshot the asset was made from', () => {
+    const withAcc: Template = {
+      ...template,
+      tasks: [{ ...tt('vmi', []), checklist: [{ id: 'v1', text: 'Lugs torqued', acceptance: 'Per mfr. torque table' }] }, tt('ir', ['Megger'])],
+    };
+    const v3: Template = { ...template, version: 3, tasks: [tt('vmi', ['Lugs torqued']), tt('ir', ['Megger'])] };
+    const p = project();
+    p.assets[1] = { ...p.assets[1]!, templateVersion: 2 };
+    const r = taskChecklists(p, [withAcc, v3]);
+    expect(r.find((c) => c.task.id === 'a1')!.templateTask.checklist).toEqual([{ id: 'v1', text: 'Lugs torqued', acceptance: 'Per mfr. torque table' }]);
+  });
+
   it('finds nothing without the template snapshot', () => {
     expect(taskChecklists(project(), [])).toEqual([]);
   });

@@ -184,6 +184,12 @@ export function TaskProperties({
         itemKey={(c) => c.id}
         addLabel="Add checklist item"
         placeholder="One line on the test sheet"
+        detail={{
+          label: 'Acceptance',
+          placeholder: 'Acceptance (optional)',
+          text: (c) => c.acceptance ?? '',
+          withText: ({ acceptance: _old, ...c }, acceptance) => (acceptance === '' ? c : { ...c, acceptance }),
+        }}
       />
 
       <h3 className="field-label tpl-props-sub">Required certifications</h3>

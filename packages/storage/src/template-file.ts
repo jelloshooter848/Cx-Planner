@@ -176,5 +176,11 @@ function readChecklistItem(v: unknown, where: string, problems: string[]): Check
     problems.push(`${where} must be an object`);
     return undefined;
   }
-  return { id: str(v, 'id', where, problems), text: str(v, 'text', where, problems) };
+  const item: ChecklistItem = { id: str(v, 'id', where, problems), text: str(v, 'text', where, problems) };
+  // Older files have no acceptance; an empty one is the same as none.
+  if (v.acceptance !== undefined) {
+    const acceptance = str(v, 'acceptance', where, problems).trim();
+    if (acceptance !== '') item.acceptance = acceptance;
+  }
+  return item;
 }

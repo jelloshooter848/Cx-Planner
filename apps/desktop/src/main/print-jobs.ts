@@ -158,7 +158,9 @@ export function buildPrint(input: BuildPrintInput): BuiltPrint {
       for (const c of chosen) {
         const planned = schedule?.tasks.get(c.task.id);
         const layout = layoutTestSheet({
-          project, asset: c.asset, task: c.task, checklist: c.templateTask.checklist,
+          project, asset: c.asset, task: c.task,
+          // Acceptance criteria come from the template snapshot the asset was made from.
+          checklist: c.templateTask.checklist.map(({ id, text, acceptance }) => ({ id, text, ...(acceptance ? { acceptance } : {}) })),
           revision: { rev, issued },
           sheetId: `${c.asset.tag}-${c.task.code}`,
           ...(c.templateTask.testForm ? { sheetName: c.templateTask.testForm } : {}),
