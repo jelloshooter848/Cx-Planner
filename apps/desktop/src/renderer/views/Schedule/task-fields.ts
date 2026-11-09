@@ -35,18 +35,39 @@ function makeDate(y: number, m: number, d: number): IsoDate | null {
 }
 
 /**
+ * A month and day with no year: the year (that of `ref`, the one before or the one after)
+ * that puts the date closest to `ref`, so "Jan 4" typed against Dec 28 means the coming January.
+ */
+function nearestDate(m: number, d: number, ref: IsoDate): IsoDate | null {
+  const refYear = Number(ref.slice(0, 4));
+  const refDay = parseIso(ref);
+  let best: IsoDate | null = null;
+  let bestGap = Infinity;
+  for (const y of [refYear, refYear - 1, refYear + 1]) {
+    const date = makeDate(y, m, d);
+    if (!date) continue;
+    const gap = Math.abs(parseIso(date) - refDay);
+    if (gap < bestGap) {
+      best = date;
+      bestGap = gap;
+    }
+  }
+  return best;
+}
+
+/**
  * A date typed in the Start field: "2026-11-10", "Nov 10", "Nov 10, 2026", "November 10 2026",
- * "11/10" or "11/10/2026" (month first). Without a year, the year of `ref` is used.
+ * "11/10" or "11/10/2026" (month first). Without a year, the date nearest `ref` is used.
  */
 export function parseDateInput(text: string, ref: IsoDate): Parsed<IsoDate> {
   const t = text.trim().toLowerCase().replace(/,/g, ' ').replace(/\s+/g, ' ');
-  const refYear = Number(ref.slice(0, 4));
   const bad = fail(`"${text.trim()}" is not a date; write e.g. ${shortDate(ref)} or ${ref}`);
   let m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(t);
   if (m) return wrap(makeDate(Number(m[1]), Number(m[2]), Number(m[3])), bad);
   m = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?$/.exec(t);
   if (m) {
-    const y = m[3] === undefined ? refYear : m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
+    if (m[3] === undefined) return wrap(nearestDate(Number(m[1]), Number(m[2]), ref), bad);
+    const y = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
     return wrap(makeDate(y, Number(m[1]), Number(m[2])), bad);
   }
   m = /^([a-z]{3,9})\.? (\d{1,2})(?: (\d{4}))?$/.exec(t);
@@ -54,7 +75,8 @@ export function parseDateInput(text: string, ref: IsoDate): Parsed<IsoDate> {
     const word = m[1]!;
     const month = MONTHS.findIndex((name) => name.startsWith(word)) + 1;
     if (month === 0) return bad;
-    return wrap(makeDate(m[3] === undefined ? refYear : Number(m[3]), month, Number(m[2])), bad);
+    const day = Number(m[2]);
+    return wrap(m[3] === undefined ? nearestDate(month, day, ref) : makeDate(Number(m[3]), month, day), bad);
   }
   return bad;
 }

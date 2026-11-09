@@ -14,7 +14,7 @@
  * place; Enter or leaving the cell saves (one undo step), Escape cancels. Delete asks to
  * remove the selected task.
  */
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
 import { parseIso, predecessorLabels, TIMES_KEYS, type Id, type Project, type TimesKey } from '@cx/core';
 import type { TaskScheduleSummary } from '../../../shared/api';
 import { ReadinessSymbol } from '../../components/Symbols';
@@ -178,7 +178,11 @@ export function GanttView({ project, schedule, assetIds = null }: GanttViewProps
     if (selectedId && (e.key === 'Delete' || e.key === 'F2')) {
       e.preventDefault();
       if (e.key === 'Delete') void store.dispatch({ type: 'delete-task' });
-      else setEditing({ id: selectedId, field: 'name' });
+      else if (selectedIndex >= 0) {
+        // Bring the row into view first: only rows in view are drawn, so only they can hold the editor.
+        select(selectedId, true);
+        setEditing({ id: selectedId, field: 'name' });
+      }
       return;
     }
     const page = Math.max(1, Math.floor(bodyH / ROW_H) - 1);
@@ -370,13 +374,31 @@ interface InlineEditProps {
 function InlineEdit({ initial, label, numeric, onDone }: InlineEditProps) {
   const [text, setText] = useState(initial);
   const done = useRef(false);
+  const input = useRef<HTMLInputElement>(null);
+  const latest = useRef({ text, onDone });
+  latest.current = { text, onDone };
   const finish = (value: string | null, byKey: boolean) => {
     if (done.current) return;
     done.current = true;
     onDone(value, byKey);
   };
+  // Only rows in view are drawn: scrolling the row away removes the editor without a blur.
+  // Save what was typed then, and give focus back to the grid rather than the page.
+  // (The check waits a tick and asks whether the input left the page, so StrictMode's
+  // trial unmount, which keeps the element, does not end the edit.)
+  useEffect(() => {
+    const el = input.current;
+    return () => {
+      queueMicrotask(() => {
+        if (done.current || el?.isConnected) return;
+        done.current = true;
+        latest.current.onDone(latest.current.text, true);
+      });
+    };
+  }, []);
   return (
     <input
+      ref={input}
       className="gantt-edit"
       aria-label={label}
       value={text}

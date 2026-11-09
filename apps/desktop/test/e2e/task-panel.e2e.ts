@@ -182,6 +182,21 @@ describe('task panel', () => {
     expect((await h.state()).revision).toBe(s.revision);
   });
 
+  it('saves an in-place edit whose row is scrolled out of view', async () => {
+    h = await openRiverside();
+    const { page } = h;
+    // A short window, so scrolling to the end takes the first rows out of the drawn range.
+    await page.setViewportSize({ width: 1280, height: 420 });
+    await page.locator('#gantt-row-t1\\.1 .gc-task').dblclick();
+    const edit = page.getByRole('textbox', { name: 'Name of task 1.1' });
+    await edit.fill('Renamed while scrolling');
+    await page.locator('.gantt-scroll').evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await expect.poll(() => page.locator('#gantt-row-t1\\.1').count()).toBe(0);
+    await h.waitState((s) => s.project!.tasks.find((t) => t.id === 't1.1')!.name === 'Renamed while scrolling', 'the scrolled-away edit');
+    // Focus went back to the grid, not the page.
+    await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('aria-label'))).toBe('Tasks');
+  });
+
   it('deletes the selected task with Delete after a confirm, and undo brings it back', async () => {
     h = await openRiverside();
     const { page } = h;

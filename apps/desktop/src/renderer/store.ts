@@ -155,6 +155,10 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
   const offMenu = api.onMenu((cmd) => {
     if (cmd === 'new-project') void store.dispatch({ type: 'new-project' });
     else if (cmd === 'print') void store.dispatch({ type: 'print' });
+    // The selection belongs to the Schedule view; elsewhere the item does nothing (as in the in-window menu).
+    else if (cmd === 'delete-task') {
+      if (snapshot.ui.view === 'schedule') void store.dispatch({ type: 'delete-task' });
+    }
     // Only the template editor reports unsaved work: show it so it can ask what to do.
     else if (cmd === 'confirm-close') setUi({ view: 'templates', dialog: null, closeRequest: snapshot.ui.closeRequest + 1 });
   });

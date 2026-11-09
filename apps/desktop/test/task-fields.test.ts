@@ -34,6 +34,14 @@ describe('task panel fields', () => {
     expect(parseDateInput('soon', ref)).toMatchObject({ ok: false, error: '"soon" is not a date; write e.g. Nov 10 or 2026-11-10' });
   });
 
+  it('picks the nearest year when none is typed', () => {
+    expect(parseDateInput('Jan 4', '2026-12-28')).toEqual({ ok: true, value: '2027-01-04' });
+    expect(parseDateInput('1/4', '2026-12-28')).toEqual({ ok: true, value: '2027-01-04' });
+    expect(parseDateInput('Dec 30', '2027-01-02')).toEqual({ ok: true, value: '2026-12-30' });
+    expect(parseDateInput('Sep 1', '2026-12-28')).toEqual({ ok: true, value: '2026-09-01' });
+    expect(parseDateInput('Feb 29', '2027-12-01')).toEqual({ ok: true, value: '2028-02-29' });
+  });
+
   it('keeps milestones at zero duration when the type changes', () => {
     expect(typeChangePatch({ type: 'task', durationDays: 4 }, 'milestone')).toEqual({ type: 'milestone', durationDays: 0 });
     expect(typeChangePatch({ type: 'milestone', durationDays: 0 }, 'hold')).toEqual({ type: 'hold', durationDays: 1 });

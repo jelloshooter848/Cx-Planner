@@ -5,7 +5,7 @@
  * unknown predecessor, a link that would make a loop) show under the field and leave the
  * project as it was.
  */
-import { useEffect, useId, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { formatPredecessors, parsePredecessors, setPredecessorsCommand, templateTaskFor, type Asset, type Command, type Project, type Task, type TaskPatch, type TaskType, type TaskTemplateLink } from '@cx/core';
 import { Modal } from '../../components/Modal';
 import { shortDate } from '../../format';
@@ -199,6 +199,8 @@ function Field({ label, value, commit, name, multiline, readOnly, placeholder, i
   /** The text being edited, or null to show the saved value. */
   const [draft, setDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The text being committed, while a commit is in flight. */
+  const saving = useRef<string | null>(null);
   // A new saved value (an undo, an edit elsewhere) replaces an unchanged draft.
   useEffect(() => {
     setDraft((d) => (d === value ? null : d));
@@ -212,10 +214,18 @@ function Field({ label, value, commit, name, multiline, readOnly, placeholder, i
       setError(null);
       return;
     }
-    const problem = await commit(typed);
-    setError(problem);
-    // Keep the text while there is a problem so it can be fixed; otherwise show the saved value.
-    if (!problem) setDraft((d) => (d === typed ? null : d));
+    // Enter then blur (or Tab) before the commit returns would save the same text twice;
+    // the second command, built from the old project, could be refused and show a false error.
+    if (saving.current !== null) return;
+    saving.current = typed;
+    try {
+      const problem = await commit(typed);
+      setError(problem);
+      // Keep the text while there is a problem so it can be fixed; otherwise show the saved value.
+      if (!problem) setDraft((d) => (d === typed ? null : d));
+    } finally {
+      saving.current = null;
+    }
   };
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     if (e.key === 'Escape' && (draft !== null || error)) {
