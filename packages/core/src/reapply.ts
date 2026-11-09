@@ -1,4 +1,4 @@
-import type { Asset, Dependency, DependencyType, Id, Project, Task } from './model.js';
+import type { Asset, Dependency, DependencyType, Id, IsoDate, Project, Task } from './model.js';
 import { TemplateInvalidError, validateTemplate, type Template, type TemplateTask } from './template.js';
 
 /**
@@ -8,14 +8,21 @@ import { TemplateInvalidError, validateTemplate, type Template, type TemplateTas
  * Tasks are matched to template tasks by `templateKey`. The rules:
  * - Progress is never lost. A task with an actual start, an actual finish or any percent
  *   complete is never removed; when its template task is gone it stays and is reported
- *   as a conflict. Actual dates, percent complete, readiness, notes and start-no-earlier
- *   dates are never touched.
+ *   as a conflict. Actual dates, percent complete, readiness and notes are never touched,
+ *   and a start-no-earlier date a task has is kept.
  * - Matched tasks take the template's name, type, duration and responsible trade.
  *   Checklists, test forms, certifications and notice lead times are not copied onto
  *   tasks: they are read from the template snapshot by key, so they follow the asset's
  *   new template id and version.
  * - Template tasks the asset lacks are added in template order, each placed after the
  *   asset's task for the nearest earlier template task.
+ * - The asset's start-no-earlier date (the first one found on its template tasks before
+ *   the re-apply, so it survives the removal of the task that carried it) is given, like
+ *   instantiateTemplate does, to added tasks nothing holds back, and to matched tasks
+ *   that were held back by a link before but no longer are and have no date of their own.
+ *   The latter is reported in `updated`.
+ * - An asset made from a different template (another template id) is flagged with
+ *   `templateMismatch`; the command refuses it unless asked to go ahead.
  * - Tasks whose key is no longer in the template and that have no progress are deleted,
  *   with their links.
  * - Links between two template tasks of the same asset are rebuilt from the template
@@ -27,11 +34,11 @@ import { TemplateInvalidError, validateTemplate, type Template, type TemplateTas
  * loops.
  */
 
-export type ReapplyField = 'name' | 'type' | 'durationDays' | 'responsible';
+export type ReapplyField = 'name' | 'type' | 'durationDays' | 'responsible' | 'startNoEarlierThan';
 
 export interface ReapplyFieldChange {
   field: ReapplyField;
-  /** Undefined when the task had no value (only possible for responsible). */
+  /** Undefined when the task had no value (responsible or startNoEarlierThan). */
   from: string | number | undefined;
   to: string | number;
 }
@@ -63,6 +70,11 @@ export interface ReapplyAssetPlan {
   };
   /** True when the asset's template id or version changes. */
   versionChanged: boolean;
+  /**
+   * True when the asset was made from a different template (its template id is set and
+   * is not the template's id). Re-applying then replaces its whole template plan.
+   */
+  templateMismatch: boolean;
 }
 
 /** True when re-applying would change nothing on the asset. */
@@ -118,6 +130,7 @@ function planAsset(project: Project, asset: Asset, template: Template): ReapplyA
     conflicts: [],
     links: { added: [], changed: [], removed: [] },
     versionChanged: asset.templateId !== template.id || asset.templateVersion !== template.version,
+    templateMismatch: asset.templateId !== undefined && asset.templateId !== template.id,
   };
 
   for (const task of assetTasks) {
@@ -172,7 +185,34 @@ function planAsset(project: Project, asset: Asset, template: Template): ReapplyA
     }
   }
   for (const [k, w] of wanted) if (!present.has(k)) plan.links.added.push(w);
+
+  // Matched tasks that a link held back before but nothing holds back now get the asset's date.
+  const snet = assetStartNoEarlierThan(assetTasks);
+  if (snet !== undefined) {
+    const removed = new Set(plan.removed.map((r) => r.taskId));
+    for (const [key, task] of matched) {
+      if (task.startNoEarlierThan !== undefined || holdsBack(byKey.get(key)!.predecessors)) continue;
+      const incoming = project.dependencies.filter((d) => d.successorId === task.id && holdsBack([d]));
+      if (incoming.length === 0) continue; // A root before too: its missing date was the user's choice.
+      // Links from outside the asset's matched template tasks are kept, so they still hold it.
+      if (incoming.some((d) => !keyOf.has(d.predecessorId) && !removed.has(d.predecessorId))) continue;
+      const change: ReapplyFieldChange = { field: 'startNoEarlierThan', from: undefined, to: snet };
+      const entry = plan.updated.find((u) => u.taskId === task.id);
+      if (entry) entry.changes.push(change);
+      else plan.updated.push({ taskId: task.id, changes: [change] });
+    }
+  }
   return plan;
+}
+
+/** Like instantiateTemplate: an FS or SS link with no lead holds its successor back. */
+function holdsBack(preds: readonly { type: DependencyType; lagDays: number }[]): boolean {
+  return preds.some((p) => (p.type === 'FS' || p.type === 'SS') && p.lagDays >= 0);
+}
+
+/** The asset's start-no-earlier date: the first one on its template tasks. */
+function assetStartNoEarlierThan(assetTasks: readonly Task[]): IsoDate | undefined {
+  return assetTasks.find((t) => t.templateKey !== undefined && t.startNoEarlierThan !== undefined)?.startNoEarlierThan;
 }
 
 /** The first task of the asset for each template key the template has. */
@@ -250,8 +290,8 @@ export function reapplyTemplate(project: Project, assetIds: Id[], template: Temp
     for (const [key, t] of matchTasks(tasks.filter((t) => t.assetId === asset.id), byKey)) idOfKey.set(key, t.id);
     const addedKeys = new Set(plan.added.map((t) => t.key));
     if (addedKeys.size > 0) {
-      const snet = tasks.find((t) => t.assetId === asset.id && t.templateKey !== undefined && t.startNoEarlierThan !== undefined)
-        ?.startNoEarlierThan;
+      // From the tasks before the re-apply, so a removed task's date is not lost.
+      const snet = assetStartNoEarlierThan(project.tasks.filter((t) => t.assetId === asset.id));
       const work = [...tasks];
       let previous: Id | undefined;
       for (const tt of template.tasks) {
@@ -274,7 +314,7 @@ export function reapplyTemplate(project: Project, assetIds: Id[], template: Temp
           templateKey: tt.key,
         };
         // Like instantiateTemplate: hold back tasks nothing else holds back.
-        if (snet !== undefined && !tt.predecessors.some((p) => (p.type === 'FS' || p.type === 'SS') && p.lagDays >= 0)) {
+        if (snet !== undefined && !holdsBack(tt.predecessors)) {
           task.startNoEarlierThan = snet;
         }
         const at = previous !== undefined ? work.findIndex((t) => t.id === previous) + 1 : firstIndexOfAsset(project, work, asset.id);

@@ -43,7 +43,8 @@ import { isEmptyReapplyPlan, reapplyTemplate as reapply, UnknownAssetError } fro
  * value checks (e.g. a file whose percent complete is 150). They still get the shape
  * checks (required keys, field types, task and link types, readiness records) but skip
  * range and business rules. They are meant to come only from the main process's own undo
- * stack; the IPC handler should refuse them from the renderer.
+ * stack; the IPC handler must refuse them from the renderer (`isInternalCommand` says
+ * which commands those are).
  *
  * An edit that would change nothing (an empty patch, no project-info fields, a move to
  * the task's current place) is refused with CommandError('no-change'), so it never makes
@@ -144,7 +145,16 @@ export type Command =
    * is never lost, user-added tasks and links to other assets are kept). Undone by
    * `restoreAssets`.
    */
-  | { kind: 'reapplyTemplate'; assetIds: Id[]; template: Template }
+  | {
+      kind: 'reapplyTemplate';
+      assetIds: Id[];
+      template: Template;
+      /**
+       * Required to re-apply to an asset made from a different template (another template
+       * id), which replaces its whole template plan; refused otherwise.
+       */
+      allowOtherTemplate?: true;
+    }
   /**
    * Undo of reapplyTemplate: a snapshot of some assets. Each listed asset (which must
    * exist) is replaced, every task of those assets and every link touching one is taken
@@ -263,6 +273,29 @@ export function applyCommand(project: Project, cmd: Command): CommandResult {
   }
 }
 
+/**
+ * True for commands only the main process may issue: undo commands that put back earlier
+ * data and skip range checks (`restoreAsset`, `restoreTask`, `restoreAssets`, and
+ * `updateAsset` / `updateTask` with `restore: true`), or a batch holding one. The IPC
+ * handler must refuse these from the renderer. Takes unchecked input.
+ */
+export function isInternalCommand(cmd: unknown): boolean {
+  if (!isPlainObject(cmd)) return false;
+  switch (cmd.kind) {
+    case 'restoreAsset':
+    case 'restoreTask':
+    case 'restoreAssets':
+      return true;
+    case 'updateAsset':
+    case 'updateTask':
+      return cmd.restore !== undefined;
+    case 'batch':
+      return Array.isArray(cmd.commands) && cmd.commands.some(isInternalCommand);
+    default:
+      return false;
+  }
+}
+
 // ---------------------------------------------------------------------------------------
 // Assets
 
@@ -270,6 +303,7 @@ function addAssetsFromTemplate(
   project: Project,
   cmd: Extract<Command, { kind: 'addAssetsFromTemplate' }>,
 ): CommandResult {
+  checkTemplateShape(cmd.template);
   if (!Array.isArray(cmd.assets)) throw new CommandError('invalid-field', 'Assets must be a list');
   if (cmd.assets.length === 0) throw new CommandError('empty-batch', 'No assets to add');
   for (const input of cmd.assets) {
@@ -395,6 +429,10 @@ function reapplyTemplateCommand(project: Project, cmd: Extract<Command, { kind: 
   if (new Set(cmd.assetIds).size !== cmd.assetIds.length) {
     throw new CommandError('invalid-field', 'An asset is listed more than once');
   }
+  if (cmd.allowOtherTemplate !== undefined && cmd.allowOtherTemplate !== true) {
+    throw new CommandError('invalid-field', 'allowOtherTemplate must be true when set');
+  }
+  checkTemplateShape(cmd.template);
   let result;
   try {
     result = reapply(project, cmd.assetIds, cmd.template);
@@ -405,6 +443,11 @@ function reapplyTemplateCommand(project: Project, cmd: Extract<Command, { kind: 
   }
   const { plans } = result;
   const tags = cmd.assetIds.map((id) => project.assets.find((a) => a.id === id)!.tag).join(', ');
+  const other = plans.filter((p) => p.templateMismatch);
+  if (other.length > 0 && cmd.allowOtherTemplate !== true) {
+    const otherTags = other.map((p) => project.assets.find((a) => a.id === p.assetId)!.tag).join(', ');
+    throw new CommandError('invalid-template', `${otherTags} ${other.length === 1 ? 'was' : 'were'} made from another template than ${cmd.template.name}`);
+  }
   if (plans.every(isEmptyReapplyPlan)) {
     throw new CommandError('no-change', `${tags} already match${cmd.assetIds.length === 1 ? 'es' : ''} ${cmd.template.name}`);
   }
@@ -1191,6 +1234,49 @@ function checkDependencyShape(d: unknown): asserts d is Dependency {
     throw new CommandError('invalid-field', 'A link needs a predecessor, a successor and a lag');
   }
   if (!DEP_TYPES.includes(d.type as DependencyType)) throw new CommandError('invalid-type', `Unknown link type "${String(d.type)}"`);
+}
+
+/**
+ * Structural checks for a template arriving in a command: the fields instantiating or
+ * re-applying it reads, with the right types and known task and link types. Value rules
+ * (keys, durations, loops) are left to validateTemplate.
+ */
+function checkTemplateShape(t: unknown): asserts t is Template {
+  const bad = (what: string): never => {
+    throw new CommandError('invalid-template', `The template ${what}`);
+  };
+  if (!isPlainObject(t)) bad('must be an object');
+  const tpl = t as Record<string, unknown>;
+  if (typeof tpl.id !== 'string') bad('needs an id');
+  if (typeof tpl.name !== 'string') bad('needs a name');
+  if (typeof tpl.version !== 'number') bad('needs a version number');
+  if (!Array.isArray(tpl.tasks)) bad('needs a list of tasks');
+  for (const task of tpl.tasks as unknown[]) {
+    if (!isPlainObject(task)) bad('has a task that is not an object');
+    const tt = task as Record<string, unknown>;
+    if (typeof tt.key !== 'string' || typeof tt.name !== 'string' || typeof tt.trade !== 'string') {
+      bad('has a task without a key, name or trade');
+    }
+    const label = `task "${String(tt.key)}"`;
+    if (typeof tt.durationDays !== 'number') bad(`${label} has no duration`);
+    if (!TASK_TYPES.includes(tt.type as TaskType)) bad(`${label} has an unknown type "${String(tt.type)}"`);
+    if (tt.testForm !== undefined && typeof tt.testForm !== 'string') bad(`${label} test form must be text`);
+    if (tt.noticeLeadDays !== undefined && typeof tt.noticeLeadDays !== 'number') bad(`${label} notice lead time must be a number`);
+    if (!Array.isArray(tt.requiredCerts) || tt.requiredCerts.some((c) => typeof c !== 'string')) {
+      bad(`${label} needs a list of certifications`);
+    }
+    if (!Array.isArray(tt.checklist) || tt.checklist.some((c) => !isPlainObject(c) || typeof c.id !== 'string' || typeof c.text !== 'string')) {
+      bad(`${label} needs a checklist of { id, text } items`);
+    }
+    if (!Array.isArray(tt.predecessors)) bad(`${label} needs a list of predecessors`);
+    for (const p of tt.predecessors as unknown[]) {
+      if (!isPlainObject(p) || typeof p.key !== 'string' || typeof p.lagDays !== 'number') {
+        bad(`${label} has a predecessor without a key or lag`);
+      }
+      const pred = p as Record<string, unknown>;
+      if (!DEP_TYPES.includes(pred.type as DependencyType)) bad(`${label} has an unknown link type "${String(pred.type)}"`);
+    }
+  }
 }
 
 function checkPositionedList(list: unknown, what: string): void {

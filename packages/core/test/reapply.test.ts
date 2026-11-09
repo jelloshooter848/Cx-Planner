@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyCommand,
   CommandError,
+  isInternalCommand,
   planReapply,
   reapplyTemplate,
   TemplateInvalidError,
@@ -244,6 +245,45 @@ describe('reapplyTemplate', () => {
     expect(byId(p, 'a:torque').startNoEarlierThan).toBeUndefined();
   });
 
+  it('keeps the asset date when the only task carrying it is removed', () => {
+    const p0: Project = {
+      ...sample(),
+      assets: [{ id: 'a', tag: 'SWGR-A', description: 'Switchgear A', templateId: 'tpl-swgr', templateVersion: 1 }],
+      tasks: [t('a:s1', 'a', '1.1', 's1', { startNoEarlierThan: '2026-12-01' }), t('a:s2', 'a', '1.2', 's2')],
+      dependencies: [{ predecessorId: 'a:s1', successorId: 'a:s2', type: 'FS', lagDays: 0 }],
+    };
+    const tpl: Template = { ...v1(), version: 2, tasks: [tt('s0', 1), tt('s2', 1, ['s0'])] };
+    const { project: p, plans } = reapplyTemplate(p0, ['a'], tpl);
+    expect(plans[0]!.removed.map((r) => r.taskId)).toEqual(['a:s1']);
+    expect(byId(p, 'a:s0').startNoEarlierThan).toBe('2026-12-01');
+    expect(byId(p, 'a:s2').startNoEarlierThan).toBeUndefined();
+  });
+
+  it('gives the asset date to a matched task that no longer has a predecessor', () => {
+    // v1 without vmi: ir becomes the first task and nothing holds it back.
+    const tpl: Template = { ...v1(), version: 2, tasks: [tt('ir', 2), tt('hipot', 1, ['ir']), tt('energize', 0, ['hipot'], { type: 'milestone' })] };
+    const [plan] = planReapply(sample(), ['a'], tpl);
+    expect(plan!.updated).toEqual([{ taskId: 'a:ir', changes: [{ field: 'startNoEarlierThan', from: undefined, to: '2026-11-09' }] }]);
+    const { project: p } = reapplyTemplate(sample(), ['a'], tpl);
+    expect(byId(p, 'a:ir').startNoEarlierThan).toBe('2026-11-09');
+    // A task held back by a user link that stays is left alone, and so is a root without a date.
+    const p0 = sample();
+    p0.dependencies.push({ predecessorId: 'x:set', successorId: 'a:ir', type: 'FS', lagDays: 0 });
+    expect(planReapply(p0, ['a'], tpl)[0]!.updated).toEqual([]);
+    const p1 = sample();
+    delete p1.tasks[0]!.startNoEarlierThan;
+    p1.tasks[1]!.startNoEarlierThan = '2026-11-16';
+    const keep = planReapply(p1, ['a'], v1());
+    expect(keep[0]!.updated).toEqual([]);
+  });
+
+  it('flags an asset made from another template', () => {
+    const other: Template = { ...v1(), id: 'tpl-other', name: 'Other' };
+    expect(planReapply(sample(), ['a'], other)[0]!.templateMismatch).toBe(true);
+    expect(planReapply(sample(), ['a'], v2())[0]!.templateMismatch).toBe(false);
+    expect(planReapply(sample(), ['x'], v1())[0]!.templateMismatch).toBe(false);
+  });
+
   it('adds a first template task before the asset tasks and makes ids unique', () => {
     const p0 = sample();
     p0.tasks.push(t('a:pre', 'x', '3.2', undefined));
@@ -285,6 +325,56 @@ describe('reapplyTemplate command', () => {
     p.dependencies = p.dependencies.filter((d) => !(d.predecessorId === 'x:set' && d.successorId === 'a:vmi'));
     const r = roundTrip(p, { kind: 'reapplyTemplate', assetIds: ['a'], template: v2() });
     expect(links(r.project)).not.toContain('a:hipot>x:set FF0');
+  });
+
+  it('refuses another template unless allowed, and undoes when allowed', () => {
+    const other: Template = { ...v2(), id: 'tpl-other', name: 'Other' };
+    expectError(sample(), { kind: 'reapplyTemplate', assetIds: ['a'], template: other }, 'invalid-template');
+    const r = roundTrip(sample(), { kind: 'reapplyTemplate', assetIds: ['a'], template: other, allowOtherTemplate: true });
+    expect(r.project.assets[0]!.templateId).toBe('tpl-other');
+    expectError(sample(), { kind: 'reapplyTemplate', assetIds: ['a'], template: other, allowOtherTemplate: false as unknown as true }, 'invalid-field');
+  });
+
+  it('undoes exactly when the removed first task carried the asset date', () => {
+    const tpl: Template = { ...v2(), version: 3, tasks: v2().tasks.slice(1).map((x) => ({ ...x, predecessors: x.key === 'torque' ? [] : x.predecessors })) };
+    const r = roundTrip(sample(), { kind: 'reapplyTemplate', assetIds: ['a'], template: tpl });
+    expect(byId(r.project, 'a:torque').startNoEarlierThan).toBe('2026-11-09');
+  });
+
+  it('refuses a template of the wrong shape', () => {
+    const cmd = (template: unknown): Command => ({ kind: 'reapplyTemplate', assetIds: ['a'], template: template as Template });
+    const withTask = (patch: Record<string, unknown>) => {
+      const tpl = v2();
+      Object.assign(tpl.tasks[1]!, patch);
+      return tpl;
+    };
+    for (const bad of [
+      null,
+      'x',
+      { ...v2(), tasks: 'nope' },
+      { ...v2(), name: 3 },
+      withTask({ name: 5 }),
+      withTask({ trade: null }),
+      withTask({ type: 'party' }),
+      withTask({ durationDays: '1' }),
+      withTask({ checklist: [{ id: 1, text: 'x' }] }),
+      withTask({ requiredCerts: undefined }),
+      withTask({ predecessors: [{ key: 'vmi', type: 'XX', lagDays: 0 }] }),
+      withTask({ predecessors: [{ key: 'vmi', type: 'FS', lagDays: '0' }] }),
+    ]) {
+      expectError(sample(), cmd(bad), 'invalid-template');
+      expectError(sample(), { kind: 'addAssetsFromTemplate', template: bad as Template, assets: [{ tag: 'N', description: 'N' }] }, 'invalid-template');
+    }
+  });
+
+  it('marks undo-only commands as internal', () => {
+    const r = applyCommand(sample(), { kind: 'reapplyTemplate', assetIds: ['a'], template: v2() });
+    expect(isInternalCommand(r.inverse)).toBe(true);
+    expect(isInternalCommand({ kind: 'batch', commands: [{ kind: 'setDataDate', date: '2026-11-09' }, r.inverse] })).toBe(true);
+    expect(isInternalCommand({ kind: 'updateTask', id: 'a:ir', patch: {}, restore: true })).toBe(true);
+    expect(isInternalCommand({ kind: 'reapplyTemplate', assetIds: ['a'], template: v2() })).toBe(false);
+    expect(isInternalCommand({ kind: 'updateTask', id: 'a:ir', patch: {} })).toBe(false);
+    expect(isInternalCommand(null)).toBe(false);
   });
 
   it('refuses a re-apply that changes nothing', () => {
