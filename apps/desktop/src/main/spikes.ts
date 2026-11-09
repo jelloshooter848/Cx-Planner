@@ -58,7 +58,7 @@ export async function runSpikes(args: string[]): Promise<Result[]> {
       const dialogs = new ScriptedDialogs();
       let broadcasts = 0;
       const recent = new RecentFiles(join(dir, 'user', 'recent.json'));
-      const session = new Session({ broadcast: () => broadcasts++, recent: () => recent.list() });
+      const session = new Session({ broadcast: () => broadcasts++, recent: () => recent.entries() });
       const files = new FileController({ session, dialogs, recent, settings: new SettingsFile(join(dir, 'user', 'settings.json')), defaultWorkspace: join(dir, 'Workspace') });
       try {
         dialogs.push({ message: 0, expect: 'workspace' });

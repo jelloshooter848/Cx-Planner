@@ -4,9 +4,10 @@
  * dialog module in the app, a scripted fake in tests), so none of this imports Electron.
  */
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { DEFAULT_CALENDAR, type Id, type Project, type Template } from '@cx/core';
+import { riversideSample, type SampleProject } from '@cx/fixtures';
 import {
   BACKUP_DIR,
   FileLock,
@@ -57,6 +58,18 @@ export interface FileControllerOptions {
   settings: SettingsFile;
   /** Proposed on first run, e.g. ~/Documents/Cx Planner Workspace. */
   defaultWorkspace: string;
+  /** Where "Open sample project" writes its copy. Default: Cx Planner Samples next to defaultWorkspace. */
+  samplesFolder?: string;
+  /** The sample project and its template snapshots. Default: the Riverside sample from @cx/fixtures. */
+  sample?: () => SampleProject;
+}
+
+/** Folder (in Documents) the sample project is copied to. */
+export const SAMPLES_FOLDER_NAME = 'Cx Planner Samples';
+
+/** File name of the sample copy, e.g. "Riverside Data Center – Bldg A (sample).cxp". */
+export function sampleFileName(projectName: string): string {
+  return `${safeFileName(`${projectName} (sample)`)}${PROJECT_EXT}`;
 }
 
 const canceled: Failure = { ok: false, code: 'canceled', message: 'Cancelled' };
@@ -105,6 +118,8 @@ export class FileController {
   private readonly recent: RecentFiles;
   private readonly settings: SettingsFile;
   private readonly defaultWorkspace: string;
+  private readonly samplesFolder: string;
+  private readonly sample: () => SampleProject;
 
   constructor(o: FileControllerOptions) {
     this.session = o.session;
@@ -112,6 +127,8 @@ export class FileController {
     this.recent = o.recent;
     this.settings = o.settings;
     this.defaultWorkspace = o.defaultWorkspace;
+    this.samplesFolder = o.samplesFolder ?? join(dirname(o.defaultWorkspace), SAMPLES_FOLDER_NAME);
+    this.sample = o.sample ?? riversideSample;
   }
 
   /** Where new projects and exported templates go by default. */
@@ -180,6 +197,63 @@ export class FileController {
       return { ok: false, code: 'file-error', message: `${known} not found` };
     }
     return this.openPath(known);
+  }
+
+  /** Takes a file off the recent list. Paths not on it are ignored. */
+  removeRecent(path: string): ApiResult {
+    if (this.recent.has(path)) {
+      this.recent.remove(path);
+      this.session.notify();
+    }
+    return ok(undefined);
+  }
+
+  /**
+   * Writes a copy of the sample project to the samples folder and opens it. The copy is an
+   * ordinary project file the user can edit freely. When one is already there, asks whether
+   * to open it as it is or start over with a fresh copy.
+   */
+  async openSample(): Promise<ApiResult<{ filePath: string }>> {
+    const sample = this.sample();
+    const target = join(this.samplesFolder, sampleFileName(sample.project.name));
+    if (this.session.filePath && samePath(this.session.filePath, target)) return ok({ filePath: this.session.filePath });
+    if (existsSync(target)) {
+      const choice = await this.dialogs.message({
+        type: 'question',
+        message: 'The sample project is already in your Documents folder.',
+        detail: `Open it with the changes made in it so far, or replace it with a fresh copy of the sample?\n${target}`,
+        buttons: ['Cancel', 'Replace with Fresh Copy', 'Open It'],
+        defaultId: 2,
+        cancelId: 0,
+      });
+      if (choice === 2) return this.openPath(target);
+      if (choice !== 1) return canceled;
+      const cleared = await this.clearTarget(target);
+      if (!cleared.ok) return cleared;
+    }
+    let store: ProjectStore;
+    try {
+      mkdirSync(this.samplesFolder, { recursive: true });
+      store = ProjectStore.open(target, { create: true });
+    } catch (e) {
+      return this.openFailed(target, e);
+    }
+    try {
+      // Each copy is its own project (see DECISIONS D13), so it gets its own id.
+      const project: Project = { ...sample.project, id: randomUUID() };
+      store.replaceProject(project, 'sample', 'Created sample project');
+      for (const t of sample.templates) store.saveTemplateSnapshot(t, 'sample', `Stored template ${t.name}`);
+    } catch (e) {
+      store.close();
+      // Don't leave a half-written sample behind for the next "Open sample project" to open.
+      try {
+        for (const p of [target, `${target}-journal`, `${target}-wal`, `${target}-shm`]) if (existsSync(p)) unlinkSync(p);
+      } catch {
+        // Best effort: the error below is what the user needs to see.
+      }
+      return this.openFailed(target, e);
+    }
+    return this.adopt(store);
   }
 
   /** Opens a project file (from a dialog, the command line or the OS). */

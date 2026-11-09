@@ -154,3 +154,5 @@ function addWeeks(iso: string, weeks: number): string {
   d.setUTCDate(d.getUTCDate() + weeks * 7);
   return d.toISOString().slice(0, 10);
 }
+
+export { riversideSample, type SampleProject } from './sample.js';

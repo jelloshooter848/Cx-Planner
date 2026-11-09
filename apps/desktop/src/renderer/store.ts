@@ -67,6 +67,10 @@ export type Action =
   | { type: 'new-project' }
   | { type: 'open-project' }
   | { type: 'open-recent'; path: string }
+  /** Takes a file off the recent list (e.g. one that can no longer be found). */
+  | { type: 'remove-recent'; path: string }
+  /** Writes a copy of the sample project to Documents and opens it. */
+  | { type: 'open-sample' }
   | { type: 'save-as' }
   | { type: 'close-project' }
   | { type: 'choose-workspace' }
@@ -201,6 +205,12 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
           return;
         case 'open-recent':
           await store.run(() => api.openRecent(action.path));
+          return;
+        case 'remove-recent':
+          await store.run(() => api.removeRecent(action.path));
+          return;
+        case 'open-sample':
+          await store.run(() => api.openSample());
           return;
         case 'save-as':
           if (snapshot.app?.project) await store.run(() => api.saveAs());

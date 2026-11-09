@@ -12,6 +12,7 @@ import { basename } from 'node:path';
 import { applyCommand, CommandError, computeSchedule, renumberTasks, TemplateInvalidError, type Command, type Id, type Project, type Template } from '@cx/core';
 import { TemplateImportError, TemplateNotFoundError, type NewPrintRecord, type PrintRecord, type ProjectStore, type TemplateSummary, type WorkspaceStore } from '@cx/storage';
 import type { ApiErrorCode, ApiResult, AppState, EditOutcome, TaskScheduleSummary } from '../shared/api.js';
+import type { RecentEntry } from './prefs.js';
 
 /** How many edits Undo can go back. */
 export const UNDO_LIMIT = 200;
@@ -19,8 +20,8 @@ export const UNDO_LIMIT = 200;
 export interface SessionOptions {
   /** Sends the new state to the renderer. Called after every change. */
   broadcast(state: AppState): void;
-  /** Recent project paths, most recent first. */
-  recent?(): string[];
+  /** Recent projects, most recent first. */
+  recent?(): RecentEntry[];
   undoLimit?: number;
 }
 
@@ -341,7 +342,7 @@ export class Session {
 
   getState(): AppState {
     const d = this.doc;
-    const recent = (this.opts.recent?.() ?? []).map((path) => ({ path, name: basename(path), exists: existsSync(path) }));
+    const recent = (this.opts.recent?.() ?? []).map((e) => ({ path: e.path, name: basename(e.path), exists: existsSync(e.path), lastOpened: e.openedAt ?? null }));
     return {
       seq: ++this.seq,
       project: d?.project ?? null,

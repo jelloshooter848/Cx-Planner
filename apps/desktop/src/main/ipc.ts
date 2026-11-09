@@ -49,6 +49,8 @@ export function registerIpc(ctx: IpcContext): void {
   handle(CH.newProject, (input) => files.newProject(checkNewProject(input)));
   handle(CH.openProject, () => files.openWithDialog());
   handle(CH.openRecent, (path) => files.openRecent(checkPath(path)));
+  handle(CH.removeRecent, (path) => files.removeRecent(checkPath(path)));
+  handle(CH.openSample, () => files.openSample());
   handle(CH.saveAs, () => files.saveAs());
   handle(CH.closeProject, () => files.close());
   handle(CH.chooseWorkspace, () => files.chooseWorkspace());
