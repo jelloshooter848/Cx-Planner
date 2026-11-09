@@ -1,19 +1,31 @@
-import { Fragment } from 'react';
-import { TaskTypeSymbol, taskTypeLabel } from '../../components/Symbols';
-import { shortDate } from '../../format';
-import { useProject, useSchedule } from '../../store';
+import { useProject, useSchedule, useSelect, useStore, type ScheduleZoom } from '../../store';
+import { GanttView } from './GanttView';
 
-/**
- * The schedule view. For now a read-only grid of assets and tasks with their computed
- * dates; the Gantt with editing replaces it.
- */
+const ZOOMS: ReadonlyArray<readonly [ScheduleZoom, string]> = [
+  ['day', 'Day'],
+  ['week', 'Week'],
+  ['month', 'Month'],
+];
+
+/** The schedule view: toolbar and the Gantt of every asset's tasks. */
 export function ScheduleView() {
+  const store = useStore();
   const info = useProject();
   const schedule = useSchedule();
+  const zoom = useSelect((s) => s.ui.scheduleZoom);
   if (!info) return null;
   const { project } = info;
   return (
-    <main className="view view-schedule" aria-label="Schedule">
+    <main className="view view-column view-schedule" aria-label="Schedule">
+      <div className="toolbar" role="toolbar" aria-label="Schedule tools">
+        <div className="seg" role="group" aria-label="Zoom">
+          {ZOOMS.map(([id, label]) => (
+            <button key={id} type="button" className="btn" aria-pressed={zoom === id} onClick={() => store.setScheduleZoom(id)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
       {schedule.error && (
         <p className="banner banner-warn" role="status">
           The schedule cannot be computed: {schedule.error}
@@ -25,56 +37,7 @@ export function ScheduleView() {
           <p className="hint">Assets added from a template appear here with their tasks and dates.</p>
         </div>
       ) : (
-        <div className="panel grid-wrap">
-          <table className="grid" aria-label="Tasks">
-            <thead>
-              <tr>
-                <th className="col-id">ID</th>
-                <th>Task</th>
-                <th>Type</th>
-                <th className="num">Dur</th>
-                <th>Start</th>
-                <th>Finish</th>
-                <th className="num">%</th>
-                <th>Float</th>
-              </tr>
-            </thead>
-            <tbody>
-              {project.assets.map((a, ai) => (
-                <Fragment key={a.id}>
-                  <tr className="grid-group">
-                    <td className="col-id">{ai + 1}</td>
-                    <td colSpan={7}>
-                      <b>{a.tag}</b> <span className="muted">{[a.description, a.location].filter(Boolean).join(' · ')}</span>
-                    </td>
-                  </tr>
-                  {project.tasks
-                    .filter((t) => t.assetId === a.id)
-                    .map((t) => {
-                      const s = schedule.tasks[t.id];
-                      return (
-                        <tr key={t.id}>
-                          <td className="col-id">{t.code}</td>
-                          <td className="indent">{t.name}</td>
-                          <td>
-                            <span className="type-cell">
-                              <TaskTypeSymbol type={t.type} />
-                              {taskTypeLabel(t.type)}
-                            </span>
-                          </td>
-                          <td className="num">{t.durationDays} d</td>
-                          <td>{s ? shortDate(s.start) : '—'}</td>
-                          <td>{s ? shortDate(s.finish) : '—'}</td>
-                          <td className="num">{t.percentComplete}%</td>
-                          <td>{s ? (s.critical ? <span className="critical">Critical · {s.totalFloat} d</span> : `${s.totalFloat} d`) : '—'}</td>
-                        </tr>
-                      );
-                    })}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <GanttView project={project} schedule={schedule.tasks} />
       )}
     </main>
   );

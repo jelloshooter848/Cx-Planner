@@ -8,12 +8,14 @@
  * goes through `dispatch(action)`, so they all behave the same.
  */
 import { createContext, createElement, useContext, useMemo, useSyncExternalStore, type ReactNode } from 'react';
-import type { Command, Id, IsoDate, Project } from '@cx/core';
+import type { Command, Id, IsoDate, Project, Task } from '@cx/core';
 import type { ApiResult, AppState, CxApi, EditOutcome, TaskScheduleSummary } from '../shared/api';
 
 /** Views shown when a project is open (the welcome screen shows when none is). */
 export type ViewId = 'schedule' | 'templates' | 'lookahead';
 export type DialogId = 'new-project' | 'about';
+/** Time scale of the Schedule view's Gantt. */
+export type ScheduleZoom = 'day' | 'week' | 'month';
 
 export interface Notice {
   /** Increases with every notice, so the same message shown twice is still a new notice. */
@@ -25,6 +27,12 @@ export interface UiState {
   view: ViewId;
   dialog: DialogId | null;
   notice: Notice | null;
+  /**
+   * The task selected in the Schedule view (row click or arrow keys), or null. May name a
+   * task that no longer exists after an edit; read it through useSelectedTask().
+   */
+  selectedTaskId: Id | null;
+  scheduleZoom: ScheduleZoom;
 }
 
 export interface Snapshot {
@@ -67,6 +75,8 @@ export interface Store {
   closeDialog(): void;
   notify(message: string): void;
   dismissNotice(): void;
+  selectTask(id: Id | null): void;
+  setScheduleZoom(zoom: ScheduleZoom): void;
   /** Stops listening to the main process. */
   dispose(): void;
 }
@@ -75,7 +85,7 @@ export interface Store {
 const QUIET_CODES = new Set(['canceled', 'locked', 'file-error', 'nothing-to-undo', 'nothing-to-redo']);
 
 export function createStore(api: CxApi, options: StoreOptions = {}): Store {
-  let snapshot: Snapshot = { app: null, ui: { view: 'schedule', dialog: null, notice: null } };
+  let snapshot: Snapshot = { app: null, ui: { view: 'schedule', dialog: null, notice: null, selectedTaskId: null, scheduleZoom: 'week' } };
   let noticeId = 0;
   const listeners = new Set<() => void>();
   const emit = () => {
@@ -98,6 +108,8 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
       if (prev.project && !state.project) ui.view = 'schedule';
       else if (!prev.project && state.project) ui.view = ui.view === 'templates' ? 'templates' : 'schedule';
       if (state.filePath) ui.dialog = null;
+      // Task ids belong to one file.
+      ui.selectedTaskId = null;
     }
     snapshot = { app: state, ui };
     emit();
@@ -165,6 +177,12 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
     closeDialog: () => setUi({ dialog: null }),
     notify: (message) => setUi({ notice: { id: ++noticeId, message } }),
     dismissNotice: () => setUi({ notice: null }),
+    selectTask: (selectedTaskId) => {
+      if (snapshot.ui.selectedTaskId !== selectedTaskId) setUi({ selectedTaskId });
+    },
+    setScheduleZoom: (scheduleZoom) => {
+      if (snapshot.ui.scheduleZoom !== scheduleZoom) setUi({ scheduleZoom });
+    },
     dispose() {
       offState();
       offMenu();
@@ -235,6 +253,13 @@ const EMPTY_SCHEDULE: ScheduleInfo = { tasks: {}, projectFinish: null, error: nu
 export function useSchedule(): ScheduleInfo {
   const app = useAppState();
   return useMemo(() => (app ? { tasks: app.schedule, projectFinish: app.projectFinish, error: app.scheduleError } : EMPTY_SCHEDULE), [app]);
+}
+
+/** The selected task of the open project, or null (none selected, or it was deleted). */
+export function useSelectedTask(): Task | null {
+  const app = useAppState();
+  const id = useSelect((s) => s.ui.selectedTaskId);
+  return useMemo(() => (id && app?.project ? (app.project.tasks.find((t) => t.id === id) ?? null) : null), [id, app]);
 }
 
 export interface CommandApi {
