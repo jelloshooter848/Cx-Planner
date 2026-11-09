@@ -20,7 +20,8 @@ export function App() {
   const view = effectiveView(snap);
   const taskSelected = snap.ui.selectedTaskId !== null;
   const assetSelected = assetToDelete(snap) !== null;
-  const menus = useMemo(() => buildMenus(snap.app, view, isMac, taskSelected, assetSelected), [snap.app, view, taskSelected, assetSelected]);
+  const layout = snap.ui.scheduleLayout;
+  const menus = useMemo(() => buildMenus(snap.app, view, isMac, taskSelected, assetSelected, layout), [snap.app, view, taskSelected, assetSelected, layout]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

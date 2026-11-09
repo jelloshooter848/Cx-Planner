@@ -3,6 +3,7 @@
  * it can be unit-tested; components/MenuBar.tsx draws it.
  */
 import type { AppState } from '../shared/api';
+import type { ScheduleLayout } from './layout-prefs';
 import type { Action, ViewId } from './store';
 
 export type MenuItem =
@@ -42,8 +43,16 @@ const sep: MenuItem = { kind: 'separator' };
 /**
  * `taskSelected`: a task is selected in the Schedule view (enables Delete task).
  * `assetSelected`: an asset, or a task of one, is selected there (enables Delete asset).
+ * `layout`: the Schedule layout, for the View menu's panel items (checked = panel shown).
  */
-export function buildMenus(state: AppState | null, view: ViewId | 'welcome', mac = false, taskSelected = false, assetSelected = false): MenuDef[] {
+export function buildMenus(
+  state: AppState | null,
+  view: ViewId | 'welcome',
+  mac = false,
+  taskSelected = false,
+  assetSelected = false,
+  layout?: Pick<ScheduleLayout, 'assetsCollapsed' | 'detailsCollapsed'>,
+): MenuDef[] {
   const open = !!state?.project;
   const hasWorkspace = !!state?.workspacePath;
   const k = (keys: string) => keyHint(keys, mac);
@@ -96,6 +105,10 @@ export function buildMenus(state: AppState | null, view: ViewId | 'welcome', mac
     ...(open ? [] : [item('Start page', { type: 'view', view: 'schedule' }, { checked: view === 'welcome' })]),
     item('Schedule', { type: 'view', view: 'schedule' }, { checked: view === 'schedule' }),
     item('Templates', { type: 'view', view: 'templates' }, { enabled: open || hasWorkspace, checked: view === 'templates' }),
+    sep,
+    // Schedule side panels: ticked while shown; they collapse to a thin strip.
+    item('Assets panel', { type: 'toggle-panel', panel: 'assets' }, { enabled: open && view === 'schedule', checked: !layout?.assetsCollapsed }),
+    item('Details panel', { type: 'toggle-panel', panel: 'details' }, { enabled: open && view === 'schedule', checked: !layout?.detailsCollapsed }),
   ];
   const reports: MenuItem[] = [item('3-week look-ahead', { type: 'view', view: 'lookahead' }, { enabled: open, checked: view === 'lookahead' })];
   const help: MenuItem[] = [item('About Cx Planner', { type: 'about' })];

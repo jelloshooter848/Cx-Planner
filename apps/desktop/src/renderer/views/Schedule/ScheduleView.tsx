@@ -1,20 +1,38 @@
-import { useMemo } from 'react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
 import { WorkCalendar } from '@cx/core';
 import { lookAheadWindow, type LookAheadWindow } from '@cx/render';
+import type { SchedulePanel } from '../../layout-prefs';
 import { useAssetFilter, useProject, useSchedule, useSelect, useStore } from '../../store';
 import { AssetSidebar } from './AssetSidebar';
 import { GanttView } from './GanttView';
 import { ScheduleToolbar } from './ScheduleToolbar';
+import { CollapsedPanel } from './SidePanels';
 import { TaskPanel } from './TaskPanel';
 import './ScheduleView.css';
 
-/** The schedule view: toolbar, the asset filter sidebar, the Gantt of the assets in view and the selected task's panel. */
+/**
+ * The schedule view: toolbar, the asset filter sidebar, the Gantt of the assets in view and the
+ * selected task's panel. Either side panel can be folded to a thin strip (ui.scheduleLayout).
+ */
 export function ScheduleView() {
   const store = useStore();
   const info = useProject();
   const schedule = useSchedule();
   const filter = useAssetFilter();
   const weeks = useSelect((s) => s.ui.lookAheadWeeks);
+  const layout = useSelect((s) => s.ui.scheduleLayout);
+  // Folding or opening a panel from its button moves focus to the button that undoes it.
+  const focusAfter = useRef<SchedulePanel | null>(null);
+  const toggle = (panel: SchedulePanel) => {
+    focusAfter.current = panel;
+    store.togglePanel(panel);
+  };
+  useLayoutEffect(() => {
+    const panel = focusAfter.current;
+    if (!panel) return;
+    focusAfter.current = null;
+    document.querySelector<HTMLElement>(`[data-panel-toggle="${panel}"]`)?.focus();
+  }, [layout.assetsCollapsed, layout.detailsCollapsed]);
   const assetIds = useMemo(() => (filter ? new Set(filter) : null), [filter]);
   const project = info?.project;
   const lookAhead = useMemo((): LookAheadWindow | null => {
@@ -46,7 +64,11 @@ export function ScheduleView() {
         </div>
       ) : (
         <div className="schedule-body">
-          <AssetSidebar project={project} />
+          {layout.assetsCollapsed ? (
+            <CollapsedPanel panel="assets" title="Assets in view" onToggle={() => toggle('assets')} />
+          ) : (
+            <AssetSidebar project={project} onCollapse={() => toggle('assets')} />
+          )}
           {filter?.length === 0 ? (
             <div className="gantt gantt-empty" role="status">
               <p>No assets in view. Tick assets in the sidebar or clear the filter.</p>
@@ -59,7 +81,7 @@ export function ScheduleView() {
           ) : (
             <GanttView key={`${info.filePath}#${project.id}`} project={project} schedule={schedule.tasks} assetIds={assetIds} lookAhead={lookAhead} />
           )}
-          <TaskPanel />
+          {layout.detailsCollapsed ? <CollapsedPanel panel="details" title="Details" onToggle={() => toggle('details')} /> : <TaskPanel onCollapse={() => toggle('details')} />}
         </div>
       )}
     </main>

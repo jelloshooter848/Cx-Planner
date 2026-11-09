@@ -8,20 +8,31 @@ import { GanttBars } from '../src/renderer/views/Schedule/GanttBars.js';
 import {
   barShape,
   buildRows,
+  clampGridWidth,
   DAY_WIDTH,
   dateAtX,
   headerTicks,
+  GRID_MIN_W,
   makeScale,
+  maxGridWidth,
   moveSelection,
   progressOf,
   rowIndexOfTask,
   scrollToRow,
+  splitterKeyWidth,
+  TASK_COL_MIN_W,
+  taskColumnWidth,
+  TIMELINE_MIN_W,
   visibleRows,
   visibleSpan,
   weekendDays,
   xOf,
   type TaskRow,
 } from '../src/renderer/views/Schedule/gantt-layout.js';
+import { createStore } from '../src/renderer/store.js';
+import { buildMenus } from '../src/renderer/menus.js';
+import { DEFAULT_SCHEDULE_LAYOUT, parseScheduleLayout, SCHEDULE_LAYOUT_KEY, storageLayoutStore, type ScheduleLayout } from '../src/renderer/layout-prefs.js';
+import type { CxApi } from '../src/shared/api.js';
 
 const riverside = riversideProject();
 const sched = scheduleView(riverside).schedule;
@@ -208,5 +219,106 @@ describe('gantt virtualization', () => {
     expect(scrollToRow(2, 0, 400, 31, 54)).toBe(0);
     expect(scrollToRow(20, 0, 400, 31, 54)).toBe(21 * 31 - 346);
     expect(scrollToRow(3, 500, 400, 31, 54)).toBe(93);
+  });
+});
+
+describe('table / timeline splitter', () => {
+  it('keeps the table between its minimum and the timeline minimum', () => {
+    expect(GRID_MIN_W).toBe(320);
+    expect(TIMELINE_MIN_W).toBe(240);
+    // 1000 px of scroll area: the table may take up to 760.
+    expect(maxGridWidth(1000)).toBe(760);
+    expect(clampGridWidth(500, 1000)).toBe(500);
+    expect(clampGridWidth(100, 1000)).toBe(320);
+    expect(clampGridWidth(900, 1000)).toBe(760);
+    expect(clampGridWidth(500.6, 1000)).toBe(501);
+    // Too narrow for both: the table's minimum wins.
+    expect(maxGridWidth(400)).toBe(320);
+    expect(clampGridWidth(600, 400)).toBe(320);
+    expect(clampGridWidth(Number.NaN, 1000)).toBe(320);
+  });
+
+  it('lets the Task column take up the slack, down to its minimum', () => {
+    expect(taskColumnWidth(614, 392)).toBe(222);
+    expect(taskColumnWidth(700, 392)).toBe(308);
+    expect(taskColumnWidth(320, 392)).toBe(TASK_COL_MIN_W);
+  });
+
+  it('moves with the arrow keys, Home and End', () => {
+    expect(splitterKeyWidth('ArrowLeft', 500, 1000)).toBe(484);
+    expect(splitterKeyWidth('ArrowRight', 500, 1000)).toBe(516);
+    expect(splitterKeyWidth('ArrowRight', 755, 1000)).toBe(760);
+    expect(splitterKeyWidth('ArrowLeft', 330, 1000)).toBe(320);
+    expect(splitterKeyWidth('Home', 500, 1000)).toBe(320);
+    expect(splitterKeyWidth('End', 500, 1000)).toBe(760);
+    expect(splitterKeyWidth('ArrowUp', 500, 1000)).toBeNull();
+  });
+});
+
+describe('schedule layout prefs', () => {
+  it('reads only well-formed stored values', () => {
+    expect(parseScheduleLayout(null)).toEqual(DEFAULT_SCHEDULE_LAYOUT);
+    expect(parseScheduleLayout('not json')).toEqual(DEFAULT_SCHEDULE_LAYOUT);
+    expect(parseScheduleLayout('[1]')).toEqual(DEFAULT_SCHEDULE_LAYOUT);
+    expect(parseScheduleLayout('{"gridWidth":480.4,"assetsCollapsed":true,"detailsCollapsed":"yes"}')).toEqual({ gridWidth: 480, assetsCollapsed: true, detailsCollapsed: false });
+    expect(parseScheduleLayout('{"gridWidth":-5}').gridWidth).toBeNull();
+    expect(parseScheduleLayout('{"gridWidth":"wide"}').gridWidth).toBeNull();
+  });
+
+  it('round-trips through storage and survives a storage that throws', () => {
+    const data = new Map<string, string>();
+    const mem = { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => void data.set(k, v) };
+    const store = storageLayoutStore(() => mem);
+    const layout: ScheduleLayout = { gridWidth: 512, assetsCollapsed: true, detailsCollapsed: false };
+    store.save(layout);
+    expect(JSON.parse(data.get(SCHEDULE_LAYOUT_KEY)!)).toEqual(layout);
+    expect(store.load()).toEqual(layout);
+
+    const broken = {
+      getItem: () => {
+        throw new Error('SecurityError');
+      },
+      setItem: () => {
+        throw new Error('QuotaExceededError');
+      },
+    };
+    expect(storageLayoutStore(() => broken).load()).toEqual(DEFAULT_SCHEDULE_LAYOUT);
+    expect(() => storageLayoutStore(() => broken).save(layout)).not.toThrow();
+    const missing = storageLayoutStore(() => {
+      throw new Error('no storage');
+    });
+    expect(missing.load()).toEqual(DEFAULT_SCHEDULE_LAYOUT);
+    expect(() => missing.save(layout)).not.toThrow();
+  });
+
+  it('is kept in the store, saved on change, and toggled from the View menu', async () => {
+    const api = { onState: () => () => {}, onMenu: () => () => {}, getState: () => new Promise(() => {}) } as unknown as CxApi;
+    const saved: ScheduleLayout[] = [];
+    const store = createStore(api, { layout: { load: () => ({ gridWidth: 400, assetsCollapsed: false, detailsCollapsed: true }), save: (l) => void saved.push(l) } });
+    expect(store.getSnapshot().ui.scheduleLayout).toEqual({ gridWidth: 400, assetsCollapsed: false, detailsCollapsed: true });
+    store.setScheduleLayout({ gridWidth: 400 });
+    expect(saved).toHaveLength(0);
+    store.setScheduleLayout({ gridWidth: 480 });
+    await store.dispatch({ type: 'toggle-panel', panel: 'assets' });
+    expect(store.getSnapshot().ui.scheduleLayout).toEqual({ gridWidth: 480, assetsCollapsed: true, detailsCollapsed: true });
+    expect(saved.at(-1)).toEqual({ gridWidth: 480, assetsCollapsed: true, detailsCollapsed: true });
+    // Selecting a task leaves a collapsed details panel collapsed.
+    store.selectTask('t1.1');
+    expect(store.getSnapshot().ui.scheduleLayout.detailsCollapsed).toBe(true);
+    store.togglePanel('details');
+    expect(store.getSnapshot().ui.scheduleLayout.detailsCollapsed).toBe(false);
+    // Without a layout store the default applies and nothing is saved.
+    expect(createStore(api).getSnapshot().ui.scheduleLayout).toEqual(DEFAULT_SCHEDULE_LAYOUT);
+  });
+
+  it('lists the panels in the View menu, ticked while shown', () => {
+    const state = { project: riverside, workspacePath: '/ws', recent: [] } as unknown as Parameters<typeof buildMenus>[0];
+    const view = (v: Parameters<typeof buildMenus>[1], layout?: Pick<ScheduleLayout, 'assetsCollapsed' | 'detailsCollapsed'>) =>
+      buildMenus(state, v, false, false, false, layout).find((m) => m.id === 'view')!.items!.filter((i) => i.kind === 'item' && i.label.endsWith('panel'));
+    expect(view('schedule', { assetsCollapsed: true, detailsCollapsed: false })).toMatchObject([
+      { label: 'Assets panel', checked: false, enabled: true, action: { type: 'toggle-panel', panel: 'assets' } },
+      { label: 'Details panel', checked: true, enabled: true, action: { type: 'toggle-panel', panel: 'details' } },
+    ]);
+    expect(view('templates').every((i) => i.kind === 'item' && !i.enabled)).toBe(true);
   });
 });

@@ -312,3 +312,57 @@ export function scrollToRow(index: number, scrollTop: number, viewportHeight: nu
   if (bottom > visibleBottom) return bottom - (viewportHeight - headerHeight);
   return scrollTop;
 }
+
+// ---- Splitter between the task table and the timeline -----------------------------------
+
+/** The task table is never narrower than this (px). */
+export const GRID_MIN_W = 320;
+/** The splitter leaves the timeline at least this wide (px), when the window allows. */
+export const TIMELINE_MIN_W = 240;
+/** Left / Right arrow on the focused splitter moves it this far (px). */
+export const SPLIT_STEP = 16;
+/** The Task column shrinks to fit a narrower table, but not below this (px); past it the right-hand columns are cut off. */
+export const TASK_COL_MIN_W = 120;
+
+/** The widest the task table may be when the Gantt's scroll area is `available` px wide. */
+export function maxGridWidth(available: number): number {
+  return Math.max(GRID_MIN_W, Math.floor(available) - TIMELINE_MIN_W);
+}
+
+/**
+ * The task table's width for the width the user wants (splitter position) and the width of
+ * the Gantt's scroll area: at least GRID_MIN_W, and leaving the timeline TIMELINE_MIN_W when
+ * there is room for both (the table's minimum wins when there is not).
+ */
+export function clampGridWidth(wanted: number, available: number): number {
+  const w = Number.isFinite(wanted) ? wanted : GRID_MIN_W;
+  return Math.round(Math.min(maxGridWidth(available), Math.max(GRID_MIN_W, w)));
+}
+
+/**
+ * The Task column's width when the table is `gridWidth` wide and the other columns take
+ * `otherColumns` px: it takes up the slack (wider or narrower than its natural width),
+ * down to TASK_COL_MIN_W.
+ */
+export function taskColumnWidth(gridWidth: number, otherColumns: number): number {
+  return Math.max(TASK_COL_MIN_W, Math.round(gridWidth - otherColumns));
+}
+
+/**
+ * The splitter's new table width after a key press, or null for keys it does not use:
+ * Left / Right move it by SPLIT_STEP, Home / End go to the narrowest / widest table.
+ */
+export function splitterKeyWidth(key: string, current: number, available: number): number | null {
+  switch (key) {
+    case 'ArrowLeft':
+      return clampGridWidth(current - SPLIT_STEP, available);
+    case 'ArrowRight':
+      return clampGridWidth(current + SPLIT_STEP, available);
+    case 'Home':
+      return GRID_MIN_W;
+    case 'End':
+      return maxGridWidth(available);
+    default:
+      return null;
+  }
+}
