@@ -1,6 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { WorkCalendar } from '@cx/core';
+import { lookAheadWindow } from '@cx/render';
+import { longDate } from '../../src/renderer/format.js';
 import { launchApp, type AppHarness } from './harness.js';
 
 let h: AppHarness | undefined;
@@ -80,13 +83,92 @@ describe('print / export PDF', () => {
       return window.cx.apply({ kind: 'addAssetsFromTemplate', template: t.value, assets: [{ tag: 'SWGR-E2E', description: 'Switchgear' }] });
     });
     expect(added.ok).toBe(true);
+    // Its first task is done and its last test (before the closing milestone) is held to start
+    // after the 3-week look-ahead window.
+    const swgrTasks = await page.evaluate(async () => {
+      const st = await window.cx.getState();
+      const asset = st.project!.assets.find((x) => x.tag === 'SWGR-E2E')!;
+      return st.project!.tasks.filter((t) => t.assetId === asset.id && t.type !== 'milestone').map((t) => t.id);
+    });
+    const patched = await page.evaluate(
+      ([first, last]) =>
+        window.cx.apply({
+          kind: 'batch',
+          commands: [
+            { kind: 'updateTask', id: first!, patch: { percentComplete: 100, actualStart: '2026-11-02', actualFinish: '2026-11-03' } },
+            { kind: 'updateTask', id: last!, patch: { startNoEarlierThan: '2026-12-07' } },
+          ],
+        }),
+      [swgrTasks[0], swgrTasks[swgrTasks.length - 1]],
+    );
+    expect(patched.ok).toBe(true);
     await page.keyboard.press('Control+p');
     await dialog.waitFor();
     await dialog.getByRole('radio', { name: 'Test sheets' }).click();
     const tasks = dialog.getByRole('list', { name: 'Tasks with checklists' });
     await tasks.waitFor();
     await expect.poll(() => rev.textContent()).toBe('A');
-    await dialog.getByRole('button', { name: 'Clear' }).click();
+
+    // It opens with the incomplete tasks that start in the 3-week look-ahead window ticked.
+    const state = await page.evaluate(() => window.cx.getState());
+    const sheetSetup = await page.evaluate(() => window.cx.print.setup());
+    if (!sheetSetup.ok) throw new Error(sheetSetup.message);
+    const project = state.project!;
+    const lookAhead = lookAheadWindow(project.dataDate, 3, new WorkCalendar(project.startDate, project.calendar));
+    const checklistIds = sheetSetup.value.checklistTasks.map((t) => t.taskId);
+    const taskOf = (id: string) => project.tasks.find((t) => t.id === id)!;
+    const open = checklistIds.filter((id) => taskOf(id).percentComplete < 100 && !taskOf(id).actualFinish);
+    const inWindow = open.filter((id) => {
+      const start = state.schedule[id]!.start;
+      return start >= lookAhead.start && start <= lookAhead.end;
+    });
+    const total = checklistIds.length;
+    expect(inWindow.length).toBeGreaterThan(0);
+    expect(inWindow.length).toBeLessThan(open.length);
+    expect(open.length).toBeLessThan(total);
+    const ticked = () => tasks.locator('ul input[type="checkbox"]:checked').count();
+    const pickCount = dialog.getByTestId('test-sheet-count');
+    const counted = (n: number) => `${n} of ${total} tasks`;
+    await expect.poll(() => pickCount.textContent()).toBe(counted(inWindow.length));
+    expect(await ticked()).toBe(inWindow.length);
+    // Each task shows its scheduled dates.
+    const firstDates = state.schedule[checklistIds[0]!]!;
+    expect(await tasks.locator('.pd-dates').first().textContent()).toContain(longDate(firstDates.start).replace(/, \d{4}$/, ''));
+
+    // Quick selections replace the selection.
+    const quick = dialog.getByRole('group', { name: 'Quick select' });
+    expect(await quick.getByRole('button', { name: 'Current asset filter' }).isDisabled()).toBe(true);
+    await quick.getByRole('button', { name: 'All' }).click();
+    await expect.poll(() => pickCount.textContent()).toBe(counted(total));
+    await quick.getByRole('button', { name: 'Not complete' }).click();
+    await expect.poll(() => pickCount.textContent()).toBe(counted(open.length));
+    await quick.getByRole('button', { name: 'Clear' }).click();
+    await expect.poll(() => pickCount.textContent()).toBe(counted(0));
+    await quick.getByRole('button', { name: 'In look-ahead window' }).click();
+    await expect.poll(() => pickCount.textContent()).toBe(counted(inWindow.length));
+    await expect.poll(() => count.textContent()).toMatch(/· 8\.5 × 11 in$/);
+    await dialog.getByText('Updating…').waitFor({ state: 'hidden' });
+    await h.screenshot('print-dialog-test-sheet-picker');
+    await dialog.getByRole('button', { name: 'Close' }).click();
+    await dialog.waitFor({ state: 'detached' });
+
+    // With the asset filter set to the new switchgear, "Current asset filter" picks its tasks.
+    const sidebar = page.getByRole('complementary', { name: 'Assets in view' });
+    for (const box of await sidebar.getByRole('checkbox', { name: /^(?!Show all |SWGR-E2E,)/ }).all()) await box.uncheck();
+    const e2eAsset = project.assets.find((a) => a.tag === 'SWGR-E2E')!.id;
+    await page.keyboard.press('Control+p');
+    await dialog.waitFor();
+    await tasks.waitFor();
+    await quick.getByRole('button', { name: 'Current asset filter' }).click();
+    const onAsset = checklistIds.filter((id) => taskOf(id).assetId === e2eAsset);
+    await expect.poll(() => pickCount.textContent()).toBe(counted(onAsset.length));
+    // Asset group checkboxes still tick and untick a whole asset.
+    await tasks.getByRole('checkbox', { name: /^SWGR-E2E/ }).uncheck();
+    await expect.poll(() => pickCount.textContent()).toBe(counted(0));
+    await tasks.getByRole('checkbox', { name: /^SWGR-E2E/ }).check();
+    await expect.poll(() => pickCount.textContent()).toBe(counted(onAsset.length));
+
+    await quick.getByRole('button', { name: 'Clear' }).click();
     const boxes = tasks.locator('ul input[type="checkbox"]');
     await boxes.nth(0).check();
     await boxes.nth(1).check();

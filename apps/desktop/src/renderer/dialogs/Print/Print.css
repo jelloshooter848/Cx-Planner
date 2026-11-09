@@ -89,6 +89,14 @@
 .pd-pick-actions .muted {
   flex: 1;
 }
+.pd-quick {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+.pd-quick .btn-link:disabled {
+  color: var(--ink-muted);
+  cursor: default;
+}
 .pd-tasks,
 .pd-tasks ul {
   list-style: none;
@@ -118,6 +126,14 @@
 .pd-code {
   min-width: 28px;
   color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+.pd-task-meta {
+  display: block;
+  font-size: var(--fs-sm);
+}
+.pd-dates {
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 

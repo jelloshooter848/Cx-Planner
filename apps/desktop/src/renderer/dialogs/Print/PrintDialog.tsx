@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { PAPER, type PaperId } from '@cx/render';
-import type { Asset, Id } from '@cx/core';
+import type { Asset, Id, Project } from '@cx/core';
 import {
   FULL_SCHEDULE_PAPERS,
   LOOK_AHEAD_PAPERS,
@@ -10,11 +10,27 @@ import {
   type PrintKind,
   type PrintPreview,
   type PrintSetup,
+  type TaskScheduleSummary,
 } from '../../../shared/api';
 import { Modal } from '../../components/Modal';
 import { longDate, plural, shortDate } from '../../format';
-import { useAssetFilter, useProject, useSelect, useStore } from '../../store';
-import { DAY_WIDTHS, defaultSettings, fitScale, KIND_LABELS, lookAheadStarts, printRequest, type AssetScope, type PrintSettings } from './print-options';
+import { useAssetFilter, useProject, useSchedule, useSelect, useStore } from '../../store';
+import {
+  currentLookAheadWindow,
+  DAY_WIDTHS,
+  defaultSettings,
+  defaultTestSheetTasks,
+  fitScale,
+  isTaskComplete,
+  KIND_LABELS,
+  lookAheadStarts,
+  printRequest,
+  selectTestSheetTasks,
+  TEST_SHEET_QUICK_SELECTS,
+  type AssetScope,
+  type PrintSettings,
+  type TestSheetContext,
+} from './print-options';
 import './Print.css';
 
 const PX_PER_IN = 96;
@@ -58,7 +74,7 @@ export function PrintDialog() {
   return (
     <Modal title="Print / Export PDF" onClose={close} className="print-dialog" width={1180} description={`${project.name} · data date ${longDate(project.dataDate)}`}>
       {setup ? (
-        <PrintForm key={filePath} setup={setup} assets={project.assets} onSetup={setSetup} onClose={close} />
+        <PrintForm key={filePath} setup={setup} project={project} onSetup={setSetup} onClose={close} />
       ) : (
         <div className="pd-loading">{error ? <p className="form-error" role="alert">{error}</p> : <p className="hint">Loading…</p>}</div>
       )}
@@ -68,7 +84,7 @@ export function PrintDialog() {
 
 interface FormProps {
   setup: PrintSetup;
-  assets: Asset[];
+  project: Project;
   onSetup(setup: PrintSetup): void;
   onClose(): void;
 }
@@ -108,14 +124,21 @@ function KindChoice({ value, onChange }: { value: PrintKind; onChange(kind: Prin
   );
 }
 
-function PrintForm({ setup, assets, onSetup, onClose }: FormProps) {
+function PrintForm({ setup, project, onSetup, onClose }: FormProps) {
   const store = useStore();
+  const assets = project.assets;
+  const schedule = useSchedule().tasks;
   const kind = useSelect((s) => s.ui.printKind);
   // The Schedule sidebar's asset filter; "Current asset filter" is offered while one is set.
   const filter = useAssetFilter();
   // The look-ahead starts at the window shaded on the Schedule (its toolbar's Look-ahead weeks).
   const weeks = useSelect((s) => s.ui.lookAheadWeeks);
-  const [settings, setSettings] = useState<PrintSettings>(() => defaultSettings(setup.dataDate, setup.checklistTasks.map((t) => t.taskId), filter !== null, weeks));
+  // Test sheets start on the incomplete tasks that start in that same look-ahead window.
+  const lookAhead = useMemo(() => currentLookAheadWindow(project, weeks), [project, weeks]);
+  const sheetContext = useMemo((): TestSheetContext => ({ project, schedule, window: lookAhead, filter }), [project, schedule, lookAhead, filter]);
+  const [settings, setSettings] = useState<PrintSettings>(() =>
+    defaultSettings(setup.dataDate, defaultTestSheetTasks(setup.checklistTasks.map((t) => t.taskId), sheetContext), filter !== null, weeks),
+  );
   const [preview, setPreview] = useState<PrintPreview | null>(null);
   const [previewError, setPreviewError] = useState('');
   const [updating, setUpdating] = useState(false);
@@ -264,7 +287,14 @@ function PrintForm({ setup, assets, onSetup, onClose }: FormProps) {
           )}
 
           {kind === 'test-sheets' && (
-            <TestSheetChoice tasks={setup.checklistTasks} assets={assets} chosen={settings.testSheets.taskIds} onChange={(taskIds) => set('testSheets', { taskIds })} />
+            <TestSheetChoice
+              tasks={setup.checklistTasks}
+              assets={assets}
+              schedule={schedule}
+              context={sheetContext}
+              chosen={settings.testSheets.taskIds}
+              onChange={(taskIds) => set('testSheets', { taskIds })}
+            />
           )}
 
           <fieldset className="pd-group pd-revision">
@@ -375,8 +405,26 @@ function AssetChoice({ name, value, total, filter, onChange }: { name: string; v
   );
 }
 
-function TestSheetChoice({ tasks, assets, chosen, onChange }: { tasks: ChecklistTaskSummary[]; assets: Asset[]; chosen: Id[]; onChange(ids: Id[]): void }) {
+interface TestSheetChoiceProps {
+  tasks: ChecklistTaskSummary[];
+  assets: Asset[];
+  schedule: Record<Id, TaskScheduleSummary>;
+  /** What the quick selections pick from: the project, its dates, the look-ahead window and the asset filter. */
+  context: TestSheetContext;
+  chosen: Id[];
+  onChange(ids: Id[]): void;
+}
+
+/** Scheduled dates of a task, e.g. "Nov 9 – Nov 11" or "Nov 9" for a one-day task. */
+function taskDates(s: TaskScheduleSummary | undefined): string {
+  if (!s) return 'not scheduled';
+  return s.start === s.finish ? shortDate(s.start) : `${shortDate(s.start)} – ${shortDate(s.finish)}`;
+}
+
+function TestSheetChoice({ tasks, assets, schedule, context, chosen, onChange }: TestSheetChoiceProps) {
   const picked = useMemo(() => new Set(chosen), [chosen]);
+  const ids = useMemo(() => tasks.map((t) => t.taskId), [tasks]);
+  const done = useMemo(() => new Set(context.project.tasks.filter(isTaskComplete).map((t) => t.id)), [context.project]);
   const groups = useMemo(() => {
     const byAsset = new Map<Id, ChecklistTaskSummary[]>();
     for (const t of tasks) byAsset.set(t.assetId, [...(byAsset.get(t.assetId) ?? []), t]);
@@ -404,15 +452,27 @@ function TestSheetChoice({ tasks, assets, chosen, onChange }: { tasks: Checklist
     <fieldset className="pd-group">
       <legend className="section-label">Test sheets · Letter</legend>
       <div className="pd-pick-actions">
-        <span className="muted">
+        <span className="muted" data-testid="test-sheet-count">
           {chosen.length} of {plural(tasks.length, 'task')}
         </span>
-        <button type="button" className="btn-link" onClick={() => setPicked(new Set(tasks.map((t) => t.taskId)))}>
-          Select all
-        </button>
-        <button type="button" className="btn-link" onClick={() => setPicked(new Set())}>
-          Clear
-        </button>
+      </div>
+      <div className="pd-pick-actions pd-quick" role="group" aria-label="Quick select">
+        <span className="field-label">Select</span>
+        {TEST_SHEET_QUICK_SELECTS.map(([rule, label]) => {
+          const off = (rule === 'filter' && !context.filter) || (rule === 'window' && !context.window);
+          return (
+            <button
+              key={rule}
+              type="button"
+              className="btn-link"
+              disabled={off}
+              title={off ? (rule === 'filter' ? 'No asset filter is set on the Schedule' : 'No look-ahead window') : undefined}
+              onClick={() => onChange(selectTestSheetTasks(rule, ids, context))}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
       <ul className="pd-tasks" aria-label="Tasks with checklists">
         {groups.map(({ asset, tasks: ts }) => {
@@ -435,9 +495,12 @@ function TestSheetChoice({ tasks, assets, chosen, onChange }: { tasks: Checklist
                     <label className="pd-check pd-task">
                       <input type="checkbox" checked={picked.has(t.taskId)} onChange={(e) => toggle([t.taskId], e.target.checked)} />
                       <span className="pd-code">{t.code}</span>
-                      <span>
+                      <span className="pd-task-text">
                         {t.name}
-                        <span className="muted"> · {plural(t.items, 'item')}</span>
+                        <span className="pd-task-meta muted">
+                          <span className="pd-dates">{taskDates(schedule[t.taskId])}</span> · {plural(t.items, 'item')}
+                          {done.has(t.taskId) && ' · Complete'}
+                        </span>
                       </span>
                     </label>
                   </li>
