@@ -91,10 +91,22 @@ pdftoppm -png -r 100 -f 1 -l 1 -singlefile "Look-ahead Rev B.pdf" ../../../docs/
 pdftoppm -png -r 80 -f 1 -l 1 -singlefile "Test sheets Rev A.pdf" ../../../docs/screenshots/m1/test-sheet
 ```
 
+## Added after the acceptance checks
+
+After the 20 planned tasks were merged, an acceptance agent walked the M1 story in the app against mockups 01–05 and 13. Its gaps were built, reviewed and merged the same way:
+
+- **Assets** can be renamed, edited (description, location, system) and deleted from the Schedule view: click an asset's group row; **Edit → Delete asset…**. One undo step each.
+- **Acceptance criteria** on checklist items (template editor), printed in the test sheet's Acceptance column (mockup 04). Some starter templates carry generic examples.
+- **Test-sheet picker**: quick select by look-ahead window, asset filter and status, so a 40-asset job doesn't print hundreds of sheets by default.
+- **Schedule view**: a draggable splitter between grid and timeline, and side panels that collapse (usable on a 1366×768 laptop).
+- **Test-sheet revisions** are counted per sheet, so a sheet first printed in week 3 is Rev A.
+- **Prints**: gridlines no longer cross milestone and HOLD labels.
+- **Full schedule (mockup 13)**: Dur column and a dated title; when a job is too long for day columns, the print switches to week columns under month headings, and each asset row gets a summary bar. A 120-asset, 9-month job on ANSI D goes from 24 sheets (2 time bands, columns dropped) to 12 (one time band, all columns kept).
+
 ## Checks
 
-- `pnpm lint && pnpm typecheck && pnpm test`: 501 unit tests in 40 files.
-- `pnpm desktop:e2e`: 37 Electron UI tests in 11 files, including the M1 flow. About a minute locally under `xvfb-run` with `--no-sandbox`; the CI timing is not confirmed yet.
+- `pnpm lint && pnpm typecheck && pnpm test`: 547 unit tests in 40 files.
+- `pnpm desktop:e2e`: 42 Electron UI tests in 12 files, including the M1 flow. About a minute locally under `xvfb-run` with `--no-sandbox`; the CI timing is not confirmed yet.
 
 ## Notes and known gaps
 
