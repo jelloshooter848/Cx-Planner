@@ -110,6 +110,13 @@ describe('menu row', () => {
     expect(find(after, 'Redo Renamed 1.3')).toMatchObject({ enabled: true });
   });
 
+  it('offers Add assets from template whenever a project is open', () => {
+    const label = 'Add assets from template…';
+    expect(find(items(buildMenus(base, 'schedule'), 'edit'), label)).toMatchObject({ enabled: true, action: { type: 'add-assets' } });
+    expect(find(items(buildMenus({ ...base, workspacePath: null }, 'schedule'), 'edit'), label)).toMatchObject({ enabled: true });
+    expect(find(items(buildMenus({ ...base, project: null }, 'welcome'), 'edit'), label)).toMatchObject({ enabled: false });
+  });
+
   it('lists recent files and disables project items with no project', () => {
     const file = items(buildMenus(base, 'schedule'), 'file');
     const recent = file.find((i) => i.kind === 'submenu');

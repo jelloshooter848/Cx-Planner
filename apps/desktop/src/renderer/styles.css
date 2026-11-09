@@ -365,6 +365,17 @@
 .modal p {
   margin: 0 0 10px;
 }
+.modal-head {
+  margin: 0 0 14px;
+}
+.modal-head .modal-title {
+  margin: 0;
+}
+.modal .modal-desc {
+  margin: 2px 0 0;
+  color: var(--ink-muted);
+  font-size: var(--fs);
+}
 
 .sym {
   display: inline-block;
@@ -536,55 +547,277 @@
   font-size: var(--fs-sm);
 }
 
-/* Schedule grid */
-.view-schedule {
-  padding: 12px;
+/* Schedule Gantt (01-Main) */
+.view-schedule .toolbar {
+  padding: 8px 12px;
 }
-.grid-wrap {
-  overflow: hidden;
+.gantt {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
 }
-.grid {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--fs);
+.gantt-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+  outline: none;
 }
-.grid th {
-  height: 34px;
-  padding: 0 8px;
-  text-align: left;
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-medium);
-  color: var(--ink-muted);
+.gantt-scroll:focus-visible {
+  box-shadow: inset var(--focus);
+}
+.gantt-canvas {
+  position: relative;
+}
+.gantt-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: 54px;
   background: var(--bg-header);
   border-bottom: 1px solid var(--line);
-}
-.grid td {
-  height: 31px;
-  padding: 0 8px;
-  border-bottom: 1px solid var(--line-soft);
-  white-space: nowrap;
-}
-.grid .num {
-  text-align: right;
-}
-.grid .col-id {
-  width: 48px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
   color: var(--ink-muted);
 }
-.grid .indent {
-  padding-left: 20px;
+.gantt-head-cells {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  width: var(--gantt-table-w);
+  height: 100%;
+  background: var(--bg-header);
+  border-right: 1px solid var(--line);
 }
-.grid-group td {
+.gantt-colheads {
+  display: flex;
+  align-items: center;
+  border-top: 1px solid var(--line);
+}
+.gantt-head-timeline {
+  position: absolute;
+  top: 0;
+  height: 100%;
+}
+.gantt-head-time {
+  position: absolute;
+  top: 0;
+}
+.gh-line {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.gh-text {
+  fill: var(--ink-muted);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+}
+
+.gantt-body {
+  position: relative;
+  z-index: 0;
+}
+.gantt-row {
+  position: absolute;
+  left: 0;
+  height: 31px;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: var(--fs);
+  cursor: default;
+}
+.gantt-row.is-group {
   background: var(--bg-subtle);
+  border-bottom-color: var(--line);
 }
-.type-cell {
+.gantt-row.is-selected {
+  background: var(--accent-soft);
+}
+.gantt-cells {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  width: var(--gantt-table-w);
+  height: 100%;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--line);
+}
+.gantt-row.is-group .gantt-cells {
+  background: var(--bg-subtle);
+  font-weight: var(--fw-semibold);
+}
+.gantt-row.is-selected .gantt-cells {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.gc {
+  flex: none;
+  padding: 0 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.gc.num {
+  text-align: right;
+  padding-right: 10px;
+}
+.gc-id {
+  padding-left: 12px;
+  color: var(--ink-muted);
+}
+.gantt-row.is-group .gc-id {
+  font-weight: var(--fw-medium);
+}
+.gantt-row.is-task .gc-task {
+  padding-left: 14px;
+}
+.gc-group {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.gantt-tag {
+  font-weight: var(--fw-semibold);
+}
+.gantt-asset-detail {
+  font-weight: var(--fw);
+  color: var(--ink-muted);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gc-pred {
+  color: var(--ink-muted);
+  font-size: var(--fs-sm);
+}
+.gc-times {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 0 4px;
+}
+.gc-times > span,
+.gc-times > .sym {
+  width: 15px;
+  text-align: center;
+}
+.gantt-colheads .gc-times > span {
+  width: 15px;
+}
+
+.gantt-timeline {
+  position: absolute;
+  top: 0;
+  pointer-events: none;
+}
+.gantt-bars {
+  position: absolute;
+  z-index: 1;
+  overflow: visible;
+}
+.gb-weekend {
+  fill: var(--bg-subtle);
+}
+.gb-grid {
+  stroke: var(--line-soft);
+  stroke-width: 1;
+}
+.gb-grid-month {
+  stroke: var(--line);
+}
+.gb-summary {
+  fill: var(--ink);
+}
+.gb-task {
+  pointer-events: auto;
+}
+.gb-bar {
+  fill: var(--bar-idle);
+  stroke: var(--ink-soft);
+  stroke-width: 1;
+}
+.gb-progress .gb-bar {
+  fill: var(--accent-line);
+  stroke: var(--accent);
+}
+.gb-fill {
+  fill: var(--accent);
+}
+.gb-complete .gb-bar {
+  fill: var(--ok);
+  stroke: var(--ok);
+}
+/* Critical: a heavier dark stroke on the bar itself and a red ring around it. */
+.gb-critical .gb-bar,
+.gb-critical .gb-ms path {
+  stroke: var(--ink);
+  stroke-width: 2;
+}
+.gb-crit-ring {
+  fill: none;
+  stroke: var(--critical);
+  stroke-width: 2;
+}
+.gb-label {
+  fill: var(--ink-muted);
+  font-size: 11px;
+  /* Paper-coloured halo keeps the label readable over the data-date line and grid. */
+  paint-order: stroke;
+  stroke: var(--bg-panel);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.gantt-datadate {
+  stroke: var(--critical);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
+.gantt-legend {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 9px 12px;
+  border-top: 1px solid var(--line);
+  font-size: var(--fs-xs);
+  color: var(--ink-muted);
+}
+.gantt-legend-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+}
+.gantt-legend-times {
+  justify-content: flex-end;
+  gap: 6px 12px;
+}
+.legend-item {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
-.critical {
-  color: var(--critical);
-  font-weight: var(--fw-medium);
+.legend-times-title {
+  color: var(--ink);
+  letter-spacing: 0.25em;
+  margin-right: 4px;
+}
+.legend-dataline {
+  width: 0;
+  height: 14px;
+  border-left: 2px dashed var(--critical);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /* Look-ahead preview */

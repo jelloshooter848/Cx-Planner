@@ -132,6 +132,17 @@ describe('renderer store', () => {
     expect(store.getSnapshot().ui.closeRequest).toBe(2);
   });
 
+  it('opens the add-assets dialog only with a project open', async () => {
+    const f = fakeApi(appState());
+    const store = createStore(f.api);
+    await tick();
+    await store.dispatch({ type: 'add-assets' });
+    expect(store.getSnapshot().ui.dialog).toBeNull();
+    f.push(appState({ seq: 2, project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp' }));
+    await store.dispatch({ type: 'add-assets' });
+    expect(store.getSnapshot().ui.dialog).toBe('add-assets');
+  });
+
   it('calls exit for File > Exit', async () => {
     const exit = vi.fn();
     const store = createStore(fakeApi(appState()).api, { exit });
@@ -181,5 +192,41 @@ describe('renderer store', () => {
     expect(effectiveView(store.getSnapshot())).toBe('templates');
     f.push(appState({ seq: 3 }));
     expect(effectiveView(store.getSnapshot())).toBe('welcome');
+  });
+
+  it('keeps the selected task and zoom, and clears the selection when the file changes', async () => {
+    const f = fakeApi(appState());
+    const store = createStore(f.api);
+    await tick();
+    expect(store.getSnapshot().ui.scheduleZoom).toBe('week');
+    f.push(appState({ seq: 2, project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp' }));
+    let changes = 0;
+    store.subscribe(() => changes++);
+    store.selectTask('t1.4');
+    store.selectTask('t1.4');
+    store.setScheduleZoom('day');
+    store.setScheduleZoom('day');
+    expect(changes).toBe(2);
+    expect(store.getSnapshot().ui).toMatchObject({ selectedTaskId: 't1.4', scheduleZoom: 'day' });
+    // An edit to the same file keeps it.
+    f.push(appState({ seq: 3, project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp', revision: 1 }));
+    expect(store.getSnapshot().ui.selectedTaskId).toBe('t1.4');
+    // Save As keeps the project and its task ids, so it keeps the selection.
+    f.push(appState({ seq: 4, project: riversideProject(), filePath: '/copy.cxp', fileName: 'copy.cxp' }));
+    expect(store.getSnapshot().ui.selectedTaskId).toBe('t1.4');
+    // An edit that removes the selected task clears it.
+    const without = riversideProject();
+    without.tasks = without.tasks.filter((t) => t.id !== 't1.4');
+    f.push(appState({ seq: 5, project: without, filePath: '/copy.cxp', fileName: 'copy.cxp', revision: 2 }));
+    expect(store.getSnapshot().ui.selectedTaskId).toBeNull();
+    // A different project clears it.
+    store.selectTask('t1.3');
+    f.push(appState({ seq: 6, project: { ...riversideProject(), id: 'other-project' }, filePath: '/other.cxp', fileName: 'other.cxp' }));
+    expect(store.getSnapshot().ui).toMatchObject({ selectedTaskId: null, scheduleZoom: 'day' });
+    // Closing the project clears it.
+    f.push(appState({ seq: 7, project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp' }));
+    store.selectTask('t1.3');
+    f.push(appState({ seq: 8, project: null, filePath: null, fileName: null }));
+    expect(store.getSnapshot().ui.selectedTaskId).toBeNull();
   });
 });

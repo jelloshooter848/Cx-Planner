@@ -297,14 +297,32 @@ describe('template snapshots', () => {
     const before = s.getRevisionState().revision;
     const p = riversideProject();
     p.name = 'Renamed';
-    const r = s.saveProject(p, 'user', 'Apply template', [template]);
+    const r = s.saveProject(p, 'user', 'Apply template', { templates: [template] });
     expect(r.revision).toBe(before + 1);
     expect(s.getTemplateSnapshots()).toEqual([template]);
     expect(s.changesSince(0).filter((e) => e.revision === r.revision).map((e) => e.entity)).toEqual(['template', 'project']);
     // A failed save writes no snapshot either.
     const bad = { ...riversideProject(), tasks: [{ ...riversideProject().tasks[0]!, durationDays: -1 }] };
-    expect(() => s.saveProject(bad, 'user', 'Bad', [{ ...template, version: 9 }])).toThrow();
+    expect(() => s.saveProject(bad, 'user', 'Bad', { templates: [{ ...template, version: 9 }] })).toThrow();
     expect(s.getTemplateSnapshot(template.id, 9)).toBeUndefined();
+    s.close();
+  });
+
+  it('stores snapshots passed to saveProject in the same revision as the edit', () => {
+    const s = storeWith(riversideProject());
+    const before = s.getRevisionState();
+    const next = riversideProject();
+    next.name = 'Renamed job';
+    const r = s.saveProject(next, 'user', 'Added assets', { templates: [template] });
+    expect(r.revision).toBe(before.revision + 1);
+    expect(s.getTemplateSnapshots()).toEqual([template]);
+    const events = s.changesSince(before.lastChangeSeq);
+    expect(events.map((e) => [e.entity, e.revision, e.summary])).toEqual([
+      ['template', r.revision, 'Added assets'],
+      ['project', r.revision, 'Added assets'],
+    ]);
+    // An unchanged snapshot with no project change writes nothing.
+    expect(s.saveProject(next, 'user', 'Again', { templates: [template] })).toEqual({ changes: 0, revision: r.revision });
     s.close();
   });
 });

@@ -49,9 +49,11 @@
   --accent-line: #bcd3f4;
   --ok: #1e6b43;
   --danger: #b3261e;
+  --danger-soft: #fdf1f0;
   --critical: #c2410c;
   --critical-soft: #fff4ec;
   --hold: #e0a100;
+  --bar-idle: #e4e7ec;
 
   /* Sizes */
   --titlebar-h: 36px;

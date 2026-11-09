@@ -258,13 +258,16 @@ export class ProjectStore {
    * added, removed or moved get their position rewritten without an event.
    * Dependencies are logged as entity "dependency" with id "pred->succ"; holidays as
    * entity "holiday" with the date as id; project fields as entity "project".
-   * A save that finds nothing to change writes nothing. `templates` are snapshots to store
-   * in the same transaction (see saveTemplateSnapshot).
+   * A save that finds nothing to change writes nothing.
+   *
+   * `options.templates` are template snapshots to store in the same transaction (see
+   * saveTemplateSnapshot), e.g. the template an add-assets edit used, so the edit and its
+   * snapshot land under one revision.
    */
-  saveProject(next: Project, source: string, summary?: string, templates: readonly Template[] = []): SaveResult {
+  saveProject(next: Project, source: string, summary?: string, options: { templates?: readonly Template[] } = {}): SaveResult {
     this.tx(summary, () => {
       // Snapshots of templates this save applies (decision D4), in the same transaction.
-      for (const t of templates) this.writeTemplateSnapshot(t, source);
+      for (const t of options.templates ?? []) this.writeTemplateSnapshot(t, source);
 
       const db = this.db;
       const log = (entity: string, id: string, field: string | null, oldValue: unknown, newValue: unknown) =>

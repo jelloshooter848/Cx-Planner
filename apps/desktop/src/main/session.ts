@@ -89,21 +89,21 @@ export class InputError extends Error {
   }
 }
 
-export function ok<T>(value: T): { ok: true; value: T } {
-  return { ok: true, value };
-}
-
-/** Templates a command applies (adding assets from a template, re-applying one), in order. */
-export function templatesIn(cmd: Command): Template[] {
+/** Templates a command copies into the project: the ones it adds assets from or re-applies. */
+export function templatesUsed(cmd: Command): Template[] {
   switch (cmd.kind) {
     case 'addAssetsFromTemplate':
     case 'reapplyTemplate':
       return [cmd.template];
     case 'batch':
-      return cmd.commands.flatMap(templatesIn);
+      return cmd.commands.flatMap(templatesUsed);
     default:
       return [];
   }
+}
+
+export function ok<T>(value: T): { ok: true; value: T } {
+  return { ok: true, value };
 }
 
 export class Session {
@@ -199,7 +199,7 @@ export class Session {
     // Decision D4: the project keeps a snapshot of every template version it applies, so
     // checklists and the like can be read back by (id, version) without the workspace.
     // Older versions are kept, so undo and partial re-apply need no snapshot bookkeeping.
-    const saved = this.save(doc, result.project, result.summary, templatesIn(cmd));
+    const saved = this.save(doc, result.project, result.summary, templatesUsed(cmd));
     if (!saved.ok) return saved;
     doc.undo.push({ command: result.inverse, label: result.summary });
     if (doc.undo.length > this.undoLimit) doc.undo.shift();
@@ -244,7 +244,7 @@ export class Session {
 
   private save(doc: OpenProject, next: Project, summary: string, templates: readonly Template[] = []): ApiResult<void> {
     try {
-      const r = doc.store.saveProject(next, 'user', summary, templates);
+      const r = doc.store.saveProject(next, 'user', summary, { templates });
       doc.revision = r.revision;
       doc.lastSavedAt = doc.store.getRevisionState().savedAt ?? new Date().toISOString();
     } catch (e) {

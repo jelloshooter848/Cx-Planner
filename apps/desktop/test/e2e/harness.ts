@@ -22,6 +22,8 @@ const shotDir = resolve(process.env.CX_E2E_SHOTS ?? join(desktop, '../../spike-o
 export interface LaunchOptions {
   /** Project file to create from fixtures and open on start; null starts on the welcome screen. */
   project?: 'riverside' | 'large' | null;
+  /** Number of assets in the 'large' project (about 5 tasks each). Default 45. */
+  largeAssets?: number;
   /** Window content size. Default 1440×900, like the mockups. */
   size?: { width: number; height: number };
 }
@@ -70,7 +72,7 @@ async function start(dir: string, options: LaunchOptions, launched: (app: Electr
 
   let projectFile: string | null = null;
   if (options.project) {
-    const project = options.project === 'large' ? largeProject() : riversideProject();
+    const project = options.project === 'large' ? largeProject(options.largeAssets) : riversideProject();
     projectFile = join(dir, options.project === 'large' ? 'Large.cxp' : 'Riverside.cxp');
     const store = ProjectStore.open(projectFile, { create: true });
     store.replaceProject(project, 'e2e');

@@ -66,7 +66,7 @@ describe('desktop shell', () => {
   it('shows the undo and redo action in the Edit menu', async () => {
     h = await launchApp({ project: 'riverside' });
     const { page } = h;
-    await page.getByRole('table', { name: 'Tasks' }).waitFor();
+    await page.getByRole('grid', { name: 'Tasks' }).waitFor();
     expect(await page.getByTestId('titlebar').textContent()).toBe('Cx Planner — Riverside.cxp');
     expect(await page.getByTestId('statusbar').textContent()).toMatch(/^4 assets · \d+ tasks · Critical path ends \w{3} \d{1,2}Data as of Nov \d{1,2}, 2026 · Saved$/);
     await h.screenshot('schedule');
@@ -88,7 +88,7 @@ describe('desktop shell', () => {
     expect(r.ok).toBe(true);
     const summary = r.ok ? r.value.summary : null;
     expect(summary).toBeTruthy();
-    await page.getByRole('cell', { name: 'Edited in e2e' }).waitFor();
+    await page.getByRole('gridcell', { name: 'Edited in e2e' }).waitFor();
 
     await openEdit();
     const undo = editMenu.getByRole('menuitem', { name: `Undo ${summary}` });
@@ -97,7 +97,7 @@ describe('desktop shell', () => {
     await h.screenshot('edit-menu');
     await undo.click();
     await h.waitState((x) => !x.canUndo && x.canRedo, 'undo from the menu');
-    await page.getByRole('cell', { name: 'Edited in e2e' }).waitFor({ state: 'detached' });
+    await page.getByRole('gridcell', { name: 'Edited in e2e' }).waitFor({ state: 'detached' });
 
     await openEdit();
     expect(await editMenu.getByRole('menuitem', { name: `Redo ${summary}` }).isEnabled()).toBe(true);
@@ -135,7 +135,7 @@ describe('desktop shell', () => {
     await h.screenshot('look-ahead');
 
     await bar.getByRole('menuitem', { name: 'Schedule', exact: true }).click();
-    await page.getByRole('table', { name: 'Tasks' }).waitFor();
+    await page.getByRole('grid', { name: 'Tasks' }).waitFor();
 
     await bar.getByRole('menuitem', { name: 'File', exact: true }).click();
     const file = page.getByRole('menu', { name: 'File' });
@@ -154,7 +154,7 @@ describe('desktop shell', () => {
     // Reopen from the recent list.
     await recent.click();
     await h.waitState((s) => s.fileName === 'Riverside.cxp', 'reopen from recent');
-    await page.getByRole('table', { name: 'Tasks' }).waitFor();
+    await page.getByRole('grid', { name: 'Tasks' }).waitFor();
   });
 
   it('gets back to the welcome screen from Templates, and closing from Templates shows it', async () => {
@@ -190,7 +190,7 @@ describe('desktop shell', () => {
     store.close();
     await h.answerOpen(path);
     await page.keyboard.press('Control+o');
-    await page.getByRole('table', { name: 'Tasks' }).waitFor();
+    await page.getByRole('grid', { name: 'Tasks' }).waitFor();
     await bar.getByRole('menuitem', { name: 'Templates', exact: true }).click();
     await library.waitFor();
     expect(await page.getByRole('button', { name: 'Back to start page' }).count()).toBe(0);
@@ -227,7 +227,7 @@ describe('desktop shell', () => {
   it('lists a project opened from the command line under Open recent', async () => {
     h = await launchApp({ project: 'riverside' });
     const { page } = h;
-    await page.getByRole('table', { name: 'Tasks' }).waitFor();
+    await page.getByRole('grid', { name: 'Tasks' }).waitFor();
     await page.getByRole('menubar').getByRole('menuitem', { name: 'File', exact: true }).click();
     const openRecent = page.getByRole('menu', { name: 'File' }).getByRole('menuitem', { name: 'Open recent' });
     expect(await openRecent.isEnabled()).toBe(true);
@@ -276,7 +276,7 @@ describe('desktop shell', () => {
     await h.screenshot('open-recent-keyboard');
     await page.keyboard.press('Enter');
     await h.waitState((s) => s.fileName === 'Keyboard.cxp', 'reopen from Open recent');
-    await page.getByRole('table', { name: 'Tasks' }).waitFor();
+    await page.getByRole('grid', { name: 'Tasks' }).waitFor();
     expect(await fileMenu.count()).toBe(0);
   });
 });

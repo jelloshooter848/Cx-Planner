@@ -77,6 +77,8 @@ export function buildMenus(state: AppState | null, view: ViewId | 'welcome', mac
   const edit: MenuItem[] = [
     item(state?.undoLabel ? `Undo ${state.undoLabel}` : 'Undo', { type: 'undo' }, { enabled: !!state?.canUndo, ...(projectKeys ? { shortcut: 'Ctrl+Z' } : {}) }),
     item(state?.redoLabel ? `Redo ${state.redoLabel}` : 'Redo', { type: 'redo' }, { enabled: !!state?.canRedo, ...(projectKeys ? { shortcut: 'Ctrl+Y' } : {}) }),
+    sep,
+    item('Add assets from template…', { type: 'add-assets' }, { enabled: open }),
   ];
   // With no project open, Schedule (tab and View item) leads back to the welcome screen.
   const viewItems: MenuItem[] = [
