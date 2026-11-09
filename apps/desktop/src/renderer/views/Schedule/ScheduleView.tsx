@@ -37,7 +37,7 @@ export function ScheduleView() {
           <p className="hint">Assets added from a template appear here with their tasks and dates.</p>
         </div>
       ) : (
-        <GanttView project={project} schedule={schedule.tasks} />
+        <GanttView key={`${info.filePath}#${project.id}`} project={project} schedule={schedule.tasks} />
       )}
     </main>
   );

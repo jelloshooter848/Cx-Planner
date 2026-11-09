@@ -972,6 +972,21 @@ export function formatPredecessors(project: Project, taskId: Id): string {
 }
 
 /**
+ * The predecessor field of every task that has predecessors, keyed by task id, in one pass
+ * over the dependencies. Same text as formatPredecessors; for views that show many tasks.
+ */
+export function predecessorLabels(project: Project): Map<Id, string> {
+  const codes = new Map(project.tasks.map((t) => [t.id, t.code]));
+  const out = new Map<Id, string>();
+  for (const d of project.dependencies) {
+    const item = `${codes.get(d.predecessorId) ?? d.predecessorId} ${linkLabel(d)}`;
+    const prev = out.get(d.successorId);
+    out.set(d.successorId, prev ? `${prev}, ${item}` : item);
+  }
+  return out;
+}
+
+/**
  * The command that makes `predecessors` the task's complete list of predecessors:
  * links that are no longer listed are removed, changed ones updated and new ones added.
  * Returns null when nothing would change. Throws CommandError('duplicate-dependency')

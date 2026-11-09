@@ -10,8 +10,8 @@
  * End move the selection while the grid has focus; Escape clears it. The selected task id
  * lives in the renderer store (ui.selectedTaskId) for the edit panel and other views.
  */
-import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
-import { formatPredecessors, parseIso, TIMES_KEYS, type Id, type Project } from '@cx/core';
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
+import { parseIso, predecessorLabels, TIMES_KEYS, type Id, type Project, type TimesKey } from '@cx/core';
 import type { TaskScheduleSummary } from '../../../shared/api';
 import { ReadinessSymbol } from '../../components/Symbols';
 import { shortDate } from '../../format';
@@ -31,6 +31,7 @@ const COLUMNS = [
   { key: 'times', label: 'T I M E S', width: 112 },
 ] as const;
 export const TABLE_W = COLUMNS.reduce((n, c) => n + c.width, 0);
+const TIMES_NAME: Record<TimesKey, string> = { T: 'Tools', I: 'Information', M: 'Materials', E: 'Expectations', S: 'Safety' };
 const W = Object.fromEntries(COLUMNS.map((c) => [c.key, c.width])) as Record<(typeof COLUMNS)[number]['key'], number>;
 
 interface Viewport {
@@ -84,6 +85,7 @@ export function GanttView({ project, schedule, assetIds = null }: GanttViewProps
   }, []);
 
   const rows = useMemo(() => buildRows(project, schedule, assetIds), [project, schedule, assetIds]);
+  const preds = useMemo(() => predecessorLabels(project), [project]);
   const timelineView = Math.max(0, vp.width - TABLE_W);
   const scale = useMemo(() => makeScale(project, schedule, zoom, timelineView), [project, schedule, zoom, timelineView]);
   // Ticks and weekend shading for the whole scale, worked out once per scale rather than on
@@ -196,11 +198,30 @@ export function GanttView({ project, schedule, assetIds = null }: GanttViewProps
 
           <div className="gantt-body" role="rowgroup" style={{ height: rows.length * ROW_H }} onClick={onClick}>
             {rows.slice(first, last).map((row, k) => (
-              <Row key={row.key} row={row} index={first + k} width={totalW} project={project} schedule={schedule} selected={row.kind === 'task' && row.task.id === selectedId} />
+              <Row
+                key={row.key}
+                row={row}
+                index={first + k}
+                width={totalW}
+                summary={row.kind === 'task' ? schedule[row.task.id] : undefined}
+                pred={row.kind === 'task' ? (preds.get(row.task.id) ?? '') : ''}
+                selected={row.kind === 'task' && row.task.id === selectedId}
+              />
             ))}
             <div className="gantt-timeline" style={{ left: TABLE_W, width: scale.width, height: rows.length * ROW_H }}>
-              <GanttBars rows={rows} schedule={schedule} scale={scale} ticks={ticks} weekendXs={weekendXs} first={first} last={last} x0={x0} x1={x1} />
-              {dataDateX >= 0 && dataDateX <= scale.width && <div className="gantt-datadate" style={{ left: dataDateX }} title={`Data date ${shortDate(project.dataDate)}`} data-testid="gantt-data-date" />}
+              <GanttBars
+                rows={rows}
+                schedule={schedule}
+                scale={scale}
+                ticks={ticks}
+                weekendXs={weekendXs}
+                first={first}
+                last={last}
+                x0={x0}
+                x1={x1}
+                dataDateX={dataDateX >= 0 && dataDateX <= scale.width ? dataDateX : null}
+                dataDateTitle={`Data date ${shortDate(project.dataDate)}`}
+              />
             </div>
           </div>
         </div>
@@ -214,12 +235,15 @@ interface RowProps {
   row: GanttRow;
   index: number;
   width: number;
-  project: Project;
-  schedule: Record<Id, TaskScheduleSummary>;
+  /** The task's schedule (task rows only). */
+  summary: TaskScheduleSummary | undefined;
+  /** The task's predecessor field (task rows only). */
+  pred: string;
   selected: boolean;
 }
 
-function Row({ row, index, width, project, schedule, selected }: RowProps) {
+/** One table row; memoised so rows already in view are not redrawn on every scroll step. */
+const Row = memo(function Row({ row, index, width, summary: s, pred, selected }: RowProps) {
   const style = { top: index * ROW_H, width };
   if (row.kind === 'group') {
     const a = row.asset;
@@ -239,9 +263,7 @@ function Row({ row, index, width, project, schedule, selected }: RowProps) {
     );
   }
   const t = row.task;
-  const s = schedule[t.id];
   const ready = t.readiness;
-  const pred = formatPredecessors(project, t.id);
   return (
     <div
       id={`gantt-row-${t.id}`}
@@ -272,9 +294,9 @@ function Row({ row, index, width, project, schedule, selected }: RowProps) {
           {pred || '—'}
         </span>
         <span role="gridcell" className="gc gc-times" style={{ width: W.times }}>
-          {ready ? TIMES_KEYS.map((k) => <ReadinessSymbol key={k} state={ready[k]} size={15} />) : null}
+          {ready ? TIMES_KEYS.map((k) => <ReadinessSymbol key={k} state={ready[k]} size={15} label={TIMES_NAME[k]} />) : null}
         </span>
       </div>
     </div>
   );
-}
+});

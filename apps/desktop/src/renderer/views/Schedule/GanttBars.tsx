@@ -89,9 +89,13 @@ export interface BarsProps {
   last: number;
   x0: number;
   x1: number;
+  /** Timeline x of the data date; null or left out when it is off the scale. */
+  dataDateX?: number | null;
+  /** Hover text of the data-date line. */
+  dataDateTitle?: string;
 }
 
-export const GanttBars = memo(function GanttBars({ rows, schedule, scale, ticks, weekendXs, first, last, x0, x1 }: BarsProps) {
+export const GanttBars = memo(function GanttBars({ rows, schedule, scale, ticks, weekendXs, first, last, x0, x1, dataDateX = null, dataDateTitle = 'Data date' }: BarsProps) {
   const y0 = first * ROW_H;
   const h = Math.max(1, (last - first) * ROW_H);
   const months = new Set(scale.zoom === 'month' ? [] : ticks.top.filter((t) => t.x >= x0 && t.x <= x1).map((t) => t.x));
@@ -127,6 +131,12 @@ export const GanttBars = memo(function GanttBars({ rows, schedule, scale, ticks,
       {grid.map((t) => (
         <line key={`g${t.x}`} className={months.has(t.x) ? 'gb-grid gb-grid-month' : 'gb-grid'} x1={t.x + 0.5} x2={t.x + 0.5} y1={y0} y2={y0 + h} />
       ))}
+      {/* Under the bars, so their labels (with a paper-coloured halo) stay readable over it. */}
+      {dataDateX !== null && (
+        <line className="gantt-datadate" x1={dataDateX} x2={dataDateX} y1={y0} y2={y0 + h} data-testid="gantt-data-date">
+          <title>{dataDateTitle}</title>
+        </line>
+      )}
       {items}
     </svg>
   );
@@ -160,14 +170,16 @@ function TaskBar({ row, s, y, bar }: { row: Extract<GanttRow, { kind: 'task' }>;
   if (bar.marker === 'hold') label = 'Hold';
   else if (bar.marker === 'witness') label = 'Witness';
   else if (bar.progress !== 'not-started') label = `${bar.percent}%`;
-  const labelX = bar.x0 + w + (bar.marker ? 13 : 5);
+  // On a bar too short to hold it, the diamond sits just past the bar's end instead of on it.
+  const markerX = bar.x0 + w + (w < 14 ? 8 : 0);
+  const labelX = bar.marker ? markerX + 13 : bar.x0 + w + 5;
   return (
     <g className={cls} data-task-id={t.id}>
       <title>{title}</title>
       {bar.critical && <rect className="gb-crit-ring" x={bar.x0 - 3} y={by - 3} width={w + 6} height={bh + 6} rx={4} />}
       <rect className="gb-bar" x={bar.x0} y={by} width={w} height={bh} rx={3} />
       {bar.progress === 'progress' && bar.percent > 0 && <rect className="gb-fill" x={bar.x0} y={by} width={(w * bar.percent) / 100} height={bh} rx={3} />}
-      {bar.marker && <g dangerouslySetInnerHTML={{ __html: typeDiamondMarkup(bar.marker, bar.x0 + w, cy, 7, 2) }} />}
+      {bar.marker && <g dangerouslySetInnerHTML={{ __html: typeDiamondMarkup(bar.marker, markerX, cy, 7, 2) }} />}
       {label && (
         <text className="gb-label" x={labelX} y={cy + 4}>
           {label}

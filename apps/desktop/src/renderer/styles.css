@@ -753,14 +753,16 @@
 .gb-label {
   fill: var(--ink-muted);
   font-size: 11px;
+  /* Paper-coloured halo keeps the label readable over the data-date line and grid. */
+  paint-order: stroke;
+  stroke: var(--bg-panel);
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 .gantt-datadate {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 0;
-  z-index: 1;
-  border-left: 2px dashed var(--critical);
+  stroke: var(--critical);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
 }
 
 .gantt-legend {

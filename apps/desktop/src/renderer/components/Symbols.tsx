@@ -22,11 +22,14 @@ const READINESS_INK: Record<ReadinessState, string> = {
   blocked: 'var(--danger)',
 };
 
-/** One TIMES readiness symbol (filled, half, open circle, dash or "!" square). */
-export function ReadinessSymbol({ state, size = 14 }: { state: ReadinessState; size?: number }) {
+/**
+ * One TIMES readiness symbol (filled, half, open circle, dash or "!" square). `label` names
+ * what the state belongs to (e.g. "Tools"), so a screen reader hears "Tools: Ready".
+ */
+export function ReadinessSymbol({ state, size = 14, label }: { state: ReadinessState; size?: number; label?: string }) {
   const r = size / 2 - 1;
   return (
-    <svg className="sym" width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={READINESS_LABEL[state]}>
+    <svg className="sym" width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={label ? `${label}: ${READINESS_LABEL[state]}` : READINESS_LABEL[state]}>
       <g dangerouslySetInnerHTML={{ __html: timesSymbol(state, size / 2, size / 2, r, READINESS_INK[state]) }} />
     </svg>
   );

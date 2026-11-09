@@ -29,7 +29,8 @@ describe('schedule Gantt', () => {
     expect(await page.locator('.gantt-bars .gb-critical .gb-crit-ring').count()).toBeGreaterThan(0);
     expect(await page.locator('.gantt-bars .gb-label', { hasText: 'Hold' }).count()).toBeGreaterThan(0);
     expect(await page.locator('.gantt-bars .gb-label', { hasText: 'Witness' }).count()).toBeGreaterThan(0);
-    await page.getByTestId('gantt-data-date').waitFor();
+    // A vertical SVG line has a zero-width box, so check it is drawn rather than "visible".
+    await page.getByTestId('gantt-data-date').waitFor({ state: 'attached' });
     // Predecessors and readiness symbols in the table.
     const row13 = page.locator('#gantt-row-t1\\.3');
     await expect(row13.locator('.gc-pred').textContent()).resolves.toBe('1.2 FS');
@@ -108,9 +109,11 @@ describe('schedule Gantt', () => {
         times.push(performance.now() - t0);
       }
       times.sort((a, b) => a - b);
-      return times[Math.floor(times.length / 2)]!;
+      return { median: times[Math.floor(times.length / 2)]!, p90: times[Math.floor(times.length * 0.9)]! };
     });
-    expect(ms).toBeLessThan(100);
+    // Two frames at 60 Hz are about 33ms; leave some slack for xvfb.
+    expect(ms.median).toBeLessThan(50);
+    expect(ms.p90).toBeLessThan(80);
     const lastAsset = state.project!.assets.at(-1)!;
     await page.locator(`.gantt-row.is-group[data-asset-id="${lastAsset.id}"]`).waitFor();
     expect(await page.locator('.gantt-row').count()).toBeLessThan(80);
