@@ -311,6 +311,20 @@ export function instantiateTemplate(
 }
 
 /**
+ * The keys of a template's first and last tasks, used to chain assets one after another:
+ * the first task in template order that has no predecessors, and the last task in
+ * template order that no other task follows. Null for a template with no tasks.
+ */
+export function templateEndpoints(template: Template): { first: string; last: string } | null {
+  const tasks = template.tasks;
+  if (tasks.length === 0) return null;
+  const followed = new Set(tasks.flatMap((t) => t.predecessors.map((p) => p.key)));
+  const first = tasks.find((t) => t.predecessors.length === 0) ?? tasks[0]!;
+  const last = [...tasks].reverse().find((t) => !followed.has(t.key)) ?? tasks[tasks.length - 1]!;
+  return { first: first.key, last: last.key };
+}
+
+/**
  * Working days from the start of the first task to the finish of the last when the
  * template is laid out on its own (the "12 working days" in the template editor).
  * Throws TemplateInvalidError when the template has problems.

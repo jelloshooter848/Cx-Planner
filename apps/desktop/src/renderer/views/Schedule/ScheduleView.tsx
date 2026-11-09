@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import { TaskTypeSymbol, taskTypeLabel } from '../../components/Symbols';
 import { shortDate } from '../../format';
-import { useProject, useSchedule } from '../../store';
+import { useProject, useSchedule, useStore } from '../../store';
 
 /**
  * The schedule view. For now a read-only grid of assets and tasks with their computed
@@ -10,8 +10,14 @@ import { useProject, useSchedule } from '../../store';
 export function ScheduleView() {
   const info = useProject();
   const schedule = useSchedule();
+  const store = useStore();
   if (!info) return null;
   const { project } = info;
+  const addAssets = (
+    <button type="button" className="btn" onClick={() => void store.dispatch({ type: 'add-assets' })}>
+      Add assets…
+    </button>
+  );
   return (
     <main className="view view-schedule" aria-label="Schedule">
       {schedule.error && (
@@ -23,8 +29,11 @@ export function ScheduleView() {
         <div className="empty">
           <h2>No assets yet</h2>
           <p className="hint">Assets added from a template appear here with their tasks and dates.</p>
+          <p>{addAssets}</p>
         </div>
       ) : (
+        <>
+        <div className="view-toolbar">{addAssets}</div>
         <div className="panel grid-wrap">
           <table className="grid" aria-label="Tasks">
             <thead>
@@ -75,6 +84,7 @@ export function ScheduleView() {
             </tbody>
           </table>
         </div>
+        </>
       )}
     </main>
   );

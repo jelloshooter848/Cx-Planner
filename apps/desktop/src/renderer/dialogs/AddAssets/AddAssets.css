@@ -1,0 +1,292 @@
+/* Add assets from a template (mockup 05): header band, two columns, grey footer. */
+.modal.add-assets {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 48px);
+  padding: 0;
+  overflow: hidden;
+}
+.add-assets .modal-head {
+  margin: 0;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.add-assets .modal-title {
+  font-size: 18px;
+  font-weight: var(--fw-bold);
+}
+.add-assets .field .input {
+  width: 100%;
+  min-width: 0;
+}
+.add-assets .visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.aa-form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.aa-body {
+  display: flex;
+  gap: 20px;
+  min-height: 0;
+  padding: 16px 20px;
+  overflow: auto;
+}
+.aa-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  flex: 1;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+}
+.aa-side {
+  flex: none;
+  width: 280px;
+}
+.aa-side-title {
+  margin-top: 0;
+}
+
+/* Quick fill: pattern, location, system, button on one line. */
+.aa-quick {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+/* Asset rows */
+.aa-rows {
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+.aa-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: var(--fs);
+}
+.aa-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 28px;
+  padding: 0 6px;
+  text-align: left;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  color: var(--ink-muted);
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--line);
+}
+.aa-table td {
+  height: 30px;
+  padding: 0 2px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.aa-table tr:last-child td {
+  border-bottom: 0;
+}
+.aa-table .aa-n {
+  width: 34px;
+  padding-left: 8px;
+  color: var(--ink-muted);
+  font-size: var(--fs-sm);
+}
+.aa-table .aa-x {
+  width: 34px;
+  text-align: center;
+}
+/* Description gets the rest, so the template's default reads in full. */
+.aa-table .aa-c-tag {
+  width: 20%;
+}
+.aa-table .aa-c-loc {
+  width: 17%;
+}
+.aa-table .aa-c-sys {
+  width: 15%;
+}
+.aa-default-desc {
+  margin: 4px 0 0;
+}
+.aa-default-text {
+  color: var(--ink);
+}
+.aa-no-workspace {
+  margin: 4px 0 0;
+}
+.aa-cell {
+  width: 100%;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  font-size: var(--fs);
+}
+.aa-cell:hover {
+  border-color: var(--line);
+}
+.aa-cell:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--bg-panel);
+  box-shadow: var(--focus);
+}
+.aa-cell::placeholder {
+  color: var(--ink-faint);
+}
+.aa-bad td {
+  background: var(--danger-soft);
+}
+.aa-bad .aa-cell[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+.add-assets .input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+.aa-remove {
+  width: 26px;
+  padding: 0;
+  color: var(--ink-muted);
+  font-size: 16px;
+}
+
+/* "!" in a square: problems read without colour (see symbols.ts). */
+.aa-flag {
+  display: inline-grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid var(--danger);
+  border-radius: 2px;
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: var(--fw-bold);
+  line-height: 1;
+}
+.aa-rows-foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.aa-problems {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--danger);
+  font-size: var(--fs-sm);
+}
+
+/* When */
+.aa-when {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.aa-seq {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.aa-seq legend {
+  margin-bottom: 4px;
+  padding: 0;
+}
+.aa-seq label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs);
+}
+.aa-seq input[type='radio'] {
+  margin: 0;
+  width: 15px;
+  height: 15px;
+}
+.aa-days {
+  width: 64px;
+  height: 28px;
+}
+
+/* Tasks per asset */
+.aa-tasks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+.aa-tasks li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: var(--fs);
+}
+.aa-tasks li:last-child {
+  border-bottom: 0;
+}
+.aa-task-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.aa-span {
+  margin-top: 8px;
+}
+.aa-preview {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: var(--fs);
+}
+.aa-preview dt {
+  color: var(--ink-muted);
+}
+.aa-preview dd {
+  margin: 0;
+  text-align: right;
+  font-weight: var(--fw-semibold);
+}
+
+/* Footer band */
+.aa-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
+  background: var(--bg-subtle);
+  border-top: 1px solid var(--line);
+}
+.aa-foot .form-actions {
+  margin: 0;
+}
+.aa-foot .form-error {
+  flex: 1;
+}
+.aa-summary {
+  font-size: var(--fs);
+  font-weight: var(--fw-semibold);
+}

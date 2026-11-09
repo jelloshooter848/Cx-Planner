@@ -13,7 +13,7 @@ import type { ApiResult, AppState, CxApi, EditOutcome, TaskScheduleSummary } fro
 
 /** Views shown when a project is open (the welcome screen shows when none is). */
 export type ViewId = 'schedule' | 'templates' | 'lookahead';
-export type DialogId = 'new-project' | 'about';
+export type DialogId = 'new-project' | 'about' | 'add-assets';
 
 export interface Notice {
   /** Increases with every notice, so the same message shown twice is still a new notice. */
@@ -44,6 +44,8 @@ export type Action =
   | { type: 'exit' }
   | { type: 'undo' }
   | { type: 'redo' }
+  /** Opens the add-assets-from-template dialog (needs an open project). */
+  | { type: 'add-assets' }
   | { type: 'view'; view: ViewId }
   | { type: 'about' };
 
@@ -155,6 +157,9 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
           return;
         case 'redo':
           if (snapshot.app?.canRedo) await store.run(() => api.redo());
+          return;
+        case 'add-assets':
+          if (snapshot.app?.project) store.openDialog('add-assets');
           return;
         case 'view':
           return store.setView(action.view);

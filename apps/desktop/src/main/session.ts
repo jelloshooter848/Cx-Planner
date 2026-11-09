@@ -89,6 +89,19 @@ export class InputError extends Error {
   }
 }
 
+/** Templates a command copies into the project: the ones it adds assets from or re-applies. */
+export function templatesUsed(cmd: Command): Template[] {
+  switch (cmd.kind) {
+    case 'addAssetsFromTemplate':
+    case 'reapplyTemplate':
+      return [cmd.template];
+    case 'batch':
+      return cmd.commands.flatMap(templatesUsed);
+    default:
+      return [];
+  }
+}
+
 export function ok<T>(value: T): { ok: true; value: T } {
   return { ok: true, value };
 }
@@ -178,7 +191,8 @@ export class Session {
       if (e instanceof CommandError && e.code === 'no-change') return ok({ changed: false, summary: null });
       return failure(e);
     }
-    const saved = this.save(doc, result.project, result.summary);
+    // The templates an edit instantiated are copied into the project with it (decision D4).
+    const saved = this.save(doc, result.project, result.summary, templatesUsed(cmd));
     if (!saved.ok) return saved;
     doc.undo.push({ command: result.inverse, label: result.summary });
     if (doc.undo.length > this.undoLimit) doc.undo.shift();
@@ -221,9 +235,9 @@ export class Session {
     return ok({ changed: true, summary });
   }
 
-  private save(doc: OpenProject, next: Project, summary: string): ApiResult<void> {
+  private save(doc: OpenProject, next: Project, summary: string, templates: Template[] = []): ApiResult<void> {
     try {
-      const r = doc.store.saveProject(next, 'user', summary);
+      const r = doc.store.saveProject(next, 'user', summary, { templates });
       doc.revision = r.revision;
       doc.lastSavedAt = doc.store.getRevisionState().savedAt ?? new Date().toISOString();
     } catch (e) {

@@ -365,6 +365,17 @@
 .modal p {
   margin: 0 0 10px;
 }
+.modal-head {
+  margin: 0 0 14px;
+}
+.modal-head .modal-title {
+  margin: 0;
+}
+.modal .modal-desc {
+  margin: 2px 0 0;
+  color: var(--ink-muted);
+  font-size: var(--fs);
+}
 
 .sym {
   display: inline-block;
@@ -539,6 +550,11 @@
 /* Schedule grid */
 .view-schedule {
   padding: 12px;
+}
+.view-toolbar {
+  display: flex;
+  gap: var(--gap);
+  margin-bottom: 10px;
 }
 .grid-wrap {
   overflow: hidden;

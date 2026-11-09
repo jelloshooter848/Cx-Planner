@@ -120,6 +120,17 @@ describe('renderer store', () => {
     expect(store.getSnapshot().ui.dialog).toBeNull();
   });
 
+  it('opens the add-assets dialog only with a project open', async () => {
+    const f = fakeApi(appState());
+    const store = createStore(f.api);
+    await tick();
+    await store.dispatch({ type: 'add-assets' });
+    expect(store.getSnapshot().ui.dialog).toBeNull();
+    f.push(appState({ seq: 2, project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp' }));
+    await store.dispatch({ type: 'add-assets' });
+    expect(store.getSnapshot().ui.dialog).toBe('add-assets');
+  });
+
   it('calls exit for File > Exit', async () => {
     const exit = vi.fn();
     const store = createStore(fakeApi(appState()).api, { exit });
