@@ -174,6 +174,8 @@ export interface PrintSetup {
   /** The revision the next print of each kind gets. */
   nextRevision: Record<PrintKind, string>;
   checklistTasks: ChecklistTaskSummary[];
+  /** True when earlier test-sheet prints have no task list (made before per-sheet revisions), so their sheets are not counted. */
+  untrackedTestSheets: boolean;
 }
 
 /** A print laid out but not issued: the same HTML the PDF is made from. */

@@ -126,6 +126,35 @@ describe('ProjectStore', () => {
     s.close();
   });
 
+  it('reads back the tasks a test-sheet print covered', () => {
+    const s = ProjectStore.open(file, { create: true });
+    s.recordPrint({ kind: 'test-sheets', rev: 'A', issued: '2026-11-02', paper: 'letter', sheets: 2, dataDate: '2026-11-02', taskIds: ['t1.3', 't2.1'] });
+    s.recordPrint({ kind: 'test-sheets', rev: 'B', issued: '2026-11-06', paper: 'letter', sheets: 0, dataDate: '2026-11-06', taskIds: [] });
+    s.recordPrint({ kind: 'lookahead', rev: 'A', issued: '2026-11-06', paper: 'tabloid', sheets: 1, dataDate: '2026-11-06' });
+    expect(s.listPrints().map((p) => p.taskIds)).toEqual([['t1.3', 't2.1'], [], null]);
+    s.close();
+    const again = ProjectStore.open(file, { backup: false });
+    expect(again.listPrints('test-sheets')[0]!.taskIds).toEqual(['t1.3', 't2.1']);
+    again.close();
+  });
+
+  it('opens a version 5 file whose prints have no task list', async () => {
+    const { DatabaseSync } = await import('node:sqlite');
+    const db = new DatabaseSync(file);
+    for (const m of MIGRATIONS.slice(0, 5)) db.exec(m);
+    db.exec(`PRAGMA user_version = 5; PRAGMA application_id = ${APPLICATION_ID};`);
+    db.exec(
+      "INSERT INTO print_record (kind, rev, issued, printed_at, paper, sheets, data_date, last_change_seq, note, title) VALUES ('test-sheets', 'A', '2026-11-02', '2026-11-02T08:00:00Z', 'letter', 3, '2026-11-02', 0, 'First issue', 'Test Sheets (3)')",
+    );
+    db.close();
+    const s = ProjectStore.open(file, { backup: false });
+    expect(s.schemaVersion).toBe(MIGRATIONS.length);
+    expect(s.listPrints()).toEqual([expect.objectContaining({ kind: 'test-sheets', rev: 'A', note: 'First issue', taskIds: null })]);
+    s.recordPrint({ kind: 'test-sheets', rev: 'B', issued: '2026-11-06', paper: 'letter', sheets: 1, dataDate: '2026-11-06', taskIds: ['t1.3'] });
+    expect(s.listPrints().map((p) => p.taskIds)).toEqual([null, ['t1.3']]);
+    s.close();
+  });
+
   it('keeps the change log append-only', () => {
     const s = ProjectStore.open(file, { create: true });
     s.replaceProject(riversideProject());

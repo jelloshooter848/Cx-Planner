@@ -8,7 +8,7 @@ import { starterTemplate } from '@cx/templates';
 import { FileController } from '../src/main/files.js';
 import { RecentFiles, SettingsFile } from '../src/main/prefs.js';
 import { PrintController } from '../src/main/print-controller.js';
-import { buildPrint, revisionHistory } from '../src/main/print-jobs.js';
+import { buildPrint, printSetup, revisionHistory, sheetRevision } from '../src/main/print-jobs.js';
 import { ScriptedDialogs } from '../src/main/scripted-dialogs.js';
 import { Session } from '../src/main/session.js';
 import { checkPrintRequest } from '../src/main/validate.js';
@@ -164,6 +164,47 @@ describe('print jobs', () => {
     expect(print.preview({ kind: 'test-sheets', taskIds: ['t1.1'], note: '' })).toMatchObject({ ok: false, code: 'invalid-input' });
   });
 
+  it('gives each test sheet its own revision, counted from the prints that covered its task', async () => {
+    openRiverside(true);
+    const setup = print.setup();
+    if (!setup.ok) throw new Error(setup.message);
+    const [a, b, c] = setup.value.checklistTasks;
+    if (!a || !b || !c) throw new Error('needs three checklist tasks');
+    const tag = (t: typeof a) => session.project!.assets.find((x) => x.id === t.assetId)!.tag;
+    const ref = (t: typeof a, rev: string) => `Sheet ${tag(t)}-${t.code} · Rev ${rev}<`;
+
+    expect(await print.toPrinter({ kind: 'test-sheets', taskIds: [a.taskId, b.taskId], note: '' })).toMatchObject({ ok: true, value: { rev: 'A' } });
+    expect(session.printHistory().map((r) => r.taskIds)).toEqual([[a.taskId, b.taskId]]);
+
+    const r = print.preview({ kind: 'test-sheets', taskIds: [b.taskId, c.taskId], note: '' });
+    if (!r.ok) throw new Error(r.message);
+    // The print as a whole is the second test-sheet issue; c's sheet is its first issue.
+    expect(r.value.rev).toBe('B');
+    expect(r.value.html).toContain(ref(b, 'B'));
+    expect(r.value.html).toContain(ref(c, 'A'));
+    expect(r.value.html).not.toContain(ref(c, 'B'));
+
+    expect(await print.toPrinter({ kind: 'test-sheets', taskIds: [b.taskId, c.taskId], note: '' })).toMatchObject({ ok: true, value: { rev: 'B' } });
+    const history = session.printHistory();
+    expect([a, b, c].map((t) => sheetRevision(history, t.taskId))).toEqual(['B', 'C', 'B']);
+    // Other kinds record no task list.
+    await print.toPrinter(lookAhead());
+    expect(session.printHistory().at(-1)!.taskIds).toBeNull();
+  });
+
+  it('does not count test-sheet prints recorded without a task list', () => {
+    const old = { id: 1, kind: 'test-sheets', rev: 'A', issued: '2026-10-30', printedAt: '', paper: 'letter', sheets: 1, dataDate: '2026-10-30', lastChangeSeq: 0, note: '', title: '', taskIds: null };
+    const listed = { ...old, id: 2, rev: 'B', taskIds: ['t1'] };
+    expect(sheetRevision([old, listed], 't1')).toBe('B');
+    expect(sheetRevision([old, listed], 't2')).toBe('A');
+    expect(sheetRevision([{ ...listed, kind: 'lookahead' }], 't1')).toBe('A');
+    const project = riversideProject();
+    const templates = [starterTemplate('starter-lv-switchgear')!];
+    expect(printSetup(project, templates, [old, listed]).untrackedTestSheets).toBe(true);
+    expect(printSetup(project, templates, [listed]).untrackedTestSheets).toBe(false);
+    expect(printSetup(project, templates, [{ ...old, kind: 'lookahead' }]).untrackedTestSheets).toBe(false);
+  });
+
   it('prints the template\'s acceptance criteria on the test sheet', () => {
     openRiverside(true);
     const setup = print.setup();
@@ -176,7 +217,7 @@ describe('print jobs', () => {
   });
 
   it('builds without Electron, from the project and its print history', () => {
-    const history = [{ id: 1, kind: 'lookahead', rev: 'C', issued: '2026-10-30', printedAt: '', paper: 'tabloid', sheets: 1, dataDate: '2026-10-30', lastChangeSeq: 0, note: '', title: '' }];
+    const history = [{ id: 1, kind: 'lookahead', rev: 'C', issued: '2026-10-30', printedAt: '', paper: 'tabloid', sheets: 1, dataDate: '2026-10-30', lastChangeSeq: 0, note: '', title: '', taskIds: null }];
     const p = buildPrint({ project: riversideProject(), templates: [], history, request: lookAhead() });
     expect(p).toMatchObject({ rev: 'D', kind: 'lookahead', paperId: 'tabloid' });
     // A blank note reads "Issued" in the revision history.
@@ -186,7 +227,7 @@ describe('print jobs', () => {
 
 describe('revisionHistory', () => {
   const rec = (id: number, rev: string, issued: string, kind = 'lookahead') =>
-    ({ id, kind, rev, issued, printedAt: '', paper: 'tabloid', sheets: 1, dataDate: issued, lastChangeSeq: 0, note: '', title: '' });
+    ({ id, kind, rev, issued, printedAt: '', paper: 'tabloid', sheets: 1, dataDate: issued, lastChangeSeq: 0, note: '', title: '', taskIds: null });
 
   it('keeps the revision being issued, even when the data date moved back', () => {
     const history = [rec(1, 'A', '2026-10-02'), rec(2, 'B', '2026-10-09'), rec(4, 'D', '2026-10-23'), rec(3, 'C', '2026-10-16'), rec(5, 'A', '2026-10-30', 'test-sheets')];

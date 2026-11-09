@@ -1,6 +1,8 @@
 /**
  * Revision letters of issued prints: A, B, … Z, then AA, AB, … (like spreadsheet columns).
  * Each print kind (look-ahead, full schedule, test sheets) counts its own revisions.
+ * Test-sheet headers are the exception: each sheet counts revisions per task (see sheetRevision
+ * in apps/desktop/src/main/print-jobs.ts), while the test-sheet print record keeps its own count.
  */
 
 /** The letter for a 0-based revision index: 0 → "A", 25 → "Z", 26 → "AA". */

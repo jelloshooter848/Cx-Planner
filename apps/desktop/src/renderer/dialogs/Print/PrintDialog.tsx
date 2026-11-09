@@ -297,11 +297,11 @@ function PrintForm({ setup, project, onSetup, onClose }: FormProps) {
             />
           )}
 
-          <fieldset className="pd-group pd-revision">
+          <fieldset className="pd-group pd-revision" aria-describedby={kind === 'test-sheets' ? 'pd-sheet-revision-note' : undefined}>
             <legend className="section-label">Revision</legend>
             <dl className="pd-rev">
               <div>
-                <dt>Revision</dt>
+                <dt>{kind === 'test-sheets' ? 'Print revision' : 'Revision'}</dt>
                 <dd data-testid="print-revision">{nextRev}</dd>
               </div>
               <div>
@@ -309,6 +309,12 @@ function PrintForm({ setup, project, onSetup, onClose }: FormProps) {
                 <dd>{longDate(setup.dataDate)}</dd>
               </div>
             </dl>
+            {kind === 'test-sheets' && (
+              <p className="hint" id="pd-sheet-revision-note" data-testid="sheet-revision-note">
+                Each sheet carries its own revision: A the first time its task is printed, then B, C… on each re-issue.
+                {setup.untrackedTestSheets && ' Sheets printed before this version are not counted.'}
+              </p>
+            )}
             <label className="field">
               <span className="field-label">Note for this revision</span>
               <input
