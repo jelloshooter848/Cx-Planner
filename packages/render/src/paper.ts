@@ -7,7 +7,25 @@ export const PAPER = {
 } as const;
 
 export type PaperId = keyof typeof PAPER;
-export type Paper = (typeof PAPER)[PaperId];
+
+/** A sheet size as laid out. `PAPER` entries are landscape; `portrait()` turns one upright. */
+export interface Paper {
+  readonly id: PaperId;
+  readonly label: string;
+  readonly widthIn: number;
+  readonly heightIn: number;
+}
+
+export type Orientation = 'landscape' | 'portrait';
+
+export function orientationOf(paper: Paper): Orientation {
+  return paper.heightIn > paper.widthIn ? 'portrait' : 'landscape';
+}
+
+/** The same sheet stood upright (height > width), e.g. Letter 8.5 × 11 in. */
+export function portrait(paper: Paper): Paper {
+  return orientationOf(paper) === 'portrait' ? paper : { ...paper, widthIn: paper.heightIn, heightIn: paper.widthIn };
+}
 
 /** CSS pixels per inch. All print geometry is laid out in CSS px. */
 export const PX_PER_IN = 96;
