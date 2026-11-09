@@ -1,0 +1,98 @@
+/*
+ * Design tokens for the desktop app: colours, type, spacing and sizes taken from the
+ * mockups (docs/design/mockups). Light theme only. Components use these variables, never
+ * raw values, so a later theme only has to change this file.
+ *
+ * --bg-app, --bg-chrome, --ink-inverse-muted and --titlebar-h are also used by the main
+ * process for the window background and title bar overlay: keep src/shared/chrome.ts in
+ * step (test/chrome.test.ts checks it).
+ */
+:root {
+  /* Type */
+  --font: 'Inter', system-ui, 'Segoe UI', sans-serif;
+  --fs-xs: 11.5px;
+  --fs-sm: 12px;
+  --fs: 12.5px;
+  --fs-md: 13px;
+  --fs-lg: 16px;
+  --fs-xl: 22px;
+  --fw: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  /* Ink */
+  --ink: #1b1f24;
+  --ink-muted: #5b6470;
+  --ink-soft: #6f7886;
+  --ink-faint: #8b93a0;
+  --ink-inverse: #ffffff;
+  --ink-inverse-muted: #c9ced6;
+
+  /* Surfaces */
+  --bg-app: #eef0f3;
+  --bg-panel: #ffffff;
+  --bg-subtle: #f4f5f7;
+  --bg-header: #fafbfc;
+  --bg-chrome: #1b1f24;
+  --bg-hover: #f4f5f7;
+
+  /* Lines */
+  --line: #d5d9e0;
+  --line-strong: #b9c0cb;
+  --line-soft: #e4e7ec;
+
+  /* Accent and states */
+  --accent: #1f5fbf;
+  --accent-hover: #1a52a6;
+  --accent-soft: #e8f0fc;
+  --accent-line: #bcd3f4;
+  --ok: #1e6b43;
+  --danger: #b3261e;
+  --critical: #c2410c;
+  --critical-soft: #fff4ec;
+  --hold: #e0a100;
+
+  /* Sizes */
+  --titlebar-h: 36px;
+  --menubar-h: 32px;
+  --statusbar-h: 28px;
+  --control-h: 34px;
+  --input-h: 32px;
+  --radius: 4px;
+  --radius-lg: 6px;
+  --gap: 8px;
+  --pad: 12px;
+  --shadow-sheet: 0 1px 6px rgb(0 0 0 / 0.2);
+  --shadow-pop: 0 6px 24px rgb(27 31 36 / 0.18), 0 1px 3px rgb(27 31 36 / 0.12);
+  --focus: 0 0 0 2px var(--accent-line);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font);
+  font-size: var(--fs);
+  color: var(--ink);
+  background: var(--bg-app);
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}

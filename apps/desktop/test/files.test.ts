@@ -8,11 +8,13 @@ import { emptyProject, FileController, projectArg, safeFileName } from '../src/m
 import { RecentFiles, SettingsFile } from '../src/main/prefs.js';
 import { ScriptedDialogs } from '../src/main/scripted-dialogs.js';
 import { Session } from '../src/main/session.js';
+import type { AppState } from '../src/shared/api.js';
 
 let dir: string;
 let dialogs: ScriptedDialogs;
 let session: Session;
 let recent: RecentFiles;
+let lastPushed: AppState | null;
 let settings: SettingsFile;
 let files: FileController;
 
@@ -32,7 +34,8 @@ function sampleFile(name = 'Riverside.cxp'): string {
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'cx-files-'));
   dialogs = new ScriptedDialogs();
-  session = new Session({ broadcast: () => {}, recent: () => recent.list() });
+  lastPushed = null;
+  session = new Session({ broadcast: (s) => (lastPushed = s), recent: () => recent.list() });
   recent = new RecentFiles(join(dir, 'user', 'recent.json'));
   settings = new SettingsFile(join(dir, 'user', 'settings.json'));
   files = new FileController({ session, dialogs, recent, settings, defaultWorkspace: join(dir, 'Cx Planner Workspace') });
@@ -135,6 +138,8 @@ describe('open', () => {
     expect(await files.openWithDialog()).toEqual({ ok: true, value: { filePath: path } });
     expect(session.getState().fileName).toBe('Riverside.cxp');
     expect(recent.list()).toEqual([path]);
+    // The last state pushed to the renderer already lists the file it opened.
+    expect(lastPushed?.recent.map((r) => r.path)).toEqual([path]);
   });
 
   it('keeps the current project when opening another fails', async () => {

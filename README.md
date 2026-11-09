@@ -52,11 +52,15 @@ Run the desktop spike checks (SQLite, the project session and PDF output through
 pnpm --filter @cx/desktop smoke
 ```
 
-Drive the desktop app end to end (opens a sample project, edits, undoes, creates a new project; screenshots go to `spike-output/desktop-e2e/`). On Linux without a display, wrap it in `xvfb-run -a`:
+Desktop UI tests (`apps/desktop/test/e2e/*.e2e.ts`) build the app once, then drive Electron with Playwright: welcome screen, new project, menus, undo/redo, views. Each test gets a throwaway profile and workspace, and opens a temp project made from the sample fixtures when it needs one (see `test/e2e/harness.ts`). Screenshots go to `spike-output/desktop-e2e/` (or `$CX_E2E_SHOTS`). They are not part of `pnpm test`. The script runs them under `xvfb-run -a` (Linux without a display):
 
 ```bash
-pnpm --filter @cx/desktop build && pnpm desktop:e2e
+pnpm desktop:e2e
 ```
+
+On a machine with a display, run them directly with `pnpm --filter @cx/desktop exec vitest run -c vitest.e2e.config.mts`. Set `CX_E2E_NO_BUILD=1` to skip the build when `dist/` is fresh.
+
+Desktop renderer layout (`apps/desktop/src/renderer`): `store.ts` holds the state pushed by the main process plus UI state, read through `useProject()`, `useSchedule()`, `useCommand()` and friends; every menu item, shortcut and button goes through `store.dispatch(action)`. Views live in `views/<ViewName>/`, shared pieces in `components/`, dialogs in `dialogs/`. Colours, type and sizes are tokens in `tokens.css`.
 
 The desktop app opens `.cxp` files given on the command line. Set `CX_USER_DATA` to run it with a throwaway profile (settings and recent list).
 

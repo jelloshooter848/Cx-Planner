@@ -29,14 +29,22 @@ export function menuKey(s: AppState): string {
 }
 
 /**
- * The application menu. Project undo/redo shortcuts are not registered here: the renderer
- * binds Ctrl+Z / Ctrl+Y itself when focus is not in a text field, so text fields keep
- * their own undo.
+ * The application menu. On macOS it is the system menu bar. On Windows and Linux the window
+ * shows its own menu row (renderer components/MenuBar.tsx) and this menu is hidden, so its
+ * shortcuts are hints only: the renderer binds Ctrl+N / Ctrl+O / Ctrl+Shift+S, and Ctrl+Z /
+ * Ctrl+Y when focus is not in a text field (text fields keep their own undo).
+ *
+ * One owner per key and platform: on macOS this menu registers Cmd+N / Cmd+O / Cmd+Shift+S
+ * and the renderer leaves those keys alone (shortcutAction's `mac` flag), so they never run
+ * twice. Cmd+Z / Cmd+Shift+Z stay with the renderer outside text fields (it prevents default),
+ * and with the Undo Typing / Redo Typing roles inside them.
  */
 export function buildMenu(ctx: MenuContext, s: AppState): Menu {
   const { session, files } = ctx;
   const isMac = process.platform === 'darwin';
   const open = s.project !== null;
+  // Shortcut shown as a hint only; the renderer handles the key (see above).
+  const hint = (accelerator: string) => (isMac ? { accelerator } : { accelerator, registerAccelerator: false });
   const recent: MenuItemConstructorOptions[] = s.recent.length
     ? s.recent.map((r) => ({ label: amp(r.name), sublabel: r.exists ? r.path : `${r.path} (not found)`, click: () => void files.openRecent(r.path) }))
     : [{ label: 'No recent projects', enabled: false }];
@@ -45,11 +53,11 @@ export function buildMenu(ctx: MenuContext, s: AppState): Menu {
     {
       label: '&File',
       submenu: [
-        { label: 'New Project…', accelerator: 'CmdOrCtrl+N', click: () => ctx.toRenderer('new-project') },
-        { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: () => void files.openWithDialog() },
+        { label: 'New Project…', ...hint('CmdOrCtrl+N'), click: () => ctx.toRenderer('new-project') },
+        { label: 'Open…', ...hint('CmdOrCtrl+O'), click: () => void files.openWithDialog() },
         { label: 'Open Recent', submenu: recent },
         { type: 'separator' },
-        { label: 'Save As…', accelerator: 'CmdOrCtrl+Shift+S', enabled: open, click: () => void files.saveAs() },
+        { label: 'Save As…', ...hint('CmdOrCtrl+Shift+S'), enabled: open, click: () => void files.saveAs() },
         { label: 'Close Project', enabled: open, click: () => files.close() },
         { type: 'separator' },
         { label: 'Workspace Folder…', click: () => void files.chooseWorkspace() },
