@@ -227,6 +227,38 @@ describe('save as and close', () => {
     expect(recent.list()[0]).toBe(`${target}.cxp`);
   });
 
+  it('gives the copy its own project id, as a logged step', async () => {
+    const path = sampleFile();
+    await files.openPath(path);
+    const originalId = session.project!.id;
+    const target = join(dir, 'Copy.cxp');
+    dialogs.push({ save: target });
+    expect((await files.saveAs()).ok).toBe(true);
+    const newId = session.project!.id;
+    expect(newId).not.toBe(originalId);
+    files.close();
+    const copy = ProjectStore.open(target);
+    expect(copy.loadProject().id).toBe(newId);
+    copy.close();
+    const orig = ProjectStore.open(path);
+    expect(orig.loadProject().id).toBe(originalId);
+    orig.close();
+  });
+
+  it('removes the copied file when the copy cannot be opened', async () => {
+    const path = sampleFile();
+    await files.openPath(path);
+    const target = join(dir, 'Broken.cxp');
+    const spy = vi.spyOn(ProjectStore, 'open').mockImplementationOnce(() => {
+      throw new Error('disk went away');
+    });
+    dialogs.push({ save: target }, { message: 0, expect: "couldn't be opened[\\s\\S]*disk went away" });
+    expect(await files.saveAs()).toMatchObject({ ok: false, code: 'file-error' });
+    spy.mockRestore();
+    expect(existsSync(target)).toBe(false);
+    expect(session.filePath).toBe(path);
+  });
+
   it('needs an open project', async () => {
     expect(await files.saveAs()).toMatchObject({ ok: false, code: 'no-project' });
   });
@@ -251,6 +283,14 @@ describe('workspace', () => {
     dialogs.push({ message: 1 }, { open: chosen });
     await files.ensureWorkspace();
     expect(settings.get().workspacePath).toBe(chosen);
+  });
+
+  it('remembers nothing when the folder picker is cancelled on first run', async () => {
+    dialogs.push({ message: 1, expect: 'Where should Cx Planner keep your workspace' }, { open: undefined });
+    await files.ensureWorkspace();
+    expect(settings.get().workspacePath).toBeUndefined();
+    expect(existsSync(join(dir, 'Cx Planner Workspace'))).toBe(false);
+    expect(session.getState().workspacePath).toBeNull();
   });
 
   it('offers another folder when the workspace cannot be opened', async () => {
@@ -293,6 +333,12 @@ describe('template files', () => {
     expect(readFileSync(join(dir, 'tpl.json'), 'utf8')).toBe('keep me');
   });
 
+  it('shows a dialog when the export cannot be written', async () => {
+    const id = session.workspace!.listTemplates()[0]!.id;
+    dialogs.push({ save: join(dir, 'missing-folder', 'tpl.json') }, { message: 0, expect: "tpl\\.json couldn't be written" });
+    expect(await files.exportTemplate(id)).toMatchObject({ ok: false, code: 'file-error' });
+  });
+
   it('explains a file that is not a template', async () => {
     const path = join(dir, 'nope.json');
     writeFileSync(path, '{"hello": 1}');
@@ -302,6 +348,15 @@ describe('template files', () => {
 
   it('reports an unknown template on export', async () => {
     expect(await files.exportTemplate('nope')).toMatchObject({ ok: false, code: 'unknown-template' });
+  });
+});
+
+describe('writing a file', () => {
+  it('adds the extension and writes the data', async () => {
+    dialogs.push({ save: join(dir, 'Look-ahead') });
+    const r = await files.writeWithDialog({ title: 'Save PDF', defaultPath: join(dir, 'x.pdf'), filters: [], ext: '.pdf', data: async () => new Uint8Array([37, 80, 68, 70]) });
+    expect(r).toEqual({ ok: true, value: { filePath: join(dir, 'Look-ahead.pdf') } });
+    expect(readFileSync(join(dir, 'Look-ahead.pdf'), 'utf8')).toBe('%PDF');
   });
 });
 

@@ -70,7 +70,7 @@ function StartScreen({ state, showNew, setShowNew }: { state: AppState; showNew:
           <ul className="recent">
             {state.recent.map((r) => (
               <li key={r.path}>
-                <button disabled={!r.exists} onClick={() => void window.cx.openRecent(r.path)} title={r.path}>
+                <button onClick={() => void window.cx.openRecent(r.path)} title={r.path}>
                   <b>{r.name}</b> <span className="muted">{r.exists ? r.path : `${r.path} (not found)`}</span>
                 </button>
               </li>

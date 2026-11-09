@@ -38,7 +38,7 @@ export function buildMenu(ctx: MenuContext, s: AppState): Menu {
   const isMac = process.platform === 'darwin';
   const open = s.project !== null;
   const recent: MenuItemConstructorOptions[] = s.recent.length
-    ? s.recent.map((r) => ({ label: amp(r.name), sublabel: r.path, enabled: r.exists, click: () => void files.openRecent(r.path) }))
+    ? s.recent.map((r) => ({ label: amp(r.name), sublabel: r.exists ? r.path : `${r.path} (not found)`, click: () => void files.openRecent(r.path) }))
     : [{ label: 'No recent projects', enabled: false }];
   const template: MenuItemConstructorOptions[] = [
     ...(isMac ? [{ role: 'appMenu' as const }] : []),

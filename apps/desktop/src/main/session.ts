@@ -145,11 +145,15 @@ export class Session {
     this.doc.store.copyTo(target);
   }
 
-  /** Save As: continue in `store`, a copy of the open file. Keeps the project and undo history. */
-  replaceStore(store: ProjectStore): void {
+  /**
+   * Save As: continue in `store`, a copy of the open file. Keeps the undo history.
+   * `project` is the copy's project when it differs from the open one (a new id).
+   */
+  replaceStore(store: ProjectStore, project?: Project): void {
     if (!this.doc) throw new Error('No project is open');
     const old = this.doc.store;
-    this.doc = { ...this.doc, store, revision: store.getRevisionState().revision };
+    const rev = store.getRevisionState();
+    this.doc = { ...this.doc, store, project: project ?? this.doc.project, revision: rev.revision, lastSavedAt: rev.savedAt ?? this.doc.lastSavedAt };
     old.close();
     this.notify();
   }

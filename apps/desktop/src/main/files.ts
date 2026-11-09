@@ -201,15 +201,31 @@ export class FileController {
     if (!(await this.confirmReplace(chosen, target))) return canceled;
     const cleared = await this.clearTarget(target);
     if (!cleared.ok) return cleared;
-    let store: ProjectStore;
+    const project = this.session.project;
+    if (!project) return { ok: false, code: 'no-project', message: 'No project is open' };
+    let copied = false;
+    let store: ProjectStore | undefined;
+    // The copy is a separate project from here on (see DECISIONS D13), so it gets its own id,
+    // saved as a logged step in the copy only.
+    const copy: Project = { ...project, id: randomUUID() };
     try {
       this.session.copyFileTo(target);
+      copied = true;
       store = ProjectStore.open(target, { backup: false });
+      store.saveProject(copy, 'user', 'Saved as a new copy');
     } catch (e) {
+      store?.close();
+      if (copied) {
+        try {
+          for (const p of [target, `${target}-journal`]) if (existsSync(p)) unlinkSync(p);
+        } catch {
+          // Best effort: the error below is what the user needs to see.
+        }
+      }
       return this.openFailed(target, e);
     }
     this.recent.add(target);
-    this.session.replaceStore(store);
+    this.session.replaceStore(store, copy);
     return ok({ filePath: store.path });
   }
 
@@ -377,8 +393,13 @@ export class FileController {
         defaultId: 0,
         cancelId: 0,
       });
-      if (choice === 1) folder = await this.dialogs.open({ title: 'Choose workspace folder', defaultPath: dirname(this.defaultWorkspace), folder: true });
-      folder ??= this.defaultWorkspace;
+      if (choice === 1) {
+        folder = await this.dialogs.open({ title: 'Choose workspace folder', defaultPath: dirname(this.defaultWorkspace), folder: true });
+        // Cancelled: the user turned down the suggestion too, so remember nothing and ask again next run.
+        if (!folder) return;
+      } else {
+        folder = this.defaultWorkspace;
+      }
     }
     for (let attempt = 0; attempt < 3; attempt++) {
       const r = await this.openWorkspace(folder);
@@ -455,16 +476,34 @@ export class FileController {
     } catch (e) {
       return failure(e);
     }
-    const chosen = await this.dialogs.save({
+    return this.writeWithDialog({
       title: 'Export template',
       defaultPath: join(this.baseFolder, `${safeFileName(template?.name ?? id)}.json`),
       filters: TEMPLATE_FILTERS,
+      ext: '.json',
+      data: () => json,
     });
+  }
+
+  /**
+   * Asks where to save a file, adds `ext` when the typed name lacks it (asking before
+   * replacing that name), then writes `data()`. A write error is shown in a dialog and
+   * returned as 'file-error'.
+   */
+  async writeWithDialog(o: {
+    title: string;
+    defaultPath: string;
+    filters: FileFilter[];
+    ext: string;
+    data: () => string | Uint8Array | Promise<string | Uint8Array>;
+  }): Promise<ApiResult<{ filePath: string }>> {
+    const chosen = await this.dialogs.save({ title: o.title, defaultPath: o.defaultPath, filters: o.filters });
     if (!chosen) return canceled;
-    const target = withExt(chosen, '.json');
+    const target = withExt(chosen, o.ext);
     if (!(await this.confirmReplace(chosen, target))) return canceled;
+    const data = await o.data();
     try {
-      writeFileSync(target, json);
+      writeFileSync(target, data);
     } catch (e) {
       await this.dialogs.message({ type: 'error', message: `${basename(target)} couldn't be written.`, detail: (e as Error).message, buttons: ['OK'] });
       return failure(e, 'file-error');

@@ -1,6 +1,5 @@
 /** IPC handlers: the main-process side of shared/api.ts. Every input is checked in validate.ts. */
 import { ipcMain, type IpcMainInvokeEvent } from 'electron';
-import { writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import type { ApiResult } from '../shared/api.js';
 import { CH } from '../shared/channels.js';
@@ -27,7 +26,7 @@ function trusted(e: IpcMainInvokeEvent): boolean {
 }
 
 export function registerIpc(ctx: IpcContext): void {
-  const { session, files, dialogs } = ctx;
+  const { session, files } = ctx;
   const handle = (channel: string, fn: (...args: unknown[]) => ApiResult<unknown> | Promise<ApiResult<unknown>>) =>
     ipcMain.handle(channel, async (e, ...args: unknown[]) => {
       if (!trusted(e)) return { ok: false, code: 'invalid-input', message: 'Refused: unknown caller' };
@@ -76,9 +75,12 @@ export function registerIpc(ctx: IpcContext): void {
     if (!project || !filePath) return { ok: false, code: 'no-project', message: 'No project is open' };
     const { html, title } = lookAheadDocument(project, { paper: checkPaper(paper), weeks: 3 });
     const stem = basename(filePath, PROJECT_EXT);
-    const target = await dialogs.save({ title: 'Save look-ahead PDF', defaultPath: join(dirname(filePath), `${safeFileName(`${stem} ${title}`)}.pdf`), filters: [{ name: 'PDF', extensions: ['pdf'] }] });
-    if (!target) return { ok: false, code: 'canceled', message: 'Cancelled' };
-    writeFileSync(target, await htmlToPdf(html));
-    return ok({ filePath: target });
+    return files.writeWithDialog({
+      title: 'Save look-ahead PDF',
+      defaultPath: join(dirname(filePath), `${safeFileName(`${stem} ${title}`)}.pdf`),
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      ext: '.pdf',
+      data: () => htmlToPdf(html),
+    });
   });
 }
