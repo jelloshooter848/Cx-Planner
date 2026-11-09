@@ -250,6 +250,24 @@ describe('removeTask / restoreTask', () => {
   });
 });
 
+describe('undo of data that never passed the checks', () => {
+  function loose(): Project {
+    const p = sample();
+    p.tasks[1] = { ...p.tasks[1]!, durationDays: 0.5 };
+    p.tasks[2] = task('t3', 'a1', '1.3', { percentComplete: 150, actualFinish: '2026-11-05' });
+    return p;
+  }
+
+  it('removeTask then undo gives back the original exactly', () => {
+    roundTrip(loose(), { kind: 'removeTask', id: 't2' });
+    roundTrip(loose(), { kind: 'removeTask', id: 't3' });
+  });
+
+  it('removeAsset then undo gives back the original exactly', () => {
+    roundTrip(loose(), { kind: 'removeAsset', id: 'a1' });
+  });
+});
+
 describe('updateTask', () => {
   it('changes, sets and clears fields, and undoes', () => {
     const r = roundTrip(sample(), {
@@ -262,9 +280,42 @@ describe('updateTask', () => {
     expect('responsible' in cleared.project.tasks[1]!).toBe(false);
   });
 
-  it('ignores attempts to change id, asset or code through a patch', () => {
-    const r = applyCommand(sample(), { kind: 'updateTask', id: 't1', patch: { id: 'x', assetId: 'a2', code: '9.9' } as never });
-    expect(r.project.tasks[0]).toStrictEqual(sample().tasks[0]);
+  it('refuses to change id, asset or code, unknown keys and wrongly typed values', () => {
+    const up = (patch: Record<string, unknown>): Command => ({ kind: 'updateTask', id: 't1', patch });
+    const p = sample();
+    for (const patch of [{ id: 'x' }, { assetId: 'a2' }, { code: '9.9' }, { bogus: 1 }, { responsible: 5 },
+      { durationDays: '3' }, { readiness: 'x' }, { readiness: { T: 'ready' } }, { type: 7 }, { durationDays: null }]) {
+      expectError(p, up(patch), 'invalid-field');
+    }
+    expectError(p, { kind: 'updateTask', id: 't1', patch: null as never }, 'invalid-field');
+    expectError(p, { kind: 'updateAsset', id: 'a1', patch: { bogus: 1 } as never }, 'invalid-field');
+    expectError(p, { kind: 'updateAsset', id: 'a1', patch: { location: 5 } as never }, 'invalid-field');
+    expectError(p, { kind: 'updateAsset', id: 'a1', patch: { tag: null } as never }, 'invalid-field');
+    expectError(p, { kind: 'addTask', assetId: 'a1', task: { name: 'X', bogus: 1 } as never }, 'invalid-field');
+    expectError(p, { kind: 'addTask', assetId: 'a1', task: { name: 'X', responsible: 5 } as never }, 'invalid-field');
+    expectError(p, { kind: 'updateDependency', predecessorId: 't1', successorId: 't2', patch: { bogus: 1 } as never }, 'invalid-field');
+  });
+
+  it('sets a valid readiness record and undoes', () => {
+    const readiness = { T: 'ready', I: 'progress', M: 'needed', E: 'na', S: 'blocked' } as const;
+    const r = roundTrip(sample(), { kind: 'updateTask', id: 't1', patch: { readiness } });
+    expect(r.project.tasks[0]!.readiness).toStrictEqual(readiness);
+  });
+
+  it('checks only the fields a patch touches, and undo puts back out-of-range values', () => {
+    // As loaded from a file that was never checked.
+    const p = sample();
+    p.tasks[0] = { ...p.tasks[0]!, durationDays: 0.5, percentComplete: 150 };
+    const r = roundTrip(p, { kind: 'updateTask', id: 't1', patch: { name: 'Renamed' } });
+    expect(r.project.tasks[0]).toMatchObject({ name: 'Renamed', durationDays: 0.5 });
+    // Fixing the bad value is allowed, and undoing the fix restores it.
+    const fix = roundTrip(sample2(), { kind: 'updateTask', id: 't1', patch: { durationDays: 1, percentComplete: 100 } });
+    expect(fix.inverse).toMatchObject({ kind: 'updateTask', patch: { durationDays: 0.5, percentComplete: 150 }, restore: true });
+    function sample2() {
+      const q = sample();
+      q.tasks[0] = { ...q.tasks[0]!, durationDays: 0.5, percentComplete: 150 };
+      return q;
+    }
   });
 
   it('rejects invalid values', () => {
@@ -281,7 +332,7 @@ describe('updateTask', () => {
     expectError(p, up({ startNoEarlierThan: 'soon' }), 'invalid-date');
     expectError(p, up({ type: 'milestone' }), 'milestone-duration');
     expectError(p, up({ name: '  ' }), 'empty-name');
-    expectError(p, up({ name: null }), 'empty-name');
+    expectError(p, up({ name: null }), 'invalid-field');
   });
 });
 
@@ -317,6 +368,13 @@ describe('moveTask', () => {
     expectError(sample(), { kind: 'moveTask', id: 't1', toAssetId: 'zz', toIndex: 0 }, 'unknown-asset');
     expectError(sample(), { kind: 'moveTask', id: 't1', toAssetId: 'a1', toIndex: 3 }, 'invalid-index');
     expectError(sample(), { kind: 'moveTask', id: 't1', toAssetId: 'a2', toIndex: -1 }, 'invalid-index');
+  });
+
+  it('refuses an undo position that does not agree with the group position', () => {
+    // Position 3 of the remaining tasks is inside asset a2's tasks, not at a1's first slot.
+    expectError(sample(), { kind: 'moveTask', id: 't1', toAssetId: 'a1', toIndex: 0, restoreArrayIndex: 3 }, 'invalid-index');
+    const r = applyCommand(sample(), { kind: 'moveTask', id: 't1', toAssetId: 'a1', toIndex: 2, restoreArrayIndex: 2 });
+    expect(groupOrder(r.project, 'a1')).toEqual(['t2', 't3', 't1']);
   });
 });
 
@@ -402,6 +460,21 @@ describe('batch', () => {
     expect(r.summary).toContain('Added task 2.3 New; Linked 2.2 → 2.3 (FS)');
   });
 
+  it('does not stack "Undo: " prefixes over undo and redo', () => {
+    const r = applyCommand(sample(), { kind: 'batch', commands: [{ kind: 'setDataDate', date: '2026-11-05' }] });
+    expect(r.summary).toBe('Set data date to 2026-11-05');
+    const undone = applyCommand(r.project, r.inverse);
+    expect(undone.summary).toBe('Undo: Set data date to 2026-11-05');
+    const redone = applyCommand(undone.project, undone.inverse);
+    expect(redone.summary).toBe('Set data date to 2026-11-05');
+    expect((redone.inverse as { summary?: string }).summary).toBe('Undo: Set data date to 2026-11-05');
+
+    const add = applyCommand(sample(), { kind: 'addAssetsFromTemplate', template: panelTemplate(), assets: [{ tag: 'PNL-2', description: 'Panel' }] });
+    const addUndone = applyCommand(add.project, add.inverse);
+    expect(addUndone.summary).toBe(`Undo: ${add.summary}`);
+    expect(applyCommand(addUndone.project, addUndone.inverse).summary).toBe(add.summary);
+  });
+
   it('is all or nothing and rejects an empty batch', () => {
     const p = sample();
     expectError(p, {
@@ -459,6 +532,7 @@ describe('parsePredecessors / formatPredecessors', () => {
       { predecessorId: 't2', type: 'FS', lagDays: 1 },
     ]);
     expect(parsePredecessors('', p, 't4')).toEqual({ predecessors: [], errors: [] });
+    expect(Object.is(parsePredecessors('1.3-0', p, 't4').predecessors[0]!.lagDays, 0)).toBe(true);
   });
 
   it('reads a bare number as a task in the same group', () => {

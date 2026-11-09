@@ -7,9 +7,12 @@ import type {
   Id,
   IsoDate,
   Project,
+  Readiness,
+  ReadinessState,
   Task,
   TaskType,
 } from './model.js';
+import { TIMES_KEYS } from './model.js';
 import { ScheduleCycleError, topologicalOrder } from './schedule.js';
 import { instantiateTemplate, TemplateInvalidError, type Template } from './template.js';
 
@@ -26,6 +29,13 @@ import { instantiateTemplate, TemplateInvalidError, type Template } from './temp
  * asset's tasks in `project.tasks`. Commands that add, remove or move tasks or assets
  * renumber the groups they touch. Undo restores the original exactly when the project's
  * codes already follow that rule (see `renumberTasks`).
+ *
+ * TODO(desktop open path): call `renumberTasks` on every project loaded from ProjectStore
+ * (or imported) before the first edit, so undo of add/remove/move is exact.
+ *
+ * Commands arriving over IPC are plain JSON. `applyCommand` checks ids, values and the
+ * keys of patches, so unknown fields or wrongly typed values are refused rather than
+ * stored.
  */
 
 // ---------------------------------------------------------------------------------------
@@ -50,6 +60,7 @@ export type CommandErrorCode =
   | 'invalid-index'
   | 'invalid-calendar'
   | 'invalid-template'
+  | 'invalid-field'
   | 'empty-name'
   | 'empty-batch';
 
@@ -113,7 +124,13 @@ export type Command =
       tasks: Positioned<Task>[];
       dependencies: Positioned<Dependency>[];
     }
-  | { kind: 'updateAsset'; id: Id; patch: AssetPatch }
+  | {
+      kind: 'updateAsset';
+      id: Id;
+      patch: AssetPatch;
+      /** Set only by undo: the patch puts back earlier values, so value checks are skipped. */
+      restore?: true;
+    }
   | {
       kind: 'addTask';
       assetId: Id;
@@ -127,15 +144,29 @@ export type Command =
   | { kind: 'removeTask'; id: Id }
   /** Undo of removeTask. */
   | { kind: 'restoreTask'; task: Task; index: number; dependencies: Positioned<Dependency>[] }
-  | { kind: 'updateTask'; id: Id; patch: TaskPatch }
+  | {
+      kind: 'updateTask';
+      id: Id;
+      patch: TaskPatch;
+      /**
+       * Set only by undo: the patch puts back values the task had a moment ago, so value
+       * checks are skipped (unknown keys are still refused). Without it, only the fields
+       * the patch touches are checked.
+       */
+      restore?: true;
+    }
   | {
       kind: 'moveTask';
       id: Id;
       toAssetId: Id;
       /** Position among the target asset's other tasks (0 = first). */
       toIndex: number;
-      /** Exact position in project.tasks; set by undo. Overrides toIndex when present. */
-      arrayIndex?: number;
+      /**
+       * Undo only: the exact position in project.tasks the task came from, so the array
+       * order is restored exactly. It must agree with toIndex (the same number of the
+       * target asset's tasks before it); otherwise the command is refused.
+       */
+      restoreArrayIndex?: number;
     }
   | {
       kind: 'link';
@@ -173,11 +204,11 @@ export function applyCommand(project: Project, cmd: Command): CommandResult {
     case 'addAssetsFromTemplate': return addAssetsFromTemplate(project, cmd);
     case 'removeAsset': return removeAsset(project, cmd.id);
     case 'restoreAsset': return restoreAsset(project, cmd);
-    case 'updateAsset': return updateAsset(project, cmd.id, cmd.patch);
+    case 'updateAsset': return updateAsset(project, cmd.id, cmd.patch, cmd.restore === true);
     case 'addTask': return addTask(project, cmd);
     case 'removeTask': return removeTask(project, cmd.id);
     case 'restoreTask': return restoreTask(project, cmd);
-    case 'updateTask': return updateTask(project, cmd.id, cmd.patch);
+    case 'updateTask': return updateTask(project, cmd.id, cmd.patch, cmd.restore === true);
     case 'moveTask': return moveTask(project, cmd);
     case 'link': return link(project, cmd);
     case 'unlink': return unlink(project, cmd.predecessorId, cmd.successorId);
@@ -241,14 +272,15 @@ function addAssetsFromTemplate(
   }
   const added = assets.slice(project.assets.length);
   const tags = added.map((a) => a.tag).join(', ');
+  const summary = `Added ${plural(added.length, 'asset')} from ${cmd.template.name}: ${tags}`;
   return {
     project: { ...project, assets, tasks, dependencies },
     inverse: {
       kind: 'batch',
       commands: added.map((a): Command => ({ kind: 'removeAsset', id: a.id })).reverse(),
-      summary: `Removed ${plural(added.length, 'asset')} ${tags}`,
+      summary: undoSummary(summary),
     },
-    summary: `Added ${plural(added.length, 'asset')} from ${cmd.template.name}: ${tags}`,
+    summary,
   };
 }
 
@@ -283,7 +315,7 @@ function restoreAsset(project: Project, cmd: Extract<Command, { kind: 'restoreAs
   for (const { item } of cmd.tasks) {
     if (taskIds.has(item.id)) throw new CommandError('duplicate-id', `Task id "${item.id}" is already used`);
     if (item.assetId !== cmd.asset.id) throw new CommandError('unknown-asset', `Task "${item.id}" belongs to another asset`);
-    validateTask(item);
+    // No value checks: this puts back data the project held a moment ago.
   }
   const assets = [...project.assets];
   assets.splice(cmd.index, 0, cmd.asset);
@@ -298,17 +330,19 @@ function restoreAsset(project: Project, cmd: Extract<Command, { kind: 'restoreAs
   };
 }
 
-function updateAsset(project: Project, id: Id, patch: AssetPatch): CommandResult {
+function updateAsset(project: Project, id: Id, patch: AssetPatch, restore: boolean): CommandResult {
   const index = project.assets.findIndex((a) => a.id === id);
   const asset = project.assets[index];
   if (!asset) throw new CommandError('unknown-asset', `No asset with id "${id}"`);
-  const { value, undo, keys } = applyPatch(asset, patch);
-  if (typeof value.tag !== 'string' || value.tag.trim() === '') throw new CommandError('empty-name', 'An asset needs a tag');
+  const { value, undo, keys } = applyPatch(asset, patch, ASSET_FIELDS, restore);
+  if (!restore && keys.includes('tag') && value.tag.trim() === '') {
+    throw new CommandError('empty-name', 'An asset needs a tag');
+  }
   const assets = [...project.assets];
   assets[index] = value;
   return {
     project: { ...project, assets },
-    inverse: { kind: 'updateAsset', id, patch: undo as AssetPatch },
+    inverse: { kind: 'updateAsset', id, patch: undo as AssetPatch, restore: true },
     summary: `Updated asset ${asset.tag}${keys.length ? `: ${keys.map(fieldLabel).join(', ')}` : ''}`,
   };
 }
@@ -329,6 +363,7 @@ function addTask(project: Project, cmd: Extract<Command, { kind: 'addTask' }>): 
     while (taskIds.has(`${asset.id}:t${n}`)) n++;
     id = `${asset.id}:t${n}`;
   }
+  checkFields(cmd.task, TASK_FIELDS);
   const type = cmd.task.type ?? 'task';
   const task: Task = {
     durationDays: type === 'milestone' ? 0 : 1,
@@ -390,7 +425,7 @@ function restoreTask(project: Project, cmd: Extract<Command, { kind: 'restoreTas
     throw new CommandError('unknown-asset', `No asset with id "${cmd.task.assetId}"`);
   }
   checkIndex(cmd.index, project.tasks.length, 'Task position');
-  validateTask(cmd.task);
+  // No value checks: this puts back a task the project held a moment ago.
   const tasks = [...project.tasks];
   tasks.splice(cmd.index, 0, cmd.task);
   const dependencies = insertPositioned(project.dependencies, cmd.dependencies);
@@ -403,17 +438,17 @@ function restoreTask(project: Project, cmd: Extract<Command, { kind: 'restoreTas
   };
 }
 
-function updateTask(project: Project, id: Id, patch: TaskPatch): CommandResult {
+function updateTask(project: Project, id: Id, patch: TaskPatch, restore: boolean): CommandResult {
   const index = project.tasks.findIndex((t) => t.id === id);
   const task = project.tasks[index];
   if (!task) throw new CommandError('unknown-task', `No task with id "${id}"`);
-  const { value, undo, keys } = applyPatch(task, patch);
-  validateTask(value);
+  const { value, undo, keys } = applyPatch(task, patch, TASK_FIELDS, restore);
+  if (!restore) validateTask(value, new Set(keys));
   const tasks = [...project.tasks];
   tasks[index] = value;
   return {
     project: { ...project, tasks },
-    inverse: { kind: 'updateTask', id, patch: undo as TaskPatch },
+    inverse: { kind: 'updateTask', id, patch: undo as TaskPatch, restore: true },
     summary: `Updated ${task.code}${keys.length ? `: ${keys.map(fieldLabel).join(', ')}` : ''}`,
   };
 }
@@ -427,13 +462,17 @@ function moveTask(project: Project, cmd: Extract<Command, { kind: 'moveTask' }>)
   }
   const rest = project.tasks.filter((t) => t.id !== cmd.id);
   const fromGroupIndex = project.tasks.filter((t) => t.assetId === task.assetId).indexOf(task);
+  const groupSize = rest.filter((t) => t.assetId === cmd.toAssetId).length;
+  checkIndex(cmd.toIndex, groupSize, 'Task position');
   let at: number;
-  if (cmd.arrayIndex !== undefined) {
-    checkIndex(cmd.arrayIndex, rest.length, 'Task position');
-    at = cmd.arrayIndex;
+  if (cmd.restoreArrayIndex !== undefined) {
+    checkIndex(cmd.restoreArrayIndex, rest.length, 'Task position');
+    at = cmd.restoreArrayIndex;
+    const before = rest.slice(0, at).filter((t) => t.assetId === cmd.toAssetId).length;
+    if (before !== cmd.toIndex) {
+      throw new CommandError('invalid-index', `Task position ${at} does not match position ${cmd.toIndex} in the asset`);
+    }
   } else {
-    const groupSize = rest.filter((t) => t.assetId === cmd.toAssetId).length;
-    checkIndex(cmd.toIndex, groupSize, 'Task position');
     at = insertIndexInGroup(project, rest, cmd.toAssetId, cmd.toIndex);
   }
   const moved: Task = task.assetId === cmd.toAssetId ? task : { ...task, assetId: cmd.toAssetId };
@@ -442,7 +481,7 @@ function moveTask(project: Project, cmd: Extract<Command, { kind: 'moveTask' }>)
   const next = renumber({ ...project, tasks }, [task.assetId, cmd.toAssetId]);
   return {
     project: next,
-    inverse: { kind: 'moveTask', id: cmd.id, toAssetId: task.assetId, toIndex: fromGroupIndex, arrayIndex: from },
+    inverse: { kind: 'moveTask', id: cmd.id, toAssetId: task.assetId, toIndex: fromGroupIndex, restoreArrayIndex: from },
     summary: `Moved ${task.code} ${task.name} to ${next.tasks[at]!.code}`,
   };
 }
@@ -510,6 +549,9 @@ function updateDependency(project: Project, cmd: Extract<Command, { kind: 'updat
   const index = findDependencyIndex(project, cmd.predecessorId, cmd.successorId);
   const dep = project.dependencies[index];
   if (!dep) throw new CommandError('unknown-dependency', `No link from "${cmd.predecessorId}" to "${cmd.successorId}"`);
+  for (const k of Object.keys(cmd.patch)) {
+    if (k !== 'type' && k !== 'lagDays') throw new CommandError('invalid-field', `"${k}" cannot be changed on a link`);
+  }
   const value: Dependency = { ...dep, ...dropUndefined(cmd.patch) };
   checkLink(value.type, value.lagDays);
   const undo: DependencyPatch = {};
@@ -587,7 +629,14 @@ function batch(project: Project, commands: Command[], summary?: string): Command
     summaries.push(r.summary);
   }
   const text = summary ?? summaries.join('; ');
-  return { project: current, inverse: { kind: 'batch', commands: inverses, summary: `Undo: ${text}` }, summary: text };
+  return { project: current, inverse: { kind: 'batch', commands: inverses, summary: undoSummary(text) }, summary: text };
+}
+
+const UNDO_PREFIX = 'Undo: ';
+
+/** "Undo: X" for X, and X again for "Undo: X", so redo does not stack prefixes. */
+function undoSummary(text: string): string {
+  return text.startsWith(UNDO_PREFIX) ? text.slice(UNDO_PREFIX.length) : `${UNDO_PREFIX}${text}`;
 }
 
 // ---------------------------------------------------------------------------------------
@@ -679,7 +728,8 @@ export function parsePredecessors(text: string, project: Project, forTaskId: Id)
       continue;
     }
     const lag = m[4] === undefined ? 0 : Number(m[4]) * (m[3] === '-' ? -1 : 1);
-    predecessors.push({ predecessorId: pred.id, type: (m[2]?.toUpperCase() ?? 'FS') as DependencyType, lagDays: lag });
+    // "1.3-0" would otherwise give -0.
+    predecessors.push({ predecessorId: pred.id, type: (m[2]?.toUpperCase() ?? 'FS') as DependencyType, lagDays: lag + 0 });
   }
   return { predecessors, errors };
 }
@@ -731,22 +781,30 @@ export function setPredecessorsCommand(project: Project, taskId: Id, predecessor
 const TASK_TYPES: readonly TaskType[] = ['task', 'hold', 'witness', 'milestone'];
 const DEP_TYPES: readonly DependencyType[] = ['FS', 'SS', 'FF', 'SF'];
 
-function validateTask(t: Task): void {
+/**
+ * Checks a task's values. With `touched`, only the rules involving those fields run, so
+ * an edit is not refused because of an unrelated field that was already out of range.
+ */
+function validateTask(t: Task, touched?: ReadonlySet<string>): void {
   const label = t.code ? `${t.code}` : `"${t.name}"`;
-  if (typeof t.name !== 'string' || t.name.trim() === '') throw new CommandError('empty-name', 'A task needs a name');
-  if (!TASK_TYPES.includes(t.type)) throw new CommandError('invalid-type', `Unknown task type "${t.type}"`);
-  if (!Number.isFinite(t.durationDays) || !Number.isInteger(t.durationDays) || t.durationDays < 0) {
+  const check = (...fields: string[]): boolean => touched === undefined || fields.some((f) => touched.has(f));
+  if (check('name') && (typeof t.name !== 'string' || t.name.trim() === '')) {
+    throw new CommandError('empty-name', 'A task needs a name');
+  }
+  if (check('type') && !TASK_TYPES.includes(t.type)) throw new CommandError('invalid-type', `Unknown task type "${t.type}"`);
+  if (check('durationDays') && (!Number.isFinite(t.durationDays) || !Number.isInteger(t.durationDays) || t.durationDays < 0)) {
     throw new CommandError('invalid-duration', `${label} duration must be a whole number of working days, 0 or more`);
   }
-  if (t.type === 'milestone' && t.durationDays !== 0) {
+  if (check('type', 'durationDays') && t.type === 'milestone' && t.durationDays !== 0) {
     throw new CommandError('milestone-duration', `${label} is a milestone, so its duration must be 0`);
   }
-  if (!Number.isFinite(t.percentComplete) || t.percentComplete < 0 || t.percentComplete > 100) {
+  if (check('percentComplete') && (!Number.isFinite(t.percentComplete) || t.percentComplete < 0 || t.percentComplete > 100)) {
     throw new CommandError('invalid-percent', `${label} percent complete must be between 0 and 100`);
   }
-  if (t.startNoEarlierThan !== undefined) checkDate(t.startNoEarlierThan, 'Start no earlier than');
-  if (t.actualStart !== undefined) checkDate(t.actualStart, 'Actual start');
-  if (t.actualFinish !== undefined) {
+  if (check('readiness') && t.readiness !== undefined) checkReadiness(t.readiness);
+  if (check('startNoEarlierThan') && t.startNoEarlierThan !== undefined) checkDate(t.startNoEarlierThan, 'Start no earlier than');
+  if (check('actualStart') && t.actualStart !== undefined) checkDate(t.actualStart, 'Actual start');
+  if (check('actualStart', 'actualFinish') && t.actualFinish !== undefined) {
     checkDate(t.actualFinish, 'Actual finish');
     if (t.actualStart === undefined) {
       throw new CommandError('finish-without-start', `${label} has an actual finish but no actual start`);
@@ -828,17 +886,93 @@ function insertPositioned<T>(list: T[], items: Positioned<T>[]): T[] {
   return out;
 }
 
-/** Applies a patch (null clears a field) and returns the patch that undoes it. */
+type FieldKind = 'string' | 'number' | 'readiness';
+interface FieldSpec {
+  kind: FieldKind;
+  /** Optional fields may be cleared with null. */
+  optional: boolean;
+}
+
+const TASK_FIELDS: Readonly<Record<string, FieldSpec>> = {
+  name: { kind: 'string', optional: false },
+  type: { kind: 'string', optional: false },
+  durationDays: { kind: 'number', optional: false },
+  percentComplete: { kind: 'number', optional: false },
+  responsible: { kind: 'string', optional: true },
+  startNoEarlierThan: { kind: 'string', optional: true },
+  actualStart: { kind: 'string', optional: true },
+  actualFinish: { kind: 'string', optional: true },
+  readiness: { kind: 'readiness', optional: true },
+  templateKey: { kind: 'string', optional: true },
+};
+
+const ASSET_FIELDS: Readonly<Record<string, FieldSpec>> = {
+  tag: { kind: 'string', optional: false },
+  description: { kind: 'string', optional: false },
+  location: { kind: 'string', optional: true },
+  system: { kind: 'string', optional: true },
+  templateId: { kind: 'string', optional: true },
+  templateVersion: { kind: 'number', optional: true },
+};
+
+const READINESS_STATES: readonly ReadinessState[] = ['ready', 'progress', 'needed', 'na', 'blocked'];
+
+function isReadiness(v: unknown): v is Readiness {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+  const entries = Object.entries(v);
+  return (
+    entries.length === TIMES_KEYS.length &&
+    entries.every(([k, s]) => (TIMES_KEYS as readonly string[]).includes(k) && READINESS_STATES.includes(s as ReadinessState))
+  );
+}
+
+/** Refuses unknown keys and wrongly typed values in new-item fields (undefined is skipped). */
+function checkFields(o: object, fields: Readonly<Record<string, FieldSpec>>): void {
+  for (const [k, v] of Object.entries(o)) {
+    if (v === undefined) continue;
+    const spec = Object.hasOwn(fields, k) ? fields[k] : undefined;
+    if (!spec) throw new CommandError('invalid-field', `"${k}" is not a field that can be set here`);
+    if (spec.kind === 'readiness' ? typeof v !== 'object' || v === null : typeof v !== spec.kind) {
+      throw new CommandError('invalid-field', `${fieldLabel(k)} must be a ${spec.kind === 'readiness' ? 'readiness record' : spec.kind}`);
+    }
+  }
+}
+
+function checkReadiness(v: unknown): void {
+  if (!isReadiness(v)) {
+    throw new CommandError('invalid-field', `Readiness needs a state (${READINESS_STATES.join(', ')}) for each of ${TIMES_KEYS.join(', ')}`);
+  }
+}
+
+/**
+ * Applies a patch (null clears a field) and returns the patch that undoes it. Only the
+ * listed fields may be patched, with values of the right type (not checked for `restore`);
+ * anything else is refused.
+ */
 function applyPatch<T extends object>(
   value: T,
   patch: object,
+  fields: Readonly<Record<string, FieldSpec>>,
+  restore = false,
 ): { value: T; undo: Record<string, unknown>; keys: string[] } {
+  if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) {
+    throw new CommandError('invalid-field', 'A patch must be an object');
+  }
   const next = { ...value } as Record<string, unknown>;
   const before = value as Record<string, unknown>;
   const undo: Record<string, unknown> = {};
   const keys: string[] = [];
   for (const [k, v] of Object.entries(patch)) {
-    if (v === undefined || k === 'id' || k === 'assetId' || k === 'code') continue;
+    if (v === undefined) continue;
+    const spec = Object.hasOwn(fields, k) ? fields[k] : undefined;
+    if (!spec) throw new CommandError('invalid-field', `"${k}" cannot be changed here`);
+    if (restore) {
+      // Undo puts back earlier values as they were, even ones that would fail a check.
+    } else if (v === null) {
+      if (!spec.optional) throw new CommandError('invalid-field', `${fieldLabel(k)} cannot be cleared`);
+    } else if (spec.kind === 'readiness' ? typeof v !== 'object' : typeof v !== spec.kind) {
+      throw new CommandError('invalid-field', `${fieldLabel(k)} must be a ${spec.kind === 'readiness' ? 'readiness record' : spec.kind}`);
+    }
     undo[k] = k in before && before[k] !== undefined ? before[k] : null;
     if (v === null) delete next[k];
     else next[k] = v;
