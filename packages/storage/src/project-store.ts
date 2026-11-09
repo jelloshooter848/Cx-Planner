@@ -5,6 +5,17 @@ import { backupBeforeOpen } from './backup.js';
 import { FileLock } from './lock.js';
 import { APPLICATION_ID, MIGRATIONS, PROJECT_META_KEYS, REVISION_META_KEYS } from './schema.js';
 
+/** A print record's task_ids column: a JSON array of strings, or null when absent or unreadable. */
+function parseTaskIds(raw: unknown): string[] | null {
+  if (typeof raw !== 'string') return null;
+  try {
+    const v: unknown = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : null;
+  } catch {
+    return null;
+  }
+}
+
 export class NotAProjectFileError extends Error {
   constructor(path: string) {
     super(`${path} is not a Cx Planner project file`);
@@ -87,11 +98,15 @@ export interface NewPrintRecord {
   note?: string;
   /** Sheet title, e.g. "3-Week Look-Ahead: Nov 2 – Nov 20, 2026". */
   title?: string;
+  /** Tasks the print covered, for test sheets (each sheet counts its own revisions). */
+  taskIds?: readonly string[];
 }
 
 /** One issued print (a row of print_record). */
-export interface PrintRecord extends Required<NewPrintRecord> {
+export interface PrintRecord extends Required<Omit<NewPrintRecord, 'taskIds'>> {
   id: number;
+  /** Tasks the print covered; null when none were recorded (other kinds, or files from before schema 6). */
+  taskIds: string[] | null;
   /** ISO timestamp of when it was printed. */
   printedAt: string;
   /** Last change_event seq included in the print. */
@@ -531,8 +546,10 @@ export class ProjectStore {
   recordPrint(p: NewPrintRecord): number {
     const last = this.db.prepare('SELECT COALESCE(MAX(seq), 0) AS s FROM change_event').get() as { s: number };
     const r = this.db
-      .prepare('INSERT INTO print_record (kind, rev, issued, printed_at, paper, sheets, data_date, last_change_seq, note, title) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(p.kind, p.rev, p.issued, new Date().toISOString(), p.paper, p.sheets, p.dataDate, last.s, p.note ?? '', p.title ?? '');
+      .prepare(
+        'INSERT INTO print_record (kind, rev, issued, printed_at, paper, sheets, data_date, last_change_seq, note, title, task_ids) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .run(p.kind, p.rev, p.issued, new Date().toISOString(), p.paper, p.sheets, p.dataDate, last.s, p.note ?? '', p.title ?? '', p.taskIds ? JSON.stringify(p.taskIds) : null);
     return Number(r.lastInsertRowid);
   }
 
@@ -555,6 +572,7 @@ export class ProjectStore {
       lastChangeSeq: Number(r.last_change_seq),
       note: String(r.note ?? ''),
       title: String(r.title ?? ''),
+      taskIds: parseTaskIds(r.task_ids),
     }));
   }
 

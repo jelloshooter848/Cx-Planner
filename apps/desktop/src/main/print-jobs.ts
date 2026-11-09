@@ -11,6 +11,7 @@ import {
   lookAheadWindow,
   nextRevision,
   printDocumentHtml,
+  revisionLetter,
   type Paper,
   type PaperId,
   type PrintDocument,
@@ -43,6 +44,8 @@ export interface BuiltPrint {
   paper: Paper;
   paperId: PaperId;
   sheets: number;
+  /** Test sheets: the tasks printed, recorded so each sheet counts its own revisions. */
+  taskIds?: string[];
 }
 
 const isKind = (k: string): k is PrintKind => (PRINT_KINDS as readonly string[]).includes(k);
@@ -55,6 +58,17 @@ export function printRecordSummary(r: PrintRecord): PrintRecordSummary | null {
 /** The revision the next print of `kind` gets: one after the highest issued. */
 export function nextRevisionFor(history: readonly PrintRecord[], kind: PrintKind): string {
   return nextRevision(history.filter((r) => r.kind === kind).map((r) => r.rev));
+}
+
+/**
+ * The revision a test sheet for `taskId` gets: one letter on from the number of earlier
+ * test-sheet prints that covered that task, so a task's first sheet is always "A" whatever
+ * else was printed before. Prints recorded without a task list (files from before schema 6)
+ * cannot be told apart and are not counted.
+ */
+export function sheetRevision(history: readonly PrintRecord[], taskId: string): string {
+  const issued = history.filter((r) => r.kind === 'test-sheets' && r.taskIds?.includes(taskId)).length;
+  return revisionLetter(issued);
 }
 
 export function printSetup(project: Project, templates: readonly Template[], history: readonly PrintRecord[]): PrintSetup {
@@ -118,6 +132,7 @@ export function buildPrint(input: BuildPrintInput): BuiltPrint {
   let doc: PrintDocument;
   let title: string;
   let paperId: PaperId;
+  let taskIds: string[] | undefined;
 
   switch (req.kind) {
     case 'lookahead': {
@@ -161,7 +176,7 @@ export function buildPrint(input: BuildPrintInput): BuiltPrint {
           project, asset: c.asset, task: c.task,
           // Acceptance criteria come from the template snapshot the asset was made from.
           checklist: c.templateTask.checklist.map(({ id, text, acceptance }) => ({ id, text, ...(acceptance ? { acceptance } : {}) })),
-          revision: { rev, issued },
+          revision: { rev: sheetRevision(history, c.task.id), issued },
           sheetId: `${c.asset.tag}-${c.task.code}`,
           ...(c.templateTask.testForm ? { sheetName: c.templateTask.testForm } : {}),
           ...(planned ? { scheduled: { start: planned.start, finish: planned.finish } } : {}),
@@ -172,6 +187,7 @@ export function buildPrint(input: BuildPrintInput): BuiltPrint {
       title = chosen.length === 1 ? `Test Sheet ${chosen[0]!.asset.tag} ${chosen[0]!.task.code}` : `Test Sheets (${chosen.length})`;
       paperId = 'letter';
       doc = { paper: paper!, sheets: pages };
+      taskIds = chosen.map((c) => c.task.id);
       break;
     }
   }
@@ -185,5 +201,6 @@ export function buildPrint(input: BuildPrintInput): BuiltPrint {
     paper: doc.paper,
     paperId,
     sheets: doc.sheets.length,
+    ...(taskIds ? { taskIds } : {}),
   };
 }

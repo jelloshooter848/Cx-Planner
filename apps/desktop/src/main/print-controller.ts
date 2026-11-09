@@ -99,7 +99,7 @@ export class PrintController {
     const { session } = this.opts;
     if (session.filePath !== projectFile) return { ok: false, code: 'no-project', message: 'The project was closed before the print was recorded' };
     try {
-      session.recordPrint({ kind: p.kind, rev: p.rev, issued: p.issued, paper: p.paperId, sheets: p.sheets, dataDate: p.issued, note: p.note, title: p.title });
+      session.recordPrint({ kind: p.kind, rev: p.rev, issued: p.issued, paper: p.paperId, sheets: p.sheets, dataDate: p.issued, note: p.note, title: p.title, ...(p.taskIds ? { taskIds: p.taskIds } : {}) });
     } catch (e) {
       return failure(e, 'file-error');
     }

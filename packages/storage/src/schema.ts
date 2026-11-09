@@ -106,6 +106,11 @@ export const MIGRATIONS: string[] = [
   DROP TABLE project_template;
   ALTER TABLE project_template_v4 RENAME TO project_template;
   `,
+  // 5 -> 6: which tasks a test-sheet print covered (JSON array of task ids), so each sheet
+  // carries its own revision. NULL for prints recorded before this, and for other kinds.
+  `
+  ALTER TABLE print_record ADD COLUMN task_ids TEXT;
+  `,
 ];
 
 /** Meta keys that hold the project's own fields (written by replaceProject/saveProject). */

@@ -173,6 +173,16 @@ describe('print / export PDF', () => {
     await boxes.nth(0).check();
     await boxes.nth(1).check();
     await expect.poll(() => count.textContent()).toMatch(/· 8\.5 × 11 in$/);
+    await dialog.getByText('Updating…').waitFor({ state: 'hidden' });
+    // Each sheet's header carries its own revision; the print's own revision is labelled as such.
+    expect(await dialog.locator('.pd-rev dt').first().textContent()).toBe('Print revision');
+    await dialog.getByTestId('sheet-revision-note').waitFor();
+    const sheetFrame = dialog.locator('iframe').contentFrame();
+    const sheetRevs = async () =>
+      Object.fromEntries([...((await sheetFrame.locator('body').textContent()) ?? '').matchAll(/Sheet (\S+) · Rev ([A-Z])/g)].map((m) => [m[1]!, m[2]!]));
+    const firstIssue = await sheetRevs();
+    expect(Object.keys(firstIssue)).toHaveLength(2);
+    expect(Object.values(firstIssue)).toEqual(['A', 'A']);
     const sheetsT = Number(/^(\d+)/.exec((await count.textContent())!)![1]);
     expect(sheetsT).toBeGreaterThanOrEqual(2);
     await dialog.getByRole('button', { name: 'Next sheet' }).click();
@@ -185,6 +195,21 @@ describe('print / export PDF', () => {
     const pdfT = readFileSync(sheetsPdf);
     expect(pdfPages(pdfT)).toBe(sheetsT);
     expect(mediaBox(pdfT)).toEqual([0, 0, 612, 792]);
+
+    // Print the second task again with a third: the print is Rev B, the re-issued sheet Rev B
+    // and the third task's sheet its first issue, Rev A.
+    await expect.poll(() => rev.textContent()).toBe('B');
+    await boxes.nth(0).uncheck();
+    await boxes.nth(2).check();
+    const showsNewSheet = async () => {
+      const ids = Object.keys(await sheetRevs());
+      return ids.length === 2 && ids.some((id) => !(id in firstIssue));
+    };
+    await expect.poll(showsNewSheet).toBe(true);
+    await dialog.getByText('Updating…').waitFor({ state: 'hidden' });
+    const secondIssue = await sheetRevs();
+    for (const [id, r] of Object.entries(secondIssue)) expect([id, r]).toEqual([id, id in firstIssue ? 'B' : 'A']);
+    await h.screenshot('print-dialog-test-sheets-rev');
 
     // Arrow keys move between kinds (a radio group with one Tab stop).
     const kindRadio = (name: string) => dialog.getByRole('radio', { name });
