@@ -60,6 +60,7 @@ export function buildMenu(ctx: MenuContext, s: AppState): Menu {
         { label: 'Save As…', ...hint('CmdOrCtrl+Shift+S'), enabled: open, click: () => void files.saveAs() },
         { label: 'Close Project', enabled: open, click: () => files.close() },
         { type: 'separator' },
+        { label: 'Project Settings…', enabled: open, click: () => ctx.toRenderer('project-settings') },
         { label: 'Print / Export PDF…', ...hint('CmdOrCtrl+P'), enabled: open, click: () => ctx.toRenderer('print') },
         { type: 'separator' },
         { label: 'Workspace Folder…', click: () => void files.chooseWorkspace() },

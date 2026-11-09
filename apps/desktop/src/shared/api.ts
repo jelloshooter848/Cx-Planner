@@ -204,12 +204,13 @@ export interface PdfExported extends PrintIssued {
 }
 
 /**
- * Commands main sends the renderer: menu items that need a form ('new-project', 'print'), Edit >
- * Delete Task ('delete-task', which acts on the renderer's selected task after a confirm), and
- * 'confirm-close' when the window is closing while the renderer reported unsaved work (it asks
- * Save / Discard / Cancel, then closes the window itself or stays open).
+ * Commands main sends the renderer: menu items that need a form ('new-project', 'print',
+ * 'project-settings'), Edit > Delete Task ('delete-task', which acts on the renderer's selected
+ * task after a confirm), and 'confirm-close' when the window is closing while the renderer
+ * reported unsaved work (it asks Save / Discard / Cancel, then closes the window itself or
+ * stays open).
  */
-export type MenuCommand = 'new-project' | 'print' | 'delete-task' | 'confirm-close';
+export type MenuCommand = 'new-project' | 'print' | 'project-settings' | 'delete-task' | 'confirm-close';
 
 export interface TemplateApi {
   list(): Promise<ApiResult<TemplateSummary[]>>;
