@@ -1,6 +1,5 @@
 import { useLayoutEffect, useMemo, useRef } from 'react';
-import { WorkCalendar } from '@cx/core';
-import { lookAheadWindow, type LookAheadWindow } from '@cx/render';
+import { currentLookAheadWindow } from '../../dialogs/Print/print-options';
 import type { SchedulePanel } from '../../layout-prefs';
 import { useAssetFilter, useProject, useSchedule, useSelect, useStore } from '../../store';
 import { AssetSidebar } from './AssetSidebar';
@@ -35,14 +34,8 @@ export function ScheduleView() {
   }, [layout.assetsCollapsed, layout.detailsCollapsed]);
   const assetIds = useMemo(() => (filter ? new Set(filter) : null), [filter]);
   const project = info?.project;
-  const lookAhead = useMemo((): LookAheadWindow | null => {
-    if (!project) return null;
-    try {
-      return lookAheadWindow(project.dataDate, weeks, new WorkCalendar(project.startDate, project.calendar));
-    } catch {
-      return null;
-    }
-  }, [project, weeks]);
+  // The same window the Print dialog's test sheets default to.
+  const lookAhead = useMemo(() => (project ? currentLookAheadWindow(project, weeks) : null), [project, weeks]);
   if (!info || !project) return null;
   return (
     <main className="view view-column view-schedule" aria-label="Schedule">
