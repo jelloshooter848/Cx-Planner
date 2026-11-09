@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { riversideProject } from '@cx/fixtures';
 import { BACKUP_DIR, ProjectStore, WorkspaceStore } from '@cx/storage';
 import { emptyProject, FileController, projectArg, safeFileName } from '../src/main/files.js';
@@ -69,6 +69,27 @@ describe('new project', () => {
     expect(session.project!.tasks).toEqual([]);
   });
 
+  it('asks before replacing a file whose name only matches once .cxp is added', async () => {
+    const path = sampleFile('Existing.cxp');
+    dialogs.push({ save: join(dir, 'Existing') }, { message: 0, expect: 'Existing\\.cxp already exists' });
+    expect(await files.newProject({ name: 'Fresh', startDate: '2026-11-02' })).toMatchObject({ ok: false, code: 'canceled' });
+    const kept = ProjectStore.open(path);
+    expect(kept.loadProject().tasks.length).toBeGreaterThan(0);
+    kept.close();
+    dialogs.push({ save: join(dir, 'Existing') }, { message: 1, expect: 'Replace it' });
+    expect((await files.newProject({ name: 'Fresh', startDate: '2026-11-02' })).ok).toBe(true);
+    expect(session.project!.tasks).toEqual([]);
+  });
+
+  it('removes a stale journal so it cannot be rolled back onto the new file', async () => {
+    const path = sampleFile();
+    writeFileSync(`${path}-journal`, 'left by a crash');
+    dialogs.push({ save: path });
+    expect((await files.newProject({ name: 'Fresh', startDate: '2026-11-02' })).ok).toBe(true);
+    expect(existsSync(`${path}-journal`)).toBe(false);
+    expect(session.project!.name).toBe('Fresh');
+  });
+
   it('refuses to replace a file someone else has open', async () => {
     const path = sampleFile();
     lockFromElsewhere(path);
@@ -119,10 +140,12 @@ describe('open', () => {
     lockFromElsewhere(path);
     dialogs.push({ message: 0, expect: 'open by pat on OTHER-PC' });
     expect(await files.openPath(path)).toMatchObject({ ok: false, code: 'locked' });
-    dialogs.push({ message: 1 }, { message: 0, expect: 'Break the lock' });
+    dialogs.push({ message: 1 }, { message: 0, expect: 'read-only is coming' });
+    expect(await files.openPath(path)).toMatchObject({ ok: false, code: 'locked' });
+    dialogs.push({ message: 2 }, { message: 0, expect: 'Break the lock' });
     expect(await files.openPath(path)).toMatchObject({ ok: false, code: 'locked' });
     expect(session.project).toBeNull();
-    dialogs.push({ message: 1 }, { message: 1 });
+    dialogs.push({ message: 2 }, { message: 1 });
     expect((await files.openPath(path)).ok).toBe(true);
     expect(JSON.parse(readFileSync(`${path}.lock`, 'utf8')).host).toBe(hostname());
   });
@@ -136,6 +159,18 @@ describe('open', () => {
     expect(await files.openRecent(join(dir, 'gone.cxp'))).toMatchObject({ ok: false, code: 'file-error' });
     expect(recent.list()).toEqual([path]);
     expect((await files.openRecent(path)).ok).toBe(true);
+  });
+
+  it('shows a dialog and keeps the recent list clean when a file cannot be adopted', async () => {
+    const path = sampleFile();
+    const spy = vi.spyOn(session, 'openStore').mockImplementation((store) => {
+      store.close();
+      throw new Error('attempt to write a readonly database');
+    });
+    dialogs.push({ message: 0, expect: "couldn't be opened[\\s\\S]*readonly" });
+    expect(await files.openPath(path)).toMatchObject({ ok: false, code: 'file-error' });
+    spy.mockRestore();
+    expect(recent.list()).toEqual([]);
   });
 
   it('opening the file already open is a no-op', async () => {
@@ -226,6 +261,14 @@ describe('template files', () => {
     dialogs.push({ open: `${target}.json` });
     const r = await files.importTemplate();
     expect(r).toMatchObject({ ok: true, value: { idChanged: true, template: { kind: 'custom' } } });
+  });
+
+  it('asks before overwriting an existing export once .json is added', async () => {
+    const id = session.workspace!.listTemplates()[0]!.id;
+    writeFileSync(join(dir, 'tpl.json'), 'keep me');
+    dialogs.push({ save: join(dir, 'tpl') }, { message: 0, expect: 'tpl\\.json already exists' });
+    expect(await files.exportTemplate(id)).toMatchObject({ ok: false, code: 'canceled' });
+    expect(readFileSync(join(dir, 'tpl.json'), 'utf8')).toBe('keep me');
   });
 
   it('explains a file that is not a template', async () => {

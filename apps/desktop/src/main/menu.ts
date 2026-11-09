@@ -19,7 +19,7 @@ export function menuKey(s: AppState): string {
 }
 
 /**
- * The application menu. Project undo/redo are menu items without shortcuts: the renderer
+ * The application menu. Project undo/redo shortcuts are not registered here: the renderer
  * binds Ctrl+Z / Ctrl+Y itself when focus is not in a text field, so text fields keep
  * their own undo.
  */
@@ -49,8 +49,12 @@ export function buildMenu(ctx: MenuContext, s: AppState): Menu {
     {
       label: '&Edit',
       submenu: [
-        { label: s.undoLabel ? `Undo ${amp(s.undoLabel)}` : 'Undo', enabled: s.canUndo, click: () => session.undo() },
-        { label: s.redoLabel ? `Redo ${amp(s.redoLabel)}` : 'Redo', enabled: s.canRedo, click: () => session.redo() },
+        // Shortcut shown as a hint only (the renderer handles the key); on macOS the roles below own Cmd+Z.
+        { label: s.undoLabel ? `Undo ${amp(s.undoLabel)}` : 'Undo', enabled: s.canUndo, click: () => session.undo(), ...(isMac ? {} : { accelerator: 'Ctrl+Z', registerAccelerator: false }) },
+        { label: s.redoLabel ? `Redo ${amp(s.redoLabel)}` : 'Redo', enabled: s.canRedo, click: () => session.redo(), ...(isMac ? {} : { accelerator: 'Ctrl+Y', registerAccelerator: false }) },
+        // On macOS, Cmd+Z in text fields only works through these roles. Outside text fields
+        // the renderer handles the key first (and prevents default), so these do not fire.
+        ...(isMac ? [{ type: 'separator' as const }, { role: 'undo' as const, label: 'Undo Typing' }, { role: 'redo' as const, label: 'Redo Typing' }] : []),
         { type: 'separator' },
         { role: 'cut' },
         { role: 'copy' },

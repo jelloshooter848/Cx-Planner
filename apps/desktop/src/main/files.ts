@@ -130,6 +130,7 @@ export class FileController {
     });
     if (!chosen) return canceled;
     const target = withExt(chosen, PROJECT_EXT);
+    if (!(await this.confirmReplace(chosen, target))) return canceled;
     if (this.session.filePath && samePath(this.session.filePath, target)) this.session.closeProject();
     const cleared = await this.clearTarget(target);
     if (!cleared.ok) return cleared;
@@ -189,6 +190,7 @@ export class FileController {
     if (!chosen) return canceled;
     const target = withExt(chosen, PROJECT_EXT);
     if (samePath(target, current)) return ok({ filePath: current });
+    if (!(await this.confirmReplace(chosen, target))) return canceled;
     const cleared = await this.clearTarget(target);
     if (!cleared.ok) return cleared;
     let store: ProjectStore;
@@ -208,22 +210,41 @@ export class FileController {
     return ok(undefined);
   }
 
-  private adopt(store: ProjectStore): ApiResult<{ filePath: string }> {
+  private async adopt(store: ProjectStore): Promise<ApiResult<{ filePath: string }>> {
+    const path = store.path;
     try {
-      this.recent.add(store.path);
       this.session.openStore(store);
     } catch (e) {
-      return failure(e, 'file-error');
+      return this.openFailed(path, e);
     }
-    return ok({ filePath: store.path });
+    this.recent.add(path);
+    return ok({ filePath: path });
   }
 
   /**
-   * Makes room for a new file at `target` (the user already agreed to replace it in the
-   * save dialog). Refuses when another session has it open.
+   * The save dialog asks before replacing the name the user typed, but not the name we
+   * make by adding the extension afterwards. Asks then; true means go ahead.
+   */
+  private async confirmReplace(chosen: string, target: string): Promise<boolean> {
+    if (chosen === target || !existsSync(target)) return true;
+    const answer = await this.dialogs.message({
+      type: 'warning',
+      message: `${basename(target)} already exists. Replace it?`,
+      detail: `Replacing it deletes what is in it now:\n${target}`,
+      buttons: ['Cancel', 'Replace'],
+      defaultId: 0,
+      cancelId: 0,
+    });
+    return answer === 1;
+  }
+
+  /**
+   * Makes room for a new file at `target`, which the user agreed to replace (in the save
+   * dialog or confirmReplace). Refuses when another session has it open. Also removes any
+   * journal left by a crashed session, so SQLite cannot roll it back onto the new file.
    */
   private async clearTarget(target: string): Promise<ApiResult> {
-    if (!existsSync(target)) return ok(undefined);
+    if (![target, `${target}-journal`, `${target}-wal`, `${target}-shm`].some((p) => existsSync(p))) return ok(undefined);
     let lock: FileLock;
     try {
       lock = FileLock.acquire(`${target}.lock`);
@@ -238,7 +259,9 @@ export class FileController {
       return { ok: false, code: 'locked', message: e.message };
     }
     try {
-      unlinkSync(target);
+      for (const p of [target, `${target}-journal`, `${target}-wal`, `${target}-shm`]) {
+        if (existsSync(p)) unlinkSync(p);
+      }
     } catch (e) {
       return this.openFailed(target, e);
     } finally {
@@ -273,12 +296,22 @@ export class FileController {
       message: `${name} is open by ${holder ? `${holder.user} on ${holder.host}` : 'another session'}.`,
       detail:
         `It has been open by ${holderText(holder)}. Only one person can edit a ${what} at a time.\n\n` +
-        'Opening read-only is coming in a later version. Choose Open Anyway only if you are sure nobody is working in it, for example after their computer crashed.',
-      buttons: ['Cancel', 'Open Anyway…'],
+        'Choose Open Anyway only if you are sure nobody is working in it, for example after their computer crashed.',
+      buttons: ['Cancel', 'Open Read-Only', 'Open Anyway…'],
       defaultId: 0,
       cancelId: 0,
     });
-    if (first !== 1) return false;
+    if (first === 1) {
+      // Kept in the dialog so the button order is stable for when read-only opening exists.
+      await this.dialogs.message({
+        type: 'info',
+        message: 'Opening read-only is coming in a later version.',
+        detail: `For now, ask ${holder?.user ?? 'the other person'} to close the ${what}, or choose Open Anyway if nobody is working in it.`,
+        buttons: ['OK'],
+      });
+      return false;
+    }
+    if (first !== 2) return false;
     const second = await this.dialogs.message({
       type: 'warning',
       message: `Break the lock on ${name}?`,
@@ -421,6 +454,7 @@ export class FileController {
     });
     if (!chosen) return canceled;
     const target = withExt(chosen, '.json');
+    if (!(await this.confirmReplace(chosen, target))) return canceled;
     try {
       writeFileSync(target, json);
     } catch (e) {

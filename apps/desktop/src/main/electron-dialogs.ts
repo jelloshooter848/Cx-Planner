@@ -13,7 +13,9 @@ export function electronDialogs(window: () => BrowserWindow | undefined): Dialog
     },
     async save(o) {
       const w = parent();
-      const r = await (w ? dialog.showSaveDialog(w, o) : dialog.showSaveDialog(o));
+      // GTK only asks before overwriting when told to.
+      const opts = { ...o, properties: ['showOverwriteConfirmation' as const, 'createDirectory' as const] };
+      const r = await (w ? dialog.showSaveDialog(w, opts) : dialog.showSaveDialog(opts));
       return r.canceled ? undefined : r.filePath;
     },
     async message(o) {
