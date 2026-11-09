@@ -187,7 +187,7 @@ const transformer: Template = {
   name: 'Power transformer',
   version: 1,
   kind: 'starter',
-  assetDescription: 'Liquid-filled or dry-type power transformer',
+  assetDescription: 'Liquid-filled power transformer',
   stages: STANDARD_STAGES,
   requiredDocs: ['Factory test report', 'Test reports', 'Insulating fluid analysis', 'O&M manual', 'As-built drawings'],
   tasks: [
@@ -477,19 +477,29 @@ const genericItp: Template = {
   ],
 };
 
-function deepFreeze<T>(value: T): T {
+/** Read-only at every level, so writes to a frozen starter fail at compile time. */
+export type DeepReadonly<T> = T extends readonly (infer U)[]
+  ? readonly DeepReadonly<U>[]
+  : T extends object
+    ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+    : T;
+
+/** A starter as exported in STARTER_TEMPLATES; copy it to get an editable Template. */
+export type StarterTemplate = DeepReadonly<Template>;
+
+function deepFreeze<T>(value: T): DeepReadonly<T> {
   if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
     Object.freeze(value);
     for (const v of Object.values(value)) deepFreeze(v);
   }
-  return value;
+  return value as DeepReadonly<T>;
 }
 
 /**
  * The eight starters in library order. Frozen: copy one with `starterTemplates()` or
  * `structuredClone` before editing it.
  */
-export const STARTER_TEMPLATES: readonly Template[] = deepFreeze([
+export const STARTER_TEMPLATES: readonly StarterTemplate[] = deepFreeze<Template[]>([
   lvSwitchgear,
   mvSwitchgear,
   transformer,
@@ -502,11 +512,11 @@ export const STARTER_TEMPLATES: readonly Template[] = deepFreeze([
 
 /** Fresh, editable copies of the starters, e.g. to seed a new workspace library. */
 export function starterTemplates(): Template[] {
-  return STARTER_TEMPLATES.map((t) => structuredClone(t));
+  return STARTER_TEMPLATES.map((t) => structuredClone(t) as Template);
 }
 
 /** An editable copy of one starter, or undefined when the id is not a starter. */
 export function starterTemplate(id: string): Template | undefined {
   const t = STARTER_TEMPLATES.find((s) => s.id === id);
-  return t === undefined ? undefined : structuredClone(t);
+  return t === undefined ? undefined : (structuredClone(t) as Template);
 }

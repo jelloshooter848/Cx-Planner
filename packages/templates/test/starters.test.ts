@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeSchedule, instantiateTemplate, templateSpanDays, validateTemplate, type Project } from '@cx/core';
+import { computeSchedule, instantiateTemplate, templateSpanDays, validateTemplate, type Project, type Template } from '@cx/core';
 import { STARTER_TEMPLATES, starterTemplate, starterTemplates } from '../src/index.js';
 
 /** Library list in the template editor mockup (02-Templates). */
@@ -30,8 +30,7 @@ describe('STARTER_TEMPLATES', () => {
     }
   });
 
-  it.each(STARTER_TEMPLATES.map((t) => [t.name, t] as const))('%s is valid, instantiates and schedules', (_name, t) => {
-    expect(validateTemplate(t)).toEqual([]);
+  function schedule(t: Template) {
     const inst = instantiateTemplate(
       t,
       { asset: { id: 'A1', tag: 'TAG-1', description: t.assetDescription }, groupNumber: 1, startNoEarlierThan: '2026-11-02' },
@@ -44,8 +43,47 @@ describe('STARTER_TEMPLATES', () => {
       assets: [inst.asset], tasks: inst.tasks, dependencies: inst.dependencies,
     };
     const r = computeSchedule(project);
+    const at = (key: string) => {
+      const s = r.tasks.get(`A1:${key}`);
+      if (s === undefined) throw new Error(`no scheduled task ${key}`);
+      return s;
+    };
+    return { r, at };
+  }
+
+  it.each(starterTemplates().map((t) => [t.name, t] as const))('%s is valid, instantiates and schedules', (_name, t) => {
+    expect(validateTemplate(t)).toEqual([]);
+    const { r } = schedule(t);
     expect(r.tasks.size).toBe(t.tasks.length);
-    expect(templateSpanDays(t)).toBeGreaterThan(0);
+    const span = templateSpanDays(t);
+    expect(span).toBeGreaterThan(0);
+    const firstStart = Math.min(...[...r.tasks.values()].map((s) => s.es));
+    expect(firstStart).toBe(r.dataDateIndex);
+    expect(r.projectFinishIndex - firstStart).toBe(span);
+  });
+
+  it('schedules low-voltage switchgear over 12 working days', () => {
+    const { r, at } = schedule(starterTemplate('starter-lv-switchgear')!);
+    expect(r.projectFinishIndex - r.dataDateIndex).toBe(12);
+    expect(at('vmi').start).toBe('2026-11-02');
+    expect(at('relay').finish).toBe('2026-11-13');
+    expect(at('func').finish).toBe('2026-11-17');
+    expect(at('energize').start).toBe('2026-11-18');
+    // projectFinish is the last working day of work; the milestone sits at the next day's start.
+    expect(r.projectFinish).toBe('2026-11-17');
+  });
+
+  it('starts the transformer fluid sample with the insulation resistance test', () => {
+    const { at } = schedule(starterTemplate('starter-power-transformer')!);
+    expect(at('fluid').es).toBe(at('ir').es);
+    expect(at('energize').es).toBe(Math.max(at('ttr').ef, at('fluid').ef));
+  });
+
+  it('runs the generator pre-start checks and insulation test in parallel before start-up', () => {
+    const { at } = schedule(starterTemplate('starter-emergency-generator')!);
+    expect(at('prestart').es).toBe(at('vmi').ef);
+    expect(at('ir').es).toBe(at('vmi').ef);
+    expect(at('startup').es).toBe(Math.max(at('prestart').ef, at('ir').ef));
   });
 
   it('gives every hold and witness a notice lead time and every non-milestone a checklist', () => {
@@ -82,12 +120,17 @@ describe('STARTER_TEMPLATES', () => {
       'Initials and date entered',
     ]);
     expect(lv.tasks[3]!.requiredCerts).toContain('Relay technician');
-    expect(templateSpanDays(lv)).toBe(12);
+    expect(templateSpanDays(starterTemplate(lv.id)!)).toBe(12);
   });
 
   it('is frozen; the copy helpers return editable clones', () => {
     expect(Object.isFrozen(STARTER_TEMPLATES)).toBe(true);
     expect(Object.isFrozen(STARTER_TEMPLATES[0]!.tasks[0]!.checklist)).toBe(true);
+    // Writes are compile errors as well as runtime errors.
+    // @ts-expect-error STARTER_TEMPLATES is deeply read-only
+    expect(() => { STARTER_TEMPLATES[0]!.name = 'x'; }).toThrow(TypeError);
+    // @ts-expect-error nested arrays are read-only too
+    expect(() => STARTER_TEMPLATES[0]!.tasks[0]!.checklist.push({ id: 'x', text: 'x' })).toThrow(TypeError);
     const copies = starterTemplates();
     expect(copies).toEqual(STARTER_TEMPLATES);
     copies[0]!.tasks[0]!.name = 'Edited';
