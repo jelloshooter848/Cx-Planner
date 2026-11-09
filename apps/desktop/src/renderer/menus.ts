@@ -68,13 +68,18 @@ export function buildMenus(state: AppState | null, view: ViewId | 'welcome', mac
     item('Save As…', { type: 'save-as' }, { enabled: open, shortcut: 'Ctrl+Shift+S' }),
     item('Close project', { type: 'close-project' }, { enabled: open }),
     sep,
+    item('Print / Export PDF…', { type: 'print' }, { enabled: open, shortcut: 'Ctrl+P' }),
+    sep,
     item('Workspace folder…', { type: 'choose-workspace' }),
     sep,
     item('Exit', { type: 'exit' }),
   ];
+  // In the Templates view Ctrl+Z / Ctrl+Y undo template edits (see TemplatesView), so the
+  // project's Undo / Redo show no shortcut there.
+  const projectKeys = view !== 'templates';
   const edit: MenuItem[] = [
-    item(state?.undoLabel ? `Undo ${state.undoLabel}` : 'Undo', { type: 'undo' }, { enabled: !!state?.canUndo, shortcut: 'Ctrl+Z' }),
-    item(state?.redoLabel ? `Redo ${state.redoLabel}` : 'Redo', { type: 'redo' }, { enabled: !!state?.canRedo, shortcut: 'Ctrl+Y' }),
+    item(state?.undoLabel ? `Undo ${state.undoLabel}` : 'Undo', { type: 'undo' }, { enabled: !!state?.canUndo, ...(projectKeys ? { shortcut: 'Ctrl+Z' } : {}) }),
+    item(state?.redoLabel ? `Redo ${state.redoLabel}` : 'Redo', { type: 'redo' }, { enabled: !!state?.canRedo, ...(projectKeys ? { shortcut: 'Ctrl+Y' } : {}) }),
     sep,
     item('Add assets from template…', { type: 'add-assets' }, { enabled: open }),
     item('Delete task…', { type: 'delete-task' }, { enabled: open && view === 'schedule' && taskSelected, shortcut: 'Del' }),

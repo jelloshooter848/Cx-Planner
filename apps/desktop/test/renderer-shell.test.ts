@@ -22,6 +22,7 @@ describe('shortcuts', () => {
     expect(shortcutAction(key('n', { ctrl: true }), false)).toEqual({ type: 'new-project' });
     expect(shortcutAction(key('o', { ctrl: true }), false)).toEqual({ type: 'open-project' });
     expect(shortcutAction(key('S', { ctrl: true, shift: true }), false)).toEqual({ type: 'save-as' });
+    expect(shortcutAction(key('p', { ctrl: true }), true)).toEqual({ type: 'print' });
   });
 
   it('leaves text-field undo, plain keys and Alt combinations alone', () => {
@@ -33,10 +34,11 @@ describe('shortcuts', () => {
     expect(shortcutAction(key('s', { ctrl: true }), false)).toBeNull();
   });
 
-  it('leaves Cmd+N, Cmd+O and Cmd+Shift+S to the native menu on macOS', () => {
+  it('leaves Cmd+N, Cmd+O, Cmd+Shift+S and Cmd+P to the native menu on macOS', () => {
     expect(shortcutAction(key('n', { meta: true }), false, true)).toBeNull();
     expect(shortcutAction(key('o', { meta: true }), false, true)).toBeNull();
     expect(shortcutAction(key('S', { meta: true, shift: true }), false, true)).toBeNull();
+    expect(shortcutAction(key('p', { meta: true }), false, true)).toBeNull();
     expect(shortcutAction(key('z', { meta: true }), false, true)).toEqual({ type: 'undo' });
   });
 
@@ -135,6 +137,8 @@ describe('menu row', () => {
     const f = items(closed, 'file');
     expect(find(f, 'Save As…')?.enabled).toBe(false);
     expect(find(f, 'Close project')?.enabled).toBe(false);
+    expect(find(f, 'Print / Export PDF…')?.enabled).toBe(false);
+    expect(find(items(buildMenus(base, 'schedule'), 'file'), 'Print / Export PDF…')).toMatchObject({ enabled: true, shortcut: 'Ctrl+P', action: { type: 'print' } });
     expect(find(f, 'New project…')?.enabled).toBe(true);
     expect(find(f, 'Open recent')).toMatchObject({ kind: 'submenu', enabled: false });
     // Schedule stays enabled with no project: it leads back to the welcome screen.
@@ -149,5 +153,7 @@ describe('menu row', () => {
     expect(keyHint('Ctrl+Shift+S', true)).toBe('⇧⌘S');
     expect(keyHint('Ctrl+Z', false)).toBe('Ctrl+Z');
     expect(find(items(buildMenus(base, 'schedule', true), 'edit'), 'Undo Renamed 1.3')).toMatchObject({ shortcut: '⌘Z' });
+    // In the Templates view the keys undo template edits, so the project item shows none.
+    expect(find(items(buildMenus(base, 'templates'), 'edit'), 'Undo Renamed 1.3')).not.toHaveProperty('shortcut');
   });
 });

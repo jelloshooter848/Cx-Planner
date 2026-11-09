@@ -19,6 +19,34 @@ export class ProjectFileCorruptError extends Error {
   }
 }
 
+/**
+ * The project already holds a snapshot of this template id and version with different
+ * content (e.g. a starter edited separately in two workspaces up to the same version).
+ * The stored snapshot is kept, since assets on that version read their checklist from it.
+ */
+export class TemplateSnapshotConflictError extends Error {
+  constructor(
+    readonly templateId: string,
+    readonly version: number,
+    name: string,
+  ) {
+    super(
+      `This project already holds a different version ${version} of the template "${name}" (likely from another workspace). ` +
+        'Change and save the template so it gets a new version, then try again.',
+    );
+    this.name = 'TemplateSnapshotConflictError';
+  }
+}
+
+/** JSON with object keys sorted, so equal content compares equal whatever the key order. */
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_k, v: unknown) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  );
+}
+
 export interface OpenOptions {
   /** Create the file if it does not exist. */
   create?: boolean;
@@ -42,6 +70,32 @@ export interface ChangeEvent {
   revision?: number;
   /** Summary given to that save, e.g. "Move SWGR-1A tests a week later". */
   summary?: string;
+}
+
+/** A print to record with ProjectStore.recordPrint. */
+export interface NewPrintRecord {
+  /** Print kind, e.g. "lookahead", "full-schedule", "test-sheets". Revisions count per kind. */
+  kind: string;
+  /** Revision letter printed on the sheets, e.g. "B". */
+  rev: string;
+  /** Issued date printed on the sheets (YYYY-MM-DD). */
+  issued: string;
+  paper: string;
+  sheets: number;
+  dataDate: string;
+  /** What this revision is for, e.g. "Progress update". */
+  note?: string;
+  /** Sheet title, e.g. "3-Week Look-Ahead: Nov 2 – Nov 20, 2026". */
+  title?: string;
+}
+
+/** One issued print (a row of print_record). */
+export interface PrintRecord extends Required<NewPrintRecord> {
+  id: number;
+  /** ISO timestamp of when it was printed. */
+  printedAt: string;
+  /** Last change_event seq included in the print. */
+  lastChangeSeq: number;
 }
 
 /** Where the file stands: bumped by every write that changes the project. */
@@ -264,9 +318,11 @@ export class ProjectStore {
    * saveTemplateSnapshot), e.g. the template an add-assets edit used, so the edit and its
    * snapshot land under one revision.
    */
-  saveProject(next: Project, source: string, summary?: string, options: { templates?: Template[] } = {}): SaveResult {
+  saveProject(next: Project, source: string, summary?: string, options: { templates?: readonly Template[] } = {}): SaveResult {
     this.tx(summary, () => {
+      // Snapshots of templates this save applies (decision D4), in the same transaction.
       for (const t of options.templates ?? []) this.writeTemplateSnapshot(t, source);
+
       const db = this.db;
       const log = (entity: string, id: string, field: string | null, oldValue: unknown, newValue: unknown) =>
         this.log(source, entity, id, field, oldValue, newValue);
@@ -412,8 +468,13 @@ export class ProjectStore {
   }
 
   /**
-   * Store the snapshot of a template used by this project (decision D4), replacing an
-   * older snapshot with the same id. Logged as entity "template", field "version".
+   * Store the snapshot of a template used by this project (decision D4). Every version is
+   * kept, keyed by (id, version). Saving the same id and version again with the same
+   * content does nothing. A snapshot is never replaced: assets on that version read their
+   * checklist from it, and the workspace gives every content change a new version, so
+   * different content under a stored (id, version) means a clash between workspaces; that
+   * throws TemplateSnapshotConflictError and rolls the transaction back.
+   * Logged as entity "template", field "version".
    */
   saveTemplateSnapshot(template: Template, source = 'user', summary?: string): void {
     this.tx(summary, () => this.writeTemplateSnapshot(template, source));
@@ -421,19 +482,24 @@ export class ProjectStore {
 
   private writeTemplateSnapshot(template: Template, source: string): void {
     const json = JSON.stringify(template);
-    const row = this.stmt('SELECT version, json FROM project_template WHERE id = ?').get(template.id) as { version: number; json: string } | undefined;
-    if (row?.json === json) return;
-    this.stmt('INSERT INTO project_template (id, version, json) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET version = excluded.version, json = excluded.json').run(
-      template.id,
-      template.version,
-      json,
-    );
-    this.log(source, 'template', template.id, 'version', row?.version, template.version);
+    const row = this.stmt('SELECT json FROM project_template WHERE id = ? AND version = ?').get(template.id, template.version) as { json: string } | undefined;
+    if (row) {
+      if (canonicalJson(JSON.parse(row.json)) === canonicalJson(template)) return;
+      throw new TemplateSnapshotConflictError(template.id, template.version, template.name);
+    }
+    this.stmt('INSERT INTO project_template (id, version, json) VALUES (?, ?, ?)').run(template.id, template.version, json);
+    this.log(source, 'template', template.id, 'version', undefined, template.version);
   }
 
-  /** Template snapshots stored in this project, by id. */
+  /** Every template snapshot stored in this project, by id then version. */
   getTemplateSnapshots(): Template[] {
-    return (this.db.prepare('SELECT json FROM project_template ORDER BY id').all() as Array<{ json: string }>).map((r) => JSON.parse(r.json) as Template);
+    return (this.db.prepare('SELECT json FROM project_template ORDER BY id, version').all() as Array<{ json: string }>).map((r) => JSON.parse(r.json) as Template);
+  }
+
+  /** The snapshot of one template version, as assets with that templateVersion use it. */
+  getTemplateSnapshot(id: string, version: number): Template | undefined {
+    const row = this.stmt('SELECT json FROM project_template WHERE id = ? AND version = ?').get(id, version) as { json: string } | undefined;
+    return row ? (JSON.parse(row.json) as Template) : undefined;
   }
 
   getRevisionState(): RevisionState {
@@ -458,13 +524,38 @@ export class ProjectStore {
     }));
   }
 
-  /** Record that a print was issued; "changed since last print" reads from here. */
-  recordPrint(p: { kind: string; rev: string; issued: string; paper: string; sheets: number; dataDate: string }): number {
+  /**
+   * Record that a print was issued; "changed since last print" and the revision history on
+   * later sheets read from here. Returns the record id.
+   */
+  recordPrint(p: NewPrintRecord): number {
     const last = this.db.prepare('SELECT COALESCE(MAX(seq), 0) AS s FROM change_event').get() as { s: number };
     const r = this.db
-      .prepare('INSERT INTO print_record (kind, rev, issued, printed_at, paper, sheets, data_date, last_change_seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(p.kind, p.rev, p.issued, new Date().toISOString(), p.paper, p.sheets, p.dataDate, last.s);
+      .prepare('INSERT INTO print_record (kind, rev, issued, printed_at, paper, sheets, data_date, last_change_seq, note, title) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(p.kind, p.rev, p.issued, new Date().toISOString(), p.paper, p.sheets, p.dataDate, last.s, p.note ?? '', p.title ?? '');
     return Number(r.lastInsertRowid);
+  }
+
+  /** Issued prints, oldest first; only those of `kind` when given. */
+  listPrints(kind?: string): PrintRecord[] {
+    const rows = (
+      kind === undefined
+        ? this.db.prepare('SELECT * FROM print_record ORDER BY id').all()
+        : this.db.prepare('SELECT * FROM print_record WHERE kind = ? ORDER BY id').all(kind)
+    ) as Row[];
+    return rows.map((r) => ({
+      id: Number(r.id),
+      kind: String(r.kind),
+      rev: String(r.rev),
+      issued: String(r.issued),
+      printedAt: String(r.printed_at),
+      paper: String(r.paper),
+      sheets: Number(r.sheets),
+      dataDate: String(r.data_date),
+      lastChangeSeq: Number(r.last_change_seq),
+      note: String(r.note ?? ''),
+      title: String(r.title ?? ''),
+    }));
   }
 
   changesSinceLastPrint(kind: string): ChangeEvent[] {

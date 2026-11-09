@@ -33,6 +33,9 @@ export function ScheduleView() {
         </div>
         <span className="toolbar-spacer" />
         {addAssets}
+        <button type="button" className="btn" onClick={() => void store.dispatch({ type: 'print' })}>
+          Print…
+        </button>
       </div>
       {schedule.error && (
         <p className="banner banner-warn" role="status">

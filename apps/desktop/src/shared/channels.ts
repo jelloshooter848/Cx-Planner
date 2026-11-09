@@ -14,6 +14,8 @@ export const CH = {
   saveAs: 'file:save-as',
   closeProject: 'file:close',
   chooseWorkspace: 'workspace:choose',
+  /** renderer -> main: what the renderer holds unsaved, or null (see Session.unsavedWork). */
+  setUnsavedWork: 'window:unsaved-work',
   templateList: 'template:list',
   templateGet: 'template:get',
   templateInProject: 'template:in-project',
@@ -23,6 +25,9 @@ export const CH = {
   templateExport: 'template:export',
   templateImport: 'template:import',
   templateRestoreStarters: 'template:restore-starters',
-  lookAheadHtml: 'print:lookahead-html',
-  lookAheadPdf: 'print:lookahead-pdf',
+  printSetup: 'print:setup',
+  printPreview: 'print:preview',
+  printPdf: 'print:pdf',
+  printToPrinter: 'print:printer',
+  printShowInFolder: 'print:show-in-folder',
 } as const;

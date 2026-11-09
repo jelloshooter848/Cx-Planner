@@ -1,5 +1,6 @@
 /**
- * The contract between the renderer and the main process. Types only: the preload script
+ * The contract between the renderer and the main process. Types (and the option lists the
+ * Print dialog offers) only: the preload script
  * implements `CxApi` on `window.cx`, and the main process answers each call on the channel
  * named in ./channels.ts. Every call returns an ApiResult rather than throwing, so the
  * renderer always gets a plain-language message and a stable code.
@@ -92,15 +93,122 @@ export interface EditOutcome {
   summary: string | null;
 }
 
-export interface LookAheadPreview {
-  html: string;
-  sheets: number;
-  widthIn: number;
-  heightIn: number;
+/** The prints the Print dialog makes. Each counts its own revisions (A, B, C …). */
+export type PrintKind = 'lookahead' | 'full-schedule' | 'test-sheets';
+export const PRINT_KINDS: readonly PrintKind[] = ['lookahead', 'full-schedule', 'test-sheets'];
+export const LOOK_AHEAD_WEEKS = [2, 3, 4, 6] as const;
+export type LookAheadWeeks = (typeof LOOK_AHEAD_WEEKS)[number];
+export const LOOK_AHEAD_PAPERS = ['letter', 'tabloid'] as const satisfies readonly PaperId[];
+export const FULL_SCHEDULE_PAPERS = ['tabloid', 'ansi-d', 'arch-d'] as const satisfies readonly PaperId[];
+
+/** Fields every print request has. */
+interface PrintRequestBase {
+  /** What this revision is for, printed in the revision history (e.g. "Progress update"). */
+  note: string;
 }
 
-/** Menu items the renderer handles itself (they need a form). */
-export type MenuCommand = 'new-project';
+/** A look-ahead of `weeks` weeks from the week holding `start` (normally its Monday). */
+export interface LookAheadPrintRequest extends PrintRequestBase {
+  kind: 'lookahead';
+  paper: (typeof LOOK_AHEAD_PAPERS)[number];
+  weeks: LookAheadWeeks;
+  start: IsoDate;
+  /** Only these assets; null prints every asset. */
+  assetIds: Id[] | null;
+  /** Print the T I M E S readiness columns. */
+  showTimes: boolean;
+}
+
+/** The whole schedule on large-format paper. */
+export interface FullSchedulePrintRequest extends PrintRequestBase {
+  kind: 'full-schedule';
+  paper: (typeof FULL_SCHEDULE_PAPERS)[number];
+  /** Width of one working day in inches; null fits the schedule to the sheet width. */
+  dayWidthIn: number | null;
+  assetIds: Id[] | null;
+}
+
+/** Blank test sheets (Letter portrait), one per task, in schedule order. */
+export interface TestSheetsPrintRequest extends PrintRequestBase {
+  kind: 'test-sheets';
+  /** Tasks from PrintSetup.checklistTasks. */
+  taskIds: Id[];
+}
+
+export type PrintRequest = LookAheadPrintRequest | FullSchedulePrintRequest | TestSheetsPrintRequest;
+
+/** One issued print, from the project's print records. */
+export interface PrintRecordSummary {
+  id: number;
+  kind: PrintKind;
+  rev: string;
+  issued: IsoDate;
+  /** ISO timestamp. */
+  printedAt: string;
+  paper: string;
+  sheets: number;
+  note: string;
+  title: string;
+}
+
+/** A task that prints a test sheet (its template task has checklist items). */
+export interface ChecklistTaskSummary {
+  taskId: Id;
+  assetId: Id;
+  /** Task code, e.g. "1.3". */
+  code: string;
+  name: string;
+  /** Test form name from the template, when it has one. */
+  testForm: string | null;
+  items: number;
+}
+
+/** What the Print dialog needs to set itself up. */
+export interface PrintSetup {
+  /** Printed as the Issued date. */
+  dataDate: IsoDate;
+  /** Every issued print, oldest first. */
+  history: PrintRecordSummary[];
+  /** The revision the next print of each kind gets. */
+  nextRevision: Record<PrintKind, string>;
+  checklistTasks: ChecklistTaskSummary[];
+}
+
+/** A print laid out but not issued: the same HTML the PDF is made from. */
+export interface PrintPreview {
+  html: string;
+  sheets: number;
+  /** Sheet size in inches as laid out (test sheets are portrait). */
+  widthIn: number;
+  heightIn: number;
+  title: string;
+  rev: string;
+  issued: IsoDate;
+}
+
+/** A print that was issued and recorded. */
+export interface PrintIssued {
+  rev: string;
+  sheets: number;
+  title: string;
+}
+
+/** An exported PDF. */
+export interface PdfExported extends PrintIssued {
+  filePath: string;
+  /**
+   * Set when the PDF was written but could not be recorded in the project's print records
+   * (e.g. the project was closed meanwhile), so its revision letter will be issued again.
+   */
+  notRecorded?: string;
+}
+
+/**
+ * Commands main sends the renderer: menu items that need a form ('new-project', 'print'), and
+ * 'confirm-close' when the window is closing while the renderer reported unsaved work (it asks
+ * Save / Discard / Cancel, then closes the window itself or stays open).
+ */
+export type MenuCommand = 'new-project' | 'print' | 'confirm-close';
 
 export interface TemplateApi {
   list(): Promise<ApiResult<TemplateSummary[]>>;
@@ -146,13 +254,25 @@ export interface CxApi {
   closeProject(): Promise<ApiResult>;
   /** Shows a folder dialog and switches to (or creates) a workspace there. */
   chooseWorkspace(): Promise<ApiResult<{ workspacePath: string }>>;
+  /**
+   * Tells main what is unsaved (e.g. 'Template "LV switchgear"'), or null when nothing is.
+   * While set, closing the window sends 'confirm-close' instead and a workspace switch asks first.
+   */
+  setUnsavedWork(what: string | null): Promise<ApiResult>;
 
   templates: TemplateApi;
 
   print: {
-    lookAheadHtml(paper: PaperId): Promise<ApiResult<LookAheadPreview>>;
-    /** Shows a save dialog and writes the look-ahead PDF. */
-    lookAheadPdf(paper: PaperId): Promise<ApiResult<{ filePath: string }>>;
+    /** Issued prints, next revisions and the tasks that have test sheets. */
+    setup(): Promise<ApiResult<PrintSetup>>;
+    /** Lays out a print without issuing it, with the revision it would get. */
+    preview(req: PrintRequest): Promise<ApiResult<PrintPreview>>;
+    /** Shows a save dialog, writes the PDF and records the print (its revision is used up). */
+    exportPdf(req: PrintRequest): Promise<ApiResult<PdfExported>>;
+    /** Shows the system print dialog at the print's paper size and records the print. */
+    toPrinter(req: PrintRequest): Promise<ApiResult<PrintIssued>>;
+    /** Shows a PDF written by exportPdf in the file manager (other paths are refused). */
+    showInFolder(filePath: string): Promise<ApiResult>;
   };
 }
 

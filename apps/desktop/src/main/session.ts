@@ -10,7 +10,7 @@
 import { existsSync } from 'node:fs';
 import { basename } from 'node:path';
 import { applyCommand, CommandError, computeSchedule, renumberTasks, TemplateInvalidError, type Command, type Id, type Project, type Template } from '@cx/core';
-import { TemplateImportError, TemplateNotFoundError, type ProjectStore, type TemplateSummary, type WorkspaceStore } from '@cx/storage';
+import { TemplateImportError, TemplateNotFoundError, type NewPrintRecord, type PrintRecord, type ProjectStore, type TemplateSummary, type WorkspaceStore } from '@cx/storage';
 import type { ApiErrorCode, ApiResult, AppState, EditOutcome, TaskScheduleSummary } from '../shared/api.js';
 
 /** How many edits Undo can go back. */
@@ -111,6 +111,11 @@ export class Session {
   private ws: WorkspaceStore | null = null;
   private seq = 0;
   private readonly undoLimit: number;
+  /**
+   * What the renderer holds unsaved (e.g. 'Template "LV switchgear"'), or null. Project edits
+   * are saved at once; only the template editor keeps a draft. Main asks before dropping it.
+   */
+  unsavedWork: string | null = null;
 
   constructor(private readonly opts: SessionOptions) {
     this.undoLimit = opts.undoLimit ?? UNDO_LIMIT;
@@ -178,6 +183,25 @@ export class Session {
   }
 
   // -------------------------------------------------------------------------------------
+  // Prints
+
+  /** Template snapshots stored in the open project (empty with none open). */
+  templateSnapshots(): Template[] {
+    return this.doc?.store.getTemplateSnapshots() ?? [];
+  }
+
+  /** Prints issued from the open project, oldest first (empty with none open). */
+  printHistory(): PrintRecord[] {
+    return this.doc?.store.listPrints() ?? [];
+  }
+
+  /** Records an issued print in the open project. */
+  recordPrint(p: NewPrintRecord): void {
+    if (!this.doc) throw new Error('No project is open');
+    this.doc.store.recordPrint(p);
+  }
+
+  // -------------------------------------------------------------------------------------
   // Edits
 
   /** Applies a renderer edit. Callers must have refused undo-only commands (see validate.ts). */
@@ -191,7 +215,9 @@ export class Session {
       if (e instanceof CommandError && e.code === 'no-change') return ok({ changed: false, summary: null });
       return failure(e);
     }
-    // The templates an edit instantiated are copied into the project with it (decision D4).
+    // Decision D4: the project keeps a snapshot of every template version it applies, so
+    // checklists and the like can be read back by (id, version) without the workspace.
+    // Older versions are kept, so undo and partial re-apply need no snapshot bookkeeping.
     const saved = this.save(doc, result.project, result.summary, templatesUsed(cmd));
     if (!saved.ok) return saved;
     doc.undo.push({ command: result.inverse, label: result.summary });
@@ -235,7 +261,7 @@ export class Session {
     return ok({ changed: true, summary });
   }
 
-  private save(doc: OpenProject, next: Project, summary: string, templates: Template[] = []): ApiResult<void> {
+  private save(doc: OpenProject, next: Project, summary: string, templates: readonly Template[] = []): ApiResult<void> {
     try {
       const r = doc.store.saveProject(next, 'user', summary, { templates });
       doc.revision = r.revision;

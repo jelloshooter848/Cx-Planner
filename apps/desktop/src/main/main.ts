@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, session as electronSession } from 'electron';
+import { app, BrowserWindow, Menu, session as electronSession, shell } from 'electron';
 import { join, resolve } from 'node:path';
 import type { AppState, MenuCommand } from '../shared/api.js';
 import { CH } from '../shared/channels.js';
@@ -8,7 +8,8 @@ import { FileController, projectArg } from './files.js';
 import { registerIpc } from './ipc.js';
 import { buildMenu, menuKey } from './menu.js';
 import { RecentFiles, SettingsFile } from './prefs.js';
-import { setFontDir } from './print.js';
+import { htmlToPdf, printFontCss, printHtml, setFontDir } from './print.js';
+import { PrintController } from './print-controller.js';
 import { Session, windowTitle } from './session.js';
 import { runSpikes } from './spikes.js';
 
@@ -59,7 +60,8 @@ function startApp(): void {
   };
   const session = new Session({ broadcast, recent: () => recent.list() });
   const files = new FileController({ session, dialogs, recent, settings, defaultWorkspace: join(app.getPath('documents'), 'Cx Planner Workspace') });
-  registerIpc({ session, files, dialogs });
+  const print = new PrintController({ session, files, toPdf: htmlToPdf, toPrinter: printHtml, showInFolder: (p) => shell.showItemInFolder(p), fontCss: printFontCss });
+  registerIpc({ session, files, dialogs, print });
 
   const open = (path: string) => {
     if (!ready) {
@@ -106,6 +108,13 @@ function startApp(): void {
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     // Windows/Linux: the in-window menu row replaces the native menu bar.
     if (process.platform !== 'darwin') win.setMenuBarVisibility(false);
+    // The renderer holds an unsaved template draft: let it ask Save / Discard / Cancel. It
+    // closes the window itself once the draft is saved or discarded (unsavedWork is then null).
+    win.on('close', (e) => {
+      if (!session.unsavedWork || win?.webContents.isCrashed()) return;
+      e.preventDefault();
+      toRenderer('confirm-close');
+    });
     win.on('closed', () => (win = undefined));
     session.notify();
     await win.loadFile(join(dist, 'renderer/index.html'));

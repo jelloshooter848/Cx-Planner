@@ -424,6 +424,19 @@ export class FileController {
   async chooseWorkspace(): Promise<ApiResult<{ workspacePath: string }>> {
     const folder = await this.dialogs.open({ title: 'Choose workspace folder', defaultPath: this.baseFolder, folder: true });
     if (!folder) return canceled;
+    const unsaved = this.session.unsavedWork;
+    if (unsaved && !(this.session.workspace && samePath(this.session.workspace.folder, folder))) {
+      const choice = await this.dialogs.message({
+        type: 'warning',
+        message: `${unsaved} has unsaved changes.`,
+        detail: 'Switching the workspace discards them. Cancel, then Save in the Templates view to keep them.',
+        buttons: ['Cancel', 'Discard Changes and Switch'],
+        defaultId: 0,
+        cancelId: 0,
+      });
+      if (choice !== 1) return canceled;
+      this.session.unsavedWork = null;
+    }
     return this.openWorkspace(folder);
   }
 

@@ -71,7 +71,9 @@ export type TemplateProblemCode =
   | 'negative-notice'
   | 'invalid-notice'
   | 'duplicate-checklist-id'
-  | 'invalid-version';
+  | 'invalid-version'
+  /** Passed validation but could not be scheduled (reported by previewTemplate only). */
+  | 'unschedulable';
 
 export interface TemplateProblem {
   code: TemplateProblemCode;

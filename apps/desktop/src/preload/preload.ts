@@ -24,6 +24,7 @@ const api: CxApi = {
   saveAs: () => invoke(CH.saveAs),
   closeProject: () => invoke(CH.closeProject),
   chooseWorkspace: () => invoke(CH.chooseWorkspace),
+  setUnsavedWork: (what) => invoke(CH.setUnsavedWork, what),
   templates: {
     list: () => invoke(CH.templateList),
     get: (id) => invoke(CH.templateGet, id),
@@ -36,8 +37,11 @@ const api: CxApi = {
     restoreStarters: () => invoke(CH.templateRestoreStarters),
   },
   print: {
-    lookAheadHtml: (paper) => invoke(CH.lookAheadHtml, paper),
-    lookAheadPdf: (paper) => invoke(CH.lookAheadPdf, paper),
+    setup: () => invoke(CH.printSetup),
+    preview: (req) => invoke(CH.printPreview, req),
+    exportPdf: (req) => invoke(CH.printPdf, req),
+    toPrinter: (req) => invoke(CH.printToPrinter, req),
+    showInFolder: (path) => invoke(CH.printShowInFolder, path),
   },
 };
 

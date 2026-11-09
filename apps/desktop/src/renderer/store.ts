@@ -9,11 +9,11 @@
  */
 import { createContext, createElement, useContext, useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import type { Command, Id, IsoDate, Project, Task } from '@cx/core';
-import type { ApiResult, AppState, CxApi, EditOutcome, TaskScheduleSummary } from '../shared/api';
+import type { ApiResult, AppState, CxApi, EditOutcome, PrintKind, TaskScheduleSummary } from '../shared/api';
 
 /** Views shown when a project is open (the welcome screen shows when none is). */
 export type ViewId = 'schedule' | 'templates' | 'lookahead';
-export type DialogId = 'new-project' | 'about' | 'add-assets' | 'delete-task';
+export type DialogId = 'new-project' | 'about' | 'add-assets' | 'delete-task' | 'print';
 /** Time scale of the Schedule view's Gantt. */
 export type ScheduleZoom = 'day' | 'week' | 'month';
 
@@ -28,11 +28,30 @@ export interface UiState {
   dialog: DialogId | null;
   notice: Notice | null;
   /**
+   * Bumped when main asks to close the window while unsaved work was reported (MenuCommand
+   * 'confirm-close'). The Templates view, which holds that work, answers it. 0 = never asked.
+   */
+  closeRequest: number;
+  /** Status bar text a view sets for itself (e.g. the template library counts); null = the project's. */
+  status: StatusLine | null;
+  /**
    * The task selected in the Schedule view (row click or arrow keys), or null. May name a
    * task that no longer exists after an edit; read it through useSelectedTask().
    */
   selectedTaskId: Id | null;
   scheduleZoom: ScheduleZoom;
+  /** The kind of print the Print dialog opens on (the last one chosen or asked for). */
+  printKind: PrintKind;
+  /**
+   * Assets the schedule shows, or null for all (the asset filter). Prints can be limited to it.
+   * May name assets that no longer exist; read it through useAssetFilter().
+   */
+  assetFilter: Id[] | null;
+}
+
+export interface StatusLine {
+  left: string;
+  right: string;
 }
 
 export interface Snapshot {
@@ -56,6 +75,8 @@ export type Action =
   | { type: 'add-assets' }
   /** Asks to delete the selected task (a confirm dialog); nothing happens with no task selected. */
   | { type: 'delete-task' }
+  /** Opens the Print dialog (needs an open project), on `kind` or the last kind used. */
+  | { type: 'print'; kind?: PrintKind }
   | { type: 'view'; view: ViewId }
   | { type: 'about' };
 
@@ -79,8 +100,13 @@ export interface Store {
   closeDialog(): void;
   notify(message: string): void;
   dismissNotice(): void;
+  /** Replaces the status bar text while a view shows (null puts the project's back). */
+  setStatus(status: StatusLine | null): void;
   selectTask(id: Id | null): void;
   setScheduleZoom(zoom: ScheduleZoom): void;
+  setPrintKind(kind: PrintKind): void;
+  /** Limits the schedule (and prints that follow it) to these assets; null shows all. */
+  setAssetFilter(ids: Id[] | null): void;
   /** Stops listening to the main process. */
   dispose(): void;
 }
@@ -89,7 +115,7 @@ export interface Store {
 const QUIET_CODES = new Set(['canceled', 'locked', 'file-error', 'nothing-to-undo', 'nothing-to-redo']);
 
 export function createStore(api: CxApi, options: StoreOptions = {}): Store {
-  let snapshot: Snapshot = { app: null, ui: { view: 'schedule', dialog: null, notice: null, selectedTaskId: null, scheduleZoom: 'week' } };
+  let snapshot: Snapshot = { app: null, ui: { view: 'schedule', dialog: null, notice: null, closeRequest: 0, status: null, selectedTaskId: null, scheduleZoom: 'week', printKind: 'lookahead', assetFilter: null } };
   let noticeId = 0;
   const listeners = new Set<() => void>();
   const emit = () => {
@@ -119,6 +145,8 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
       const id = ui.selectedTaskId;
       if (prev?.project?.id !== state.project?.id || !state.project?.tasks.some((t) => t.id === id)) ui.selectedTaskId = null;
     }
+    // The asset filter, like the selection, belongs to one project.
+    if (ui.assetFilter && prev?.project?.id !== state.project?.id) ui.assetFilter = null;
     snapshot = { app: state, ui };
     emit();
   };
@@ -126,6 +154,9 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
   const offState = api.onState(receive);
   const offMenu = api.onMenu((cmd) => {
     if (cmd === 'new-project') void store.dispatch({ type: 'new-project' });
+    else if (cmd === 'print') void store.dispatch({ type: 'print' });
+    // Only the template editor reports unsaved work: show it so it can ask what to do.
+    else if (cmd === 'confirm-close') setUi({ view: 'templates', dialog: null, closeRequest: snapshot.ui.closeRequest + 1 });
   });
   void api.getState().then(receive, () => {});
 
@@ -184,6 +215,9 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
           if (id && snapshot.app?.project?.tasks.some((t) => t.id === id)) store.openDialog('delete-task');
           return;
         }
+        case 'print':
+          if (snapshot.app?.project) setUi({ dialog: 'print', printKind: action.kind ?? snapshot.ui.printKind });
+          return;
         case 'view':
           return store.setView(action.view);
       }
@@ -193,12 +227,21 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
     closeDialog: () => setUi({ dialog: null }),
     notify: (message) => setUi({ notice: { id: ++noticeId, message } }),
     dismissNotice: () => setUi({ notice: null }),
+    setStatus: (status) => {
+      const cur = snapshot.ui.status;
+      if (cur === status || (cur && status && cur.left === status.left && cur.right === status.right)) return;
+      setUi({ status });
+    },
     selectTask: (selectedTaskId) => {
       if (snapshot.ui.selectedTaskId !== selectedTaskId) setUi({ selectedTaskId });
     },
     setScheduleZoom: (scheduleZoom) => {
       if (snapshot.ui.scheduleZoom !== scheduleZoom) setUi({ scheduleZoom });
     },
+    setPrintKind: (printKind) => {
+      if (snapshot.ui.printKind !== printKind) setUi({ printKind });
+    },
+    setAssetFilter: (assetFilter) => setUi({ assetFilter }),
     dispose() {
       offState();
       offMenu();
@@ -269,6 +312,17 @@ const EMPTY_SCHEDULE: ScheduleInfo = { tasks: {}, projectFinish: null, error: nu
 export function useSchedule(): ScheduleInfo {
   const app = useAppState();
   return useMemo(() => (app ? { tasks: app.schedule, projectFinish: app.projectFinish, error: app.scheduleError } : EMPTY_SCHEDULE), [app]);
+}
+
+/** The asset filter as ids of assets that exist in the open project, or null for all. */
+export function useAssetFilter(): Id[] | null {
+  const app = useAppState();
+  const filter = useSelect((s) => s.ui.assetFilter);
+  return useMemo(() => {
+    if (!filter || !app?.project) return null;
+    const known = new Set(app.project.assets.map((a) => a.id));
+    return filter.filter((id) => known.has(id));
+  }, [filter, app]);
 }
 
 /** The selected task of the open project, or null (none selected, or it was deleted). */

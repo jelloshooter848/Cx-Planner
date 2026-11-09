@@ -42,6 +42,7 @@ function fakeApi(initial: AppState) {
     saveAs: vi.fn(okVoid),
     closeProject: vi.fn(async () => ({ ok: true as const, value: undefined })),
     chooseWorkspace: vi.fn(),
+    setUnsavedWork: vi.fn(async () => ({ ok: true as const, value: undefined })),
     templates: {},
     print: {},
   } as unknown as CxApi;
@@ -120,6 +121,17 @@ describe('renderer store', () => {
     expect(store.getSnapshot().ui.dialog).toBeNull();
   });
 
+  it('shows the Templates view and bumps closeRequest when main asks to confirm a close', async () => {
+    const f = fakeApi(appState());
+    const store = createStore(f.api);
+    await tick();
+    store.openDialog('about');
+    f.menu('confirm-close');
+    expect(store.getSnapshot().ui).toMatchObject({ view: 'templates', dialog: null, closeRequest: 1 });
+    f.menu('confirm-close');
+    expect(store.getSnapshot().ui.closeRequest).toBe(2);
+  });
+
   it('opens the add-assets dialog only with a project open', async () => {
     const f = fakeApi(appState());
     const store = createStore(f.api);
@@ -140,6 +152,34 @@ describe('renderer store', () => {
     store.selectTask('t1.4');
     await store.dispatch({ type: 'delete-task' });
     expect(store.getSnapshot().ui.dialog).toBe('delete-task');
+  });
+
+  it('opens the Print dialog from the menu, on the kind asked for or the last one', async () => {
+    const f = fakeApi(appState());
+    const store = createStore(f.api);
+    await tick();
+    await store.dispatch({ type: 'print' });
+    expect(store.getSnapshot().ui.dialog).toBeNull();
+    f.push(appState({ seq: 2, project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp' }));
+    f.menu('print');
+    expect(store.getSnapshot().ui).toMatchObject({ dialog: 'print', printKind: 'lookahead' });
+    store.closeDialog();
+    await store.dispatch({ type: 'print', kind: 'test-sheets' });
+    expect(store.getSnapshot().ui).toMatchObject({ dialog: 'print', printKind: 'test-sheets' });
+    store.closeDialog();
+    await store.dispatch({ type: 'print' });
+    expect(store.getSnapshot().ui.printKind).toBe('test-sheets');
+  });
+
+  it('keeps the asset filter for one project only', async () => {
+    const f = fakeApi(appState({ seq: 1, project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp' }));
+    const store = createStore(f.api);
+    await tick();
+    store.setAssetFilter(['swgr-1a']);
+    f.push(appState({ seq: 2, project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp', revision: 3 }));
+    expect(store.getSnapshot().ui.assetFilter).toEqual(['swgr-1a']);
+    f.push(appState({ seq: 3, project: { ...riversideProject(), id: 'other' }, filePath: '/o.cxp', fileName: 'o.cxp' }));
+    expect(store.getSnapshot().ui.assetFilter).toBeNull();
   });
 
   it('calls exit for File > Exit', async () => {

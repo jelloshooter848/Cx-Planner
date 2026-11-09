@@ -5,3 +5,4 @@ export * from './gantt-print.js';
 export * from './document.js';
 export * from './look-ahead.js';
 export * from './test-sheet.js';
+export * from './revisions.js';
