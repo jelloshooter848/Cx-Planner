@@ -2,7 +2,7 @@ import { app, BrowserWindow, Menu, session as electronSession } from 'electron';
 import { join, resolve } from 'node:path';
 import type { AppState, MenuCommand } from '../shared/api.js';
 import { CH } from '../shared/channels.js';
-import { CHROME } from '../shared/chrome.js';
+import { CHROME, TRAFFIC_LIGHT_POSITION } from '../shared/chrome.js';
 import { electronDialogs } from './electron-dialogs.js';
 import { FileController, projectArg } from './files.js';
 import { registerIpc } from './ipc.js';
@@ -96,7 +96,7 @@ function startApp(): void {
       // The page draws the dark title bar and the menu row (see renderer TitleBar/MenuBar);
       // the OS draws only the window buttons over it.
       titleBarStyle: 'hidden',
-      ...(process.platform === 'darwin' ? {} : { titleBarOverlay: { color: CHROME.titleBar, symbolColor: CHROME.titleBarSymbol, height: CHROME.titleBarHeight } }),
+      ...(process.platform === 'darwin' ? { trafficLightPosition: TRAFFIC_LIGHT_POSITION } : { titleBarOverlay: { color: CHROME.titleBar, symbolColor: CHROME.titleBarSymbol, height: CHROME.titleBarHeight } }),
       webPreferences: { preload: join(dist, 'preload/preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false },
     });
     // The title is ours (it names the open file), not the page's.

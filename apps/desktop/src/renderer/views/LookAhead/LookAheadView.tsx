@@ -10,6 +10,16 @@ const PAPERS: ReadonlyArray<readonly [PaperId, string]> = [
   ['arch-d', 'ARCH D'],
 ];
 
+/**
+ * The preview iframe is a separate document and cannot see the page's CSS variables, so the
+ * frame colours are read from the design tokens and injected into it.
+ */
+function previewFrameCss(): string {
+  const tokens = getComputedStyle(document.documentElement);
+  const v = (name: string) => tokens.getPropertyValue(name).trim();
+  return `.sheet{margin:0 auto 24px;box-shadow:${v('--shadow-sheet')}} body{background:${v('--bg-app')};padding:24px 0}`;
+}
+
 /** Reports > 3-week look-ahead: print preview and PDF export. */
 export function LookAheadView() {
   const store = useStore();
@@ -57,7 +67,7 @@ export function LookAheadView() {
           <iframe
             title="Print preview"
             sandbox=""
-            srcDoc={doc.html.replace('</style>', `.sheet{margin:0 auto 24px;box-shadow:0 1px 6px #0003} body{background:#e5e7eb;padding:24px 0}</style>`)}
+            srcDoc={doc.html.replace('</style>', `${previewFrameCss()}</style>`)}
             style={{ width: doc.widthIn * 96 + 48, height: (doc.heightIn * 96 + 24) * doc.sheets + 48, transform: `scale(${scale})`, transformOrigin: 'top left' }}
           />
         )}

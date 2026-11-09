@@ -63,6 +63,7 @@
   --radius-lg: 6px;
   --gap: 8px;
   --pad: 12px;
+  --shadow-sheet: 0 1px 6px rgb(0 0 0 / 0.2);
   --shadow-pop: 0 6px 24px rgb(27 31 36 / 0.18), 0 1px 3px rgb(27 31 36 / 0.12);
   --focus: 0 0 0 2px var(--accent-line);
 }

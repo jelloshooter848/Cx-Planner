@@ -19,6 +19,8 @@ export function NewProjectDialog() {
       const r = await store.api.newProject({ name: name.trim(), startDate });
       if (r.ok) close();
       else if (r.code !== 'canceled' && r.code !== 'file-error' && r.code !== 'locked') setError(r.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }

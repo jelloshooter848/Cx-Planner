@@ -51,6 +51,18 @@ export interface AppHarness {
 
 export async function launchApp(options: LaunchOptions = {}): Promise<AppHarness> {
   const dir = mkdtempSync(join(tmpdir(), 'cx-e2e-'));
+  let app: ElectronApplication | undefined;
+  try {
+    return await start(dir, options, (a) => (app = a));
+  } catch (err) {
+    // Nothing returned a harness, so afterEach cannot close() it: clean up here.
+    await app?.close().catch(() => {});
+    rmSync(dir, { recursive: true, force: true });
+    throw err;
+  }
+}
+
+async function start(dir: string, options: LaunchOptions, launched: (app: ElectronApplication) => void): Promise<AppHarness> {
   const userData = join(dir, 'user');
   const workspace = join(dir, 'Workspace');
   mkdirSync(userData);
@@ -71,6 +83,7 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppHarness
     cwd: desktop,
     env: { ...process.env, NODE_OPTIONS: '', CX_USER_DATA: userData },
   });
+  launched(app);
   const page = await app.firstWindow();
   const size = options.size ?? { width: 1440, height: 900 };
   const win = await app.browserWindow(page);
