@@ -37,6 +37,9 @@ describe('welcome screen', () => {
     const setup = await page.evaluate(() => window.cx.print.setup());
     expect(setup.ok && setup.value.checklistTasks.length).toBeGreaterThan(20);
     await h.screenshot('sample-open');
+    // An edit to the copy, so reopening below can show the copy was kept as it is.
+    const renamed = await page.evaluate(() => window.cx.apply({ kind: 'updateProjectInfo', name: 'My practice copy' }));
+    expect(renamed.ok).toBe(true);
 
     await page.evaluate(() => window.cx.closeProject());
     await welcome.waitFor();
@@ -45,13 +48,25 @@ describe('welcome screen', () => {
     expect(await recent.getByRole('listitem').first().textContent()).toContain(SAMPLE);
     await h.screenshot('welcome-recent');
 
-    await missing.getByRole('button', { name: 'Remove Moved away.cxp from list' }).click();
+    // Removing with the keyboard moves focus to the row left in its place, not the page.
+    await missing.getByRole('button', { name: 'Remove Moved away.cxp from list' }).focus();
+    await page.keyboard.press('Enter');
     await missing.waitFor({ state: 'detached' });
     expect((await h.state()).recent.map((r) => r.name)).toEqual([SAMPLE]);
+    await page.waitForFunction((name) => document.activeElement?.textContent?.includes(name) ?? false, SAMPLE);
 
     // Opening the sample again asks; "Open It" keeps the copy as it is.
-    await h.answerMessage(2);
+    await h.app.evaluate(({ dialog }) => {
+      const g = globalThis as { messageBoxes?: number };
+      g.messageBoxes = 0;
+      dialog.showMessageBox = (async () => {
+        g.messageBoxes = (g.messageBoxes ?? 0) + 1;
+        return { response: 2, checkboxChecked: false };
+      }) as typeof dialog.showMessageBox;
+    });
     await welcome.getByRole('button', { name: 'Open sample project' }).click();
-    await h.waitState((x) => x.fileName === SAMPLE, 'the existing sample to open');
+    const reopened = await h.waitState((x) => x.fileName === SAMPLE, 'the existing sample to open');
+    expect(reopened.project!.name).toBe('My practice copy');
+    expect(await h.app.evaluate(() => (globalThis as { messageBoxes?: number }).messageBoxes)).toBe(1);
   });
 });

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { RecentFile } from '../../../shared/api';
 import { lastOpenedText } from '../../format';
 import { useAppState, useStore } from '../../store';
@@ -11,6 +12,25 @@ export function WelcomeView() {
   const store = useStore();
   const app = useAppState();
   const recent = app?.recent ?? [];
+  const listRef = useRef<HTMLUListElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  // Row index whose "Remove from list" was used. Removing it unmounts the focused button, so
+  // once the list updates, focus moves to the row that took its place (or the one before),
+  // or to the heading when the list is empty, rather than falling back to the page.
+  const pendingFocus = useRef<number | null>(null);
+  useEffect(() => {
+    const index = pendingFocus.current;
+    if (index === null) return;
+    pendingFocus.current = null;
+    const rows = listRef.current ? Array.from(listRef.current.querySelectorAll<HTMLLIElement>(':scope > li')) : [];
+    const row = rows[Math.min(index, rows.length - 1)];
+    const target = row?.querySelector<HTMLElement>('button') ?? headingRef.current;
+    target?.focus();
+  }, [recent]);
+  const remove = (index: number, path: string) => {
+    pendingFocus.current = index;
+    void store.dispatch({ type: 'remove-recent', path });
+  };
   return (
     <main className="welcome" aria-label="Welcome">
       <section className="welcome-card">
@@ -35,15 +55,15 @@ export function WelcomeView() {
           </button>
         </div>
 
-        <h2 className="section-label" id="recent-heading">
+        <h2 className="section-label" id="recent-heading" tabIndex={-1} ref={headingRef}>
           Recent projects
         </h2>
         {recent.length === 0 ? (
           <p className="hint">No recent projects yet.</p>
         ) : (
-          <ul className="recent-list" aria-labelledby="recent-heading">
-            {recent.map((r) => (
-              <RecentRow key={r.path} file={r} />
+          <ul className="recent-list" aria-labelledby="recent-heading" ref={listRef}>
+            {recent.map((r, i) => (
+              <RecentRow key={r.path} file={r} onRemove={() => remove(i, r.path)} />
             ))}
           </ul>
         )}
@@ -58,7 +78,7 @@ export function WelcomeView() {
   );
 }
 
-function RecentRow({ file }: { file: RecentFile }) {
+function RecentRow({ file, onRemove }: { file: RecentFile; onRemove: () => void }) {
   const store = useStore();
   const opened = lastOpenedText(file.lastOpened);
   const text = (
@@ -74,7 +94,7 @@ function RecentRow({ file }: { file: RecentFile }) {
           {text}
         </div>
         <span className="recent-when">Not found</span>
-        <button type="button" className="btn-link recent-remove" aria-label={`Remove ${file.name} from list`} onClick={() => void store.dispatch({ type: 'remove-recent', path: file.path })}>
+        <button type="button" className="btn-link recent-remove" aria-label={`Remove ${file.name} from list`} onClick={onRemove}>
           Remove from list
         </button>
       </li>

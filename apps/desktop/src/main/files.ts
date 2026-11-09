@@ -245,6 +245,12 @@ export class FileController {
       for (const t of sample.templates) store.saveTemplateSnapshot(t, 'sample', `Stored template ${t.name}`);
     } catch (e) {
       store.close();
+      // Don't leave a half-written sample behind for the next "Open sample project" to open.
+      try {
+        for (const p of [target, `${target}-journal`, `${target}-wal`, `${target}-shm`]) if (existsSync(p)) unlinkSync(p);
+      } catch {
+        // Best effort: the error below is what the user needs to see.
+      }
       return this.openFailed(target, e);
     }
     return this.adopt(store);

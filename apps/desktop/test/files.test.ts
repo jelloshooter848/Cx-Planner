@@ -280,6 +280,27 @@ describe('sample project', () => {
     expect(await files.openSample()).toMatchObject({ ok: false, code: 'locked' });
   });
 
+  it('removes a half-written copy when writing the sample fails', async () => {
+    const broken = new FileController({
+      session,
+      dialogs,
+      recent,
+      settings,
+      defaultWorkspace: join(dir, 'Cx Planner Workspace'),
+      // Two different templates under one id and version: the second snapshot throws.
+      sample: () => {
+        const s = riversideSample();
+        const first = s.templates[0]!;
+        return { ...s, templates: [first, { ...first, name: `${first.name} (changed)` }] };
+      },
+    });
+    dialogs.push({ message: 0, expect: "couldn't be opened" });
+    expect((await broken.openSample()).ok).toBe(false);
+    expect(existsSync(samplePath())).toBe(false);
+    expect(existsSync(`${samplePath()}-journal`)).toBe(false);
+    expect(session.project).toBeNull();
+  });
+
   it('names the file after the project', () => {
     expect(sampleFileName('Riverside: Bldg A')).toBe('Riverside Bldg A (sample).cxp');
   });
