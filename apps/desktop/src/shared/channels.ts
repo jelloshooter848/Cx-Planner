@@ -22,6 +22,9 @@ export const CH = {
   templateExport: 'template:export',
   templateImport: 'template:import',
   templateRestoreStarters: 'template:restore-starters',
-  lookAheadHtml: 'print:lookahead-html',
-  lookAheadPdf: 'print:lookahead-pdf',
+  printSetup: 'print:setup',
+  printPreview: 'print:preview',
+  printPdf: 'print:pdf',
+  printToPrinter: 'print:printer',
+  printShowInFolder: 'print:show-in-folder',
 } as const;

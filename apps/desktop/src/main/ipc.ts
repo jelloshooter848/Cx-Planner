@@ -1,17 +1,17 @@
 /** IPC handlers: the main-process side of shared/api.ts. Every input is checked in validate.ts. */
 import { ipcMain, type IpcMainInvokeEvent } from 'electron';
-import { basename, dirname, join } from 'node:path';
 import type { ApiResult } from '../shared/api.js';
 import { CH } from '../shared/channels.js';
-import { PROJECT_EXT, safeFileName, type Dialogs, type FileController } from './files.js';
-import { htmlToPdf, lookAheadDocument } from './print.js';
-import { failure, ok, type Session } from './session.js';
-import { checkCommand, checkId, checkName, checkNewProject, checkPaper, checkPath, checkTemplate } from './validate.js';
+import type { Dialogs, FileController } from './files.js';
+import type { PrintController } from './print-controller.js';
+import { failure, type Session } from './session.js';
+import { checkCommand, checkId, checkName, checkNewProject, checkPath, checkPrintRequest, checkTemplate } from './validate.js';
 
 export interface IpcContext {
   session: Session;
   files: FileController;
   dialogs: Dialogs;
+  print: PrintController;
 }
 
 /** Only our own bundled page may call in (not, say, a page an iframe navigated to). */
@@ -26,7 +26,7 @@ function trusted(e: IpcMainInvokeEvent): boolean {
 }
 
 export function registerIpc(ctx: IpcContext): void {
-  const { session, files } = ctx;
+  const { session, files, print } = ctx;
   const handle = (channel: string, fn: (...args: unknown[]) => ApiResult<unknown> | Promise<ApiResult<unknown>>) =>
     ipcMain.handle(channel, async (e, ...args: unknown[]) => {
       if (!trusted(e)) return { ok: false, code: 'invalid-input', message: 'Refused: unknown caller' };
@@ -62,25 +62,9 @@ export function registerIpc(ctx: IpcContext): void {
   handle(CH.templateImport, () => files.importTemplate());
   handle(CH.templateRestoreStarters, () => session.restoreStarters());
 
-  handle(CH.lookAheadHtml, (paper) => {
-    const project = session.project;
-    if (!project) return { ok: false, code: 'no-project', message: 'No project is open' };
-    const { html, layout } = lookAheadDocument(project, { paper: checkPaper(paper), weeks: 3 });
-    return ok({ html, sheets: layout.sheets.length, widthIn: layout.paper.widthIn, heightIn: layout.paper.heightIn });
-  });
-
-  handle(CH.lookAheadPdf, async (paper) => {
-    const project = session.project;
-    const filePath = session.filePath;
-    if (!project || !filePath) return { ok: false, code: 'no-project', message: 'No project is open' };
-    const { html, title } = lookAheadDocument(project, { paper: checkPaper(paper), weeks: 3 });
-    const stem = basename(filePath, PROJECT_EXT);
-    return files.writeWithDialog({
-      title: 'Save look-ahead PDF',
-      defaultPath: join(dirname(filePath), `${safeFileName(`${stem} ${title}`)}.pdf`),
-      filters: [{ name: 'PDF', extensions: ['pdf'] }],
-      ext: '.pdf',
-      data: () => htmlToPdf(html),
-    });
-  });
+  handle(CH.printSetup, () => print.setup());
+  handle(CH.printPreview, (req) => print.preview(checkPrintRequest(req)));
+  handle(CH.printPdf, (req) => print.exportPdf(checkPrintRequest(req)));
+  handle(CH.printToPrinter, (req) => print.toPrinter(checkPrintRequest(req)));
+  handle(CH.printShowInFolder, (path) => print.showInFolder(checkPath(path)));
 }

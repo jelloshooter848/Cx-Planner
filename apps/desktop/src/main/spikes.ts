@@ -95,7 +95,7 @@ export async function runSpikes(args: string[]): Promise<Result[]> {
 
   if (args.includes('--spike-pdf')) {
     const riverside = riversideProject();
-    const jobs: Array<[string, { html: string; layout: { sheets: unknown[] } }]> = [
+    const jobs: Array<[string, { html: string; sheets: number }]> = [
       ['lookahead-tabloid', lookAheadDocument(riverside, { paper: 'tabloid', weeks: 3 })],
       ['lookahead-letter', lookAheadDocument(riverside, { paper: 'letter', weeks: 3 })],
       ['full-schedule-ansi-d', fullScheduleDocument(largeProject(), 'ansi-d')],
@@ -106,7 +106,7 @@ export async function runSpikes(args: string[]): Promise<Result[]> {
         const pdf = await htmlToPdf(doc.html);
         writeFileSync(join(out, `${name}.pdf`), pdf);
         const pages = (pdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) ?? []).length;
-        if (pages !== doc.layout.sheets.length) throw new Error(`expected ${doc.layout.sheets.length} pages, PDF has ${pages}`);
+        if (pages !== doc.sheets) throw new Error(`expected ${doc.sheets} pages, PDF has ${pages}`);
         return `${pages} page(s), ${(pdf.length / 1024).toFixed(0)} KB`;
       });
     }
