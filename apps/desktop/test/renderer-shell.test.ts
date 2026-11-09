@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AppState } from '../src/shared/api.js';
-import { longDate, shortDate, statusText } from '../src/renderer/format.js';
+import { lastOpenedText, longDate, shortDate, statusText } from '../src/renderer/format.js';
 import { buildMenus, keyHint, type MenuItem } from '../src/renderer/menus.js';
 import { isTextField, shortcutAction } from '../src/renderer/shortcuts.js';
 import { riversideProject } from '@cx/fixtures';
@@ -89,8 +89,8 @@ describe('menu row', () => {
     redoLabel: null,
     workspacePath: '/ws',
     recent: [
-      { path: '/p/Riverside.cxp', name: 'Riverside.cxp', exists: true },
-      { path: '/old/Gone.cxp', name: 'Gone.cxp', exists: false },
+      { path: '/p/Riverside.cxp', name: 'Riverside.cxp', exists: true, lastOpened: '2026-11-06T14:00:00.000Z' },
+      { path: '/old/Gone.cxp', name: 'Gone.cxp', exists: false, lastOpened: null },
     ],
   };
   const items = (menus: ReturnType<typeof buildMenus>, id: string) => menus.find((m) => m.id === id)!.items!;
@@ -143,6 +143,7 @@ describe('menu row', () => {
     expect(find(items(buildMenus(base, 'schedule'), 'file'), 'Print / Export PDF…')).toMatchObject({ enabled: true, shortcut: 'Ctrl+P', action: { type: 'print' } });
     expect(find(f, 'New project…')?.enabled).toBe(true);
     expect(find(f, 'Open recent')).toMatchObject({ kind: 'submenu', enabled: false });
+    expect(find(f, 'Open sample project')).toMatchObject({ enabled: true, action: { type: 'open-sample' } });
     // Schedule stays enabled with no project: it leads back to the welcome screen.
     expect(closed.find((m) => m.id === 'schedule')?.enabled).toBe(true);
     expect(find(items(closed, 'view'), 'Start page')).toMatchObject({ enabled: true, checked: true, action: { type: 'view', view: 'schedule' } });
@@ -157,5 +158,20 @@ describe('menu row', () => {
     expect(find(items(buildMenus(base, 'schedule', true), 'edit'), 'Undo Renamed 1.3')).toMatchObject({ shortcut: '⌘Z' });
     // In the Templates view the keys undo template edits, so the project item shows none.
     expect(find(items(buildMenus(base, 'templates'), 'edit'), 'Undo Renamed 1.3')).not.toHaveProperty('shortcut');
+  });
+});
+
+describe('lastOpenedText', () => {
+  const now = new Date(2026, 10, 9, 15, 0);
+  const time = (d: Date) => `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+  it('says today, yesterday, or the date', () => {
+    expect(lastOpenedText(new Date(2026, 10, 9, 8, 5).toISOString(), now, time)).toBe('Today 8:05');
+    expect(lastOpenedText(new Date(2026, 10, 8, 17, 30).toISOString(), now, time)).toBe('Yesterday 17:30');
+    expect(lastOpenedText(new Date(2026, 10, 6, 12, 0).toISOString(), now, time)).toBe('Nov 6, 2026');
+    expect(lastOpenedText(new Date(2026, 0, 1, 0, 0).toISOString(), new Date(2026, 0, 2, 9, 0), time)).toBe('Yesterday 0:00');
+  });
+  it('is empty when unknown', () => {
+    expect(lastOpenedText(null, now)).toBe('');
+    expect(lastOpenedText('garbage', now)).toBe('');
   });
 });

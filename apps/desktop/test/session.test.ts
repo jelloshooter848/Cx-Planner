@@ -25,7 +25,7 @@ const last = () => sent[sent.length - 1]!;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'cx-session-'));
   sent = [];
-  session = new Session({ broadcast: (s) => sent.push(s), recent: () => [join(dir, 'gone.cxp')] });
+  session = new Session({ broadcast: (s) => sent.push(s), recent: () => [{ path: join(dir, 'gone.cxp') }] });
 });
 afterEach(() => session.dispose());
 
@@ -33,7 +33,7 @@ describe('Session', () => {
   it('starts with no project', () => {
     const s = session.getState();
     expect(s).toMatchObject({ project: null, filePath: null, fileName: null, canUndo: false, canRedo: false, workspacePath: null, revision: 0 });
-    expect(s.recent).toEqual([{ path: join(dir, 'gone.cxp'), name: 'gone.cxp', exists: false }]);
+    expect(s.recent).toEqual([{ path: join(dir, 'gone.cxp'), name: 'gone.cxp', exists: false, lastOpened: null }]);
     expect(windowTitle(s)).toBe('Cx Planner');
   });
 

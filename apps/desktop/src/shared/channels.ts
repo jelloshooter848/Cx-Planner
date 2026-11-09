@@ -11,6 +11,8 @@ export const CH = {
   newProject: 'file:new',
   openProject: 'file:open',
   openRecent: 'file:open-recent',
+  removeRecent: 'file:remove-recent',
+  openSample: 'file:open-sample',
   saveAs: 'file:save-as',
   closeProject: 'file:close',
   chooseWorkspace: 'workspace:choose',
