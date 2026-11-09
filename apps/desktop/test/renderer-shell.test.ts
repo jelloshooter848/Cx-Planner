@@ -69,6 +69,8 @@ describe('format', () => {
     expect(broken.left).toBe('1 asset · 0 tasks · Schedule not computed: Dependency loop');
     expect(broken.savedDetail).toBe('No edits this session · Revision 0');
     expect(statusText({ project: null, projectFinish: null, scheduleError: null, revision: 0, lastSavedAt: null, workspacePath: '/ws' }).left).toBe('No project open');
+    const filtered = statusText({ project, projectFinish: '2026-12-07', scheduleError: null, revision: 3, lastSavedAt: null, workspacePath: '/ws' }, undefined, { assets: 2, tasks: 11 });
+    expect(filtered.left).toBe('2 of 4 assets in view · 11 tasks · Critical path ends Dec 7');
   });
 });
 

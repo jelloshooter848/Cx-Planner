@@ -93,9 +93,12 @@ export interface BarsProps {
   dataDateX?: number | null;
   /** Hover text of the data-date line. */
   dataDateTitle?: string;
+  /** Timeline x range [from, to) of the look-ahead window to shade; null or left out for none. */
+  lookAheadSpan?: readonly [number, number] | null;
+  lookAheadTitle?: string;
 }
 
-export const GanttBars = memo(function GanttBars({ rows, schedule, scale, ticks, weekendXs, first, last, x0, x1, dataDateX = null, dataDateTitle = 'Data date' }: BarsProps) {
+export const GanttBars = memo(function GanttBars({ rows, schedule, scale, ticks, weekendXs, first, last, x0, x1, dataDateX = null, dataDateTitle = 'Data date', lookAheadSpan = null, lookAheadTitle = 'Look-ahead window' }: BarsProps) {
   const y0 = first * ROW_H;
   const h = Math.max(1, (last - first) * ROW_H);
   const months = new Set(scale.zoom === 'month' ? [] : ticks.top.filter((t) => t.x >= x0 && t.x <= x1).map((t) => t.x));
@@ -128,6 +131,11 @@ export const GanttBars = memo(function GanttBars({ rows, schedule, scale, ticks,
       {shade.map((x) => (
         <rect key={`w${x}`} className="gb-weekend" x={x} y={y0} width={scale.dayWidth} height={h} />
       ))}
+      {lookAheadSpan && lookAheadSpan[1] > x0 && lookAheadSpan[0] < x1 && (
+        <rect className="gb-lookahead" x={lookAheadSpan[0]} y={y0} width={lookAheadSpan[1] - lookAheadSpan[0]} height={h} data-testid="gantt-lookahead">
+          <title>{lookAheadTitle}</title>
+        </rect>
+      )}
       {grid.map((t) => (
         <line key={`g${t.x}`} className={months.has(t.x) ? 'gb-grid gb-grid-month' : 'gb-grid'} x1={t.x + 0.5} x2={t.x + 0.5} y1={y0} y2={y0 + h} />
       ))}

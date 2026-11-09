@@ -53,10 +53,11 @@ export function lookAheadStarts(dataDate: IsoDate, before = 4, after = 12): Arra
   return out;
 }
 
-export function defaultSettings(dataDate: IsoDate, checklistTaskIds: Id[], hasFilter: boolean): PrintSettings {
+/** The dialog's starting settings; `weeks` is the look-ahead length (default 3). */
+export function defaultSettings(dataDate: IsoDate, checklistTaskIds: Id[], hasFilter: boolean, weeks: LookAheadWeeks = 3): PrintSettings {
   const assets: AssetScope = hasFilter ? 'filter' : 'all';
   return {
-    lookAhead: { paper: 'tabloid', weeks: 3, start: mondayOf(dataDate), assets, showTimes: true },
+    lookAhead: { paper: 'tabloid', weeks, start: mondayOf(dataDate), assets, showTimes: true },
     fullSchedule: { paper: 'ansi-d', dayWidthIn: 0.42, assets },
     testSheets: { taskIds: checklistTaskIds },
     note: '',

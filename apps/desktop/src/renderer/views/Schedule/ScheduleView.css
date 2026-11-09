@@ -1,0 +1,159 @@
+/* Schedule toolbar and "Assets in view" sidebar (01-Main) */
+.schedule-toolbar {
+  justify-content: space-between;
+}
+.toolbar-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap);
+}
+.toolbar-sep {
+  width: 1px;
+  height: 24px;
+  margin: 0 4px;
+  background: var(--line);
+}
+.schedule-toolbar .btn:disabled[title],
+.schedule-toolbar .btn[aria-disabled='true'][title] {
+  cursor: help;
+}
+/* A native select dressed as a toolbar button ("Look-ahead: 3 weeks"). */
+.btn-select {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+}
+.btn-select select {
+  height: 100%;
+  padding: 0 28px 0 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  appearance: none;
+  cursor: pointer;
+  outline: none;
+}
+.btn-select::after {
+  content: '';
+  position: absolute;
+  right: 11px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -5px;
+  border-right: 1.5px solid var(--ink-muted);
+  border-bottom: 1.5px solid var(--ink-muted);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+.btn-select:focus-within {
+  box-shadow: var(--focus);
+}
+
+.asset-sidebar {
+  width: 250px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--line);
+}
+.asset-sidebar-filter {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+.asset-sidebar-filter .input {
+  width: 100%;
+}
+.asset-sidebar-list {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden auto;
+  padding-bottom: 12px;
+}
+.asset-sidebar-empty {
+  margin: 0;
+  padding: 4px 12px;
+}
+.asset-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 12px 6px;
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+.asset-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.asset-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  font-size: var(--fs);
+  cursor: pointer;
+}
+.asset-item:hover {
+  background: var(--bg-hover);
+}
+.asset-group-head input,
+.asset-item input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  flex: none;
+}
+.asset-item-tag {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.asset-item.is-shown .asset-item-tag {
+  font-weight: var(--fw-semibold);
+}
+.asset-progress {
+  width: 44px;
+  height: 6px;
+  flex: none;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--line-soft);
+}
+.asset-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--ok);
+}
+.asset-pct {
+  width: 32px;
+  flex: none;
+  text-align: right;
+  font-size: var(--fs-xs);
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Every asset filtered out: say why the Gantt is empty. */
+.gantt-empty {
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap);
+  color: var(--ink-muted);
+}
+.gantt-empty p {
+  margin: 0;
+}
