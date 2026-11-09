@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -96,6 +96,28 @@ describe('new project', () => {
     dialogs.push({ save: path }, { message: 0, expect: "can't be replaced[\\s\\S]*pat on OTHER-PC" });
     expect(await files.newProject({ name: 'Fresh', startDate: '2026-11-02' })).toMatchObject({ ok: false, code: 'locked' });
     expect(existsSync(path)).toBe(true);
+  });
+
+  it('reopens the open file when replacing it with a new project fails', async () => {
+    const path = sampleFile();
+    dialogs.push({ open: path });
+    expect((await files.openWithDialog()).ok).toBe(true);
+    // Someone grabs the file between our close and the replace; their lock goes away later.
+    const close = session.closeProject.bind(session);
+    vi.spyOn(session, 'closeProject').mockImplementationOnce(() => {
+      close();
+      lockFromElsewhere(path);
+    });
+    const message = dialogs.message.bind(dialogs);
+    vi.spyOn(dialogs, 'message').mockImplementationOnce(async (o) => {
+      const button = await message(o);
+      rmSync(`${path}.lock`);
+      return button;
+    });
+    dialogs.push({ save: path }, { message: 0, expect: "can't be replaced" });
+    expect(await files.newProject({ name: 'Fresh', startDate: '2026-11-02' })).toMatchObject({ ok: false, code: 'locked' });
+    expect(session.filePath).toBe(path);
+    expect(session.project!.tasks.length).toBeGreaterThan(0);
   });
 
   it('makes empty projects with their own id and default calendar', () => {

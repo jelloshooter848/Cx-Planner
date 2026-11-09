@@ -53,7 +53,7 @@ function startApp(): void {
     const key = menuKey(state);
     if (key !== shownMenu) {
       shownMenu = key;
-      Menu.setApplicationMenu(buildMenu({ session, files, toRenderer }, state));
+      Menu.setApplicationMenu(buildMenu({ session, files, dialogs, toRenderer }, state));
     }
   };
   const session = new Session({ broadcast, recent: () => recent.list() });

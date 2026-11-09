@@ -19,6 +19,7 @@ describe('IPC input checks', () => {
     const refused = [
       { kind: 'restoreTask', task: {}, index: 0, dependencies: [] },
       { kind: 'restoreAsset', asset: {}, index: 0, tasks: [], dependencies: [] },
+      { kind: 'restoreAssets', assets: [], tasks: [{ index: 0, item: { percentComplete: 150 } }], dependencies: [] },
       { kind: 'updateTask', id: 't', patch: {}, restore: true },
       { kind: 'updateAsset', id: 'a', patch: {}, restore: true },
       { kind: 'moveTask', id: 't', toAssetId: 'a', toIndex: 0, restoreArrayIndex: 3 },
@@ -28,6 +29,20 @@ describe('IPC input checks', () => {
       expect(() => checkCommand(c)).toThrow(InputError);
       expect(() => checkCommand({ kind: 'batch', commands: [{ kind: 'batch', commands: [c] }] })).toThrow(InputError);
     }
+  });
+
+  it('answers a restoreAssets edit from the renderer with invalid-input, as the IPC handler does', () => {
+    const restoreAssets = { kind: 'restoreAssets', assets: [], tasks: [{ index: 0, item: { percentComplete: 150 } }], dependencies: [] };
+    const viaIpc = (cmd: unknown) => {
+      try {
+        checkCommand(cmd);
+        return { ok: true };
+      } catch (err) {
+        return failure(err);
+      }
+    };
+    expect(viaIpc(restoreAssets)).toMatchObject({ ok: false, code: 'invalid-input' });
+    expect(viaIpc({ kind: 'batch', commands: [{ kind: 'setDataDate', date: '2026-01-01' }, restoreAssets] })).toMatchObject({ ok: false, code: 'invalid-input' });
   });
 
   it('refuses things that are not commands', () => {

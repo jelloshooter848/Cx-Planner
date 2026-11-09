@@ -3,7 +3,7 @@
  * are checked for shape here, then by the domain code (applyCommand, WorkspaceStore) for
  * meaning. Each function returns the checked value or throws InputError.
  */
-import { formatIso, parseIso, type Command, type Template } from '@cx/core';
+import { formatIso, isInternalCommand, parseIso, type Command, type Template } from '@cx/core';
 import { PAPER, type PaperId } from '@cx/render';
 import { templateFromFile, TEMPLATE_FILE_FORMAT, TEMPLATE_FILE_VERSION, TemplateImportError } from '@cx/storage';
 import type { NewProjectInput } from '../shared/api.js';
@@ -59,9 +59,11 @@ export function checkPaper(v: unknown): PaperId {
 }
 
 /**
- * An edit from the renderer. Refuses the undo-only forms (restoreAsset, restoreTask, the
- * `restore` flag, moveTask.restoreArrayIndex, link.index): they skip the value checks and
- * are meant only for the main process's own undo stack. applyCommand checks the rest.
+ * An edit from the renderer. Refuses the undo-only forms (restoreAsset, restoreTask,
+ * restoreAssets, the `restore` flag, moveTask.restoreArrayIndex, link.index): they skip the
+ * value checks and are meant only for the main process's own undo stack. Core's
+ * isInternalCommand is checked as well, so undo-only kinds added there later are refused
+ * too. applyCommand checks the rest.
  */
 export function checkCommand(v: unknown): Command {
   let count = 0;
@@ -71,6 +73,7 @@ export function checkCommand(v: unknown): Command {
     switch (c.kind) {
       case 'restoreAsset':
       case 'restoreTask':
+      case 'restoreAssets':
         throw new InputError(`${c.kind} is used only by undo`);
       case 'updateAsset':
       case 'updateTask':
@@ -90,6 +93,7 @@ export function checkCommand(v: unknown): Command {
     }
   };
   visit(v, 0);
+  if (isInternalCommand(v)) throw new InputError('That edit is used only by undo');
   return v as Command;
 }
 

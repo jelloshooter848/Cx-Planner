@@ -131,20 +131,28 @@ export class FileController {
     if (!chosen) return canceled;
     const target = withExt(chosen, PROJECT_EXT);
     if (!(await this.confirmReplace(chosen, target))) return canceled;
-    if (this.session.filePath && samePath(this.session.filePath, target)) this.session.closeProject();
+    // Replacing the open file: it must be closed first (we hold its lock). If anything
+    // below fails while the old file is still there, reopen it so the user is not left on
+    // the start screen.
+    const previous = this.session.filePath && samePath(this.session.filePath, target) ? this.session.filePath : null;
+    if (previous) this.session.closeProject();
+    const restore = async <T extends Failure>(failed: T): Promise<T> => {
+      if (previous && existsSync(previous)) await this.openPath(previous);
+      return failed;
+    };
     const cleared = await this.clearTarget(target);
-    if (!cleared.ok) return cleared;
+    if (!cleared.ok) return restore(cleared);
     let store: ProjectStore;
     try {
       store = ProjectStore.open(target, { create: true });
     } catch (e) {
-      return this.openFailed(target, e);
+      return restore(await this.openFailed(target, e));
     }
     try {
       store.replaceProject(emptyProject(input), 'user', 'Created project');
     } catch (e) {
       store.close();
-      return this.openFailed(target, e);
+      return restore(await this.openFailed(target, e));
     }
     return this.adopt(store);
   }
@@ -297,7 +305,7 @@ export class FileController {
       detail:
         `It has been open by ${holderText(holder)}. Only one person can edit a ${what} at a time.\n\n` +
         'Choose Open Anyway only if you are sure nobody is working in it, for example after their computer crashed.',
-      buttons: ['Cancel', 'Open Read-Only', 'Open Anyway…'],
+      buttons: ['Cancel', 'Open Read-Only (coming soon)', 'Open Anyway…'],
       defaultId: 0,
       cancelId: 0,
     });

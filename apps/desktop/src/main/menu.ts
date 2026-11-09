@@ -1,17 +1,27 @@
 import { app, Menu, type MenuItemConstructorOptions } from 'electron';
-import type { AppState, MenuCommand } from '../shared/api.js';
-import type { FileController } from './files.js';
+import type { ApiResult, AppState, MenuCommand } from '../shared/api.js';
+import type { Dialogs, FileController } from './files.js';
 import type { Session } from './session.js';
 
 export interface MenuContext {
   session: Session;
   files: FileController;
+  dialogs: Dialogs;
   /** Forwards a command the renderer handles (it needs a form). */
   toRenderer(cmd: MenuCommand): void;
 }
 
 /** Menu labels treat & as a mnemonic marker; show user text literally. */
 const amp = (t: string) => t.replace(/&/g, '&&');
+
+/**
+ * Undo/redo from the menu: the renderer never sees this result, so a failed save (disk
+ * full, share offline) is shown here. Nothing to undo/redo is not worth a dialog.
+ */
+export async function reportStep(dialogs: Dialogs, dir: 'undo' | 'redo', r: ApiResult<unknown>): Promise<void> {
+  if (r.ok || r.code === 'nothing-to-undo' || r.code === 'nothing-to-redo') return;
+  await dialogs.message({ type: 'error', message: dir === 'undo' ? 'Could not undo.' : 'Could not redo.', detail: r.message, buttons: ['OK'] });
+}
 
 /** What the menu shows; the menu is rebuilt only when this changes. */
 export function menuKey(s: AppState): string {
@@ -50,8 +60,8 @@ export function buildMenu(ctx: MenuContext, s: AppState): Menu {
       label: '&Edit',
       submenu: [
         // Shortcut shown as a hint only (the renderer handles the key); on macOS the roles below own Cmd+Z.
-        { label: s.undoLabel ? `Undo ${amp(s.undoLabel)}` : 'Undo', enabled: s.canUndo, click: () => session.undo(), ...(isMac ? {} : { accelerator: 'Ctrl+Z', registerAccelerator: false }) },
-        { label: s.redoLabel ? `Redo ${amp(s.redoLabel)}` : 'Redo', enabled: s.canRedo, click: () => session.redo(), ...(isMac ? {} : { accelerator: 'Ctrl+Y', registerAccelerator: false }) },
+        { label: s.undoLabel ? `Undo ${amp(s.undoLabel)}` : 'Undo', enabled: s.canUndo, click: () => void reportStep(ctx.dialogs, 'undo', session.undo()), ...(isMac ? {} : { accelerator: 'Ctrl+Z', registerAccelerator: false }) },
+        { label: s.redoLabel ? `Redo ${amp(s.redoLabel)}` : 'Redo', enabled: s.canRedo, click: () => void reportStep(ctx.dialogs, 'redo', session.redo()), ...(isMac ? {} : { accelerator: 'Ctrl+Y', registerAccelerator: false }) },
         // On macOS, Cmd+Z in text fields only works through these roles. Outside text fields
         // the renderer handles the key first (and prevents default), so these do not fire.
         ...(isMac ? [{ type: 'separator' as const }, { role: 'undo' as const, label: 'Undo Typing' }, { role: 'redo' as const, label: 'Redo Typing' }] : []),
