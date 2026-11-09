@@ -3,6 +3,7 @@ import {
   buildAddAssetsCommand,
   expandTagPattern,
   findTagProblems,
+  MAX_PATTERN_TAGS,
   parseAssetRows,
   previewAddAssets,
   templateSpanDays,
@@ -65,6 +66,7 @@ function AddAssetsForm({ project, workspace, onClose }: { project: Project; work
   const [patternLocation, setPatternLocation] = useState('');
   const [patternSystem, setPatternSystem] = useState('');
   const [patternError, setPatternError] = useState('');
+  const [pasteNote, setPasteNote] = useState('');
   const [start, setStart] = useState(project.dataDate);
   const [sequence, setSequence] = useState<SequenceKind>('together');
   const [staggerDays, setStaggerDays] = useState('5');
@@ -130,14 +132,17 @@ function AddAssetsForm({ project, workspace, onClose }: { project: Project; work
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, [field]: value } : r)));
   const removeRow = (key: number) => setRows((rs) => (rs.length > 1 ? rs.filter((r) => r.key !== key) : [newRow()]));
 
-  /** Puts new rows in place of row `at` when it is blank (else after it, or at the end) and drops other blank rows. */
+  /**
+   * Puts new rows in place of row `atKey` when it is blank, else after it. With no row
+   * (`null`) they go in place of a blank last row, else at the end. Other rows stay.
+   */
   const insertRows = (incoming: AssetRowInput[], atKey: number | null) => {
     setRows((rs) => {
-      const at = atKey === null ? -1 : rs.findIndex((r) => r.key === atKey);
+      const at = atKey === null ? rs.length - 1 : rs.findIndex((r) => r.key === atKey);
       const made = incoming.map((r) => newRow(r));
-      const out = at < 0 ? [...rs, ...made] : [...rs.slice(0, at + (isBlank(rs[at]!) ? 0 : 1)), ...made, ...rs.slice(at + 1)];
-      const kept = out.filter((r) => !isBlank(r));
-      return kept.length > 0 ? kept : [newRow()];
+      if (at < 0) return [...rs, ...made];
+      const replace = isBlank(rs[at]!);
+      return [...rs.slice(0, replace ? at : at + 1), ...made, ...rs.slice(at + 1)];
     });
   };
 
@@ -158,13 +163,20 @@ function AddAssetsForm({ project, workspace, onClose }: { project: Project; work
     setPattern('');
   };
 
-  const onPaste = (e: ClipboardEvent<HTMLInputElement>, key: number) => {
+  /** Rows pasted from a sheet into a row cell (`key`) or the pattern box (`null`). */
+  const onPaste = (e: ClipboardEvent<HTMLInputElement>, key: number | null) => {
     const text = e.clipboardData.getData('text/plain');
     // A plain value pastes as usual; tabs or line breaks mean rows copied from a sheet.
     if (!/[\t\n\r]/.test(text.replace(/[\r\n]+$/, ''))) return;
     e.preventDefault();
     const pasted = parseAssetRows(text);
-    if (pasted.length > 0) insertRows(pasted, key);
+    const room = Math.max(0, MAX_PATTERN_TAGS - rows.filter((r) => !isBlank(r)).length);
+    setPasteNote(
+      pasted.length > room ? `Pasted the first ${plural(room, 'row')} of ${pasted.length}: at most ${MAX_PATTERN_TAGS} assets can be added at once.` : '',
+    );
+    if (key === null) setPatternError('');
+    const kept = pasted.slice(0, room);
+    if (kept.length > 0) insertRows(kept, key);
   };
 
   // ---- Submit -----------------------------------------------------------------------------
@@ -211,6 +223,15 @@ function AddAssetsForm({ project, workspace, onClose }: { project: Project; work
                 ))}
               </select>
             </label>
+            {!workspace && (
+              <p className="hint aa-no-workspace">
+                Templates come from the workspace folder.{' '}
+                <button type="button" className="btn-link" onClick={() => void store.dispatch({ type: 'choose-workspace' })}>
+                  Choose a workspace folder…
+                </button>{' '}
+                (File &gt; Workspace folder…)
+              </p>
+            )}
             {loadError && <p className="form-error" role="alert">{loadError}</p>}
 
             <div className="aa-quick" role="group" aria-label="Quick fill">
@@ -222,6 +243,7 @@ function AddAssetsForm({ project, workspace, onClose }: { project: Project; work
                   value={pattern}
                   placeholder="e.g. PNL-L1-01..12 or SWGR-1A..1D"
                   aria-invalid={patternError ? true : undefined}
+                  onPaste={(e) => onPaste(e, null)}
                   onChange={(e) => {
                     setPattern(e.target.value);
                     setPatternError('');
@@ -251,10 +273,10 @@ function AddAssetsForm({ project, workspace, onClose }: { project: Project; work
                 <thead>
                   <tr>
                     <th className="aa-n">#</th>
-                    <th>Tag</th>
+                    <th className="aa-c-tag">Tag</th>
                     <th>Description</th>
-                    <th>Location</th>
-                    <th>System</th>
+                    <th className="aa-c-loc">Location</th>
+                    <th className="aa-c-sys">System</th>
                     <th className="aa-x">
                       <span className="visually-hidden">Remove</span>
                     </th>
@@ -263,6 +285,7 @@ function AddAssetsForm({ project, workspace, onClose }: { project: Project; work
                 <tbody>
                   {rows.map((r, i) => {
                     const problem = tagProblems.get(r.key);
+                    const problemId = `aa-problem-${r.key}`;
                     const cell = (field: keyof AssetRowInput, label: string, placeholder?: string) => (
                       <input
                         className="aa-cell"
@@ -270,13 +293,22 @@ function AddAssetsForm({ project, workspace, onClose }: { project: Project; work
                         aria-label={`${label}, row ${i + 1}`}
                         placeholder={placeholder}
                         aria-invalid={field === 'tag' && problem ? true : undefined}
+                        aria-describedby={field === 'tag' && problem ? problemId : undefined}
                         onChange={(e) => setCell(r.key, field, e.target.value)}
                         onPaste={(e) => onPaste(e, r.key)}
                       />
                     );
                     return (
                       <tr key={r.key} className={problem ? 'aa-bad' : undefined}>
-                        <td className="aa-n">{problem ? <span className="aa-flag" title={problem}>!</span> : i + 1}</td>
+                        <td className="aa-n">
+                          {problem ? (
+                            <span className="aa-flag" title={problem}>
+                              !<span id={problemId} className="visually-hidden">{problem}</span>
+                            </span>
+                          ) : (
+                            i + 1
+                          )}
+                        </td>
                         <td>{cell('tag', 'Tag')}</td>
                         <td>{cell('description', 'Description', template?.assetDescription)}</td>
                         <td>{cell('location', 'Location')}</td>
@@ -298,7 +330,17 @@ function AddAssetsForm({ project, workspace, onClose }: { project: Project; work
               </button>
               <span className="hint">Paste rows from Excel (Tag, Description, Location, System) into any cell.</span>
             </div>
-            <div role="alert">
+            {template?.assetDescription && (
+              <p className="hint aa-default-desc">
+                Blank descriptions use: <span className="aa-default-text">{template.assetDescription}</span>
+              </p>
+            )}
+            {pasteNote && (
+              <p className="form-error" role="status">
+                {pasteNote}
+              </p>
+            )}
+            <div aria-live="polite">
               {tagProblems.size > 0 && (
                 <ul className="aa-problems" aria-label="Tag problems">
                   {[...new Set(tagProblems.values())].map((m) => (

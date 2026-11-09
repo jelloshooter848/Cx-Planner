@@ -108,6 +108,25 @@
   width: 34px;
   text-align: center;
 }
+/* Description gets the rest, so the template's default reads in full. */
+.aa-table .aa-c-tag {
+  width: 20%;
+}
+.aa-table .aa-c-loc {
+  width: 17%;
+}
+.aa-table .aa-c-sys {
+  width: 15%;
+}
+.aa-default-desc {
+  margin: 4px 0 0;
+}
+.aa-default-text {
+  color: var(--ink);
+}
+.aa-no-workspace {
+  margin: 4px 0 0;
+}
 .aa-cell {
   width: 100%;
   height: 26px;

@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import { TaskTypeSymbol, taskTypeLabel } from '../../components/Symbols';
 import { shortDate } from '../../format';
-import { useAppState, useProject, useSchedule, useStore } from '../../store';
+import { useProject, useSchedule, useStore } from '../../store';
 
 /**
  * The schedule view. For now a read-only grid of assets and tasks with their computed
@@ -11,11 +11,10 @@ export function ScheduleView() {
   const info = useProject();
   const schedule = useSchedule();
   const store = useStore();
-  const hasWorkspace = !!useAppState()?.workspacePath;
   if (!info) return null;
   const { project } = info;
   const addAssets = (
-    <button type="button" className="btn" disabled={!hasWorkspace} onClick={() => void store.dispatch({ type: 'add-assets' })}>
+    <button type="button" className="btn" onClick={() => void store.dispatch({ type: 'add-assets' })}>
       Add assets…
     </button>
   );

@@ -50,6 +50,18 @@ describe('add assets from a template', () => {
     await h.screenshot('add-assets-duplicate');
     await dialog.getByRole('button', { name: 'Remove row 4' }).click();
 
+    // A column of tags pasted into the pattern box becomes rows, not one bad tag.
+    await dialog.getByLabel('Tag or pattern').evaluate((el) => {
+      const data = new DataTransfer();
+      data.setData('text/plain', 'PNL-PASTE-1\r\nPNL-PASTE-2\r\n');
+      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+    });
+    await expect.poll(() => rows.count()).toBe(5);
+    expect(await dialog.getByLabel('Tag, row 5').inputValue()).toBe('PNL-PASTE-2');
+    expect(await dialog.getByLabel('Tag or pattern').inputValue()).toBe('');
+    await dialog.getByRole('button', { name: 'Remove row 5' }).click();
+    await dialog.getByRole('button', { name: 'Remove row 4' }).click();
+
     await dialog.getByRole('button', { name: 'Add 3 assets' }).click();
     await dialog.waitFor({ state: 'detached' });
     const after = await h.waitState((s) => s.project!.tasks.length === tasksBefore + 12, '12 new tasks');
