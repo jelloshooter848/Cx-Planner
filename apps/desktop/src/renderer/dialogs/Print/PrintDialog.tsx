@@ -111,10 +111,11 @@ function KindChoice({ value, onChange }: { value: PrintKind; onChange(kind: Prin
 function PrintForm({ setup, assets, onSetup, onClose }: FormProps) {
   const store = useStore();
   const kind = useSelect((s) => s.ui.printKind);
-  // TODO(M1 Gantt asset filter): nothing calls store.setAssetFilter yet, so "Current asset filter"
-  // stays disabled until the sidebar filter lands (see docs/ROADMAP.md, M1 Gantt view).
+  // The Schedule sidebar's asset filter; "Current asset filter" is offered while one is set.
   const filter = useAssetFilter();
-  const [settings, setSettings] = useState<PrintSettings>(() => defaultSettings(setup.dataDate, setup.checklistTasks.map((t) => t.taskId), filter !== null));
+  // The look-ahead starts at the window shaded on the Schedule (its toolbar's Look-ahead weeks).
+  const weeks = useSelect((s) => s.ui.lookAheadWeeks);
+  const [settings, setSettings] = useState<PrintSettings>(() => defaultSettings(setup.dataDate, setup.checklistTasks.map((t) => t.taskId), filter !== null, weeks));
   const [preview, setPreview] = useState<PrintPreview | null>(null);
   const [previewError, setPreviewError] = useState('');
   const [updating, setUpdating] = useState(false);

@@ -59,14 +59,26 @@ export interface StatusText {
   saveState?: string;
 }
 
-/** The status bar line, e.g. "9 assets · 19 tasks · Critical path ends Dec 7" / "Data as of Nov 6, 2026 · Saved". */
+/** What the Schedule view's asset filter shows: how many assets and tasks are in view. */
+export interface InView {
+  assets: number;
+  tasks: number;
+}
+
+/**
+ * The status bar line, e.g. "9 assets · 19 tasks · Critical path ends Dec 7" / "Data as of Nov 6, 2026 · Saved".
+ * With `inView` (the Schedule view's asset filter is set) the counts read "4 of 9 assets in view · 19 tasks".
+ */
 export function statusText(
   s: { project: { assets: unknown[]; tasks: unknown[]; dataDate: string } | null; projectFinish: string | null; scheduleError: string | null; revision: number; lastSavedAt: string | null; workspacePath: string | null },
   formatTime: (iso: string) => string = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+  inView: InView | null = null,
 ): StatusText {
   const p = s.project;
   if (!p) return { left: 'No project open', right: s.workspacePath ? `Workspace: ${s.workspacePath}` : '', savedDetail: '' };
-  const left = [plural(p.assets.length, 'asset'), plural(p.tasks.length, 'task')];
+  const left = inView
+    ? [`${inView.assets} of ${plural(p.assets.length, 'asset')} in view`, plural(inView.tasks, 'task')]
+    : [plural(p.assets.length, 'asset'), plural(p.tasks.length, 'task')];
   if (s.scheduleError) left.push(`Schedule not computed: ${s.scheduleError}`);
   else if (s.projectFinish) left.push(`Critical path ends ${shortDate(s.projectFinish)}`);
   const savedDetail = `${s.lastSavedAt ? `Last edit saved at ${formatTime(s.lastSavedAt)}` : 'No edits this session'} · Revision ${s.revision}`;

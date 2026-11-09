@@ -9,6 +9,11 @@
  * Selection: clicking a task row (or its bar) selects it; Up/Down, Page Up/Down, Home and
  * End move the selection while the grid has focus; Escape clears it. The selected task id
  * lives in the renderer store (ui.selectedTaskId) for the edit panel and other views.
+ * Ctrl+click (Cmd+click on macOS) adds a task to the selection, or takes it out
+ * (ui.selectedTaskIds; the toolbar's Link tasks links the first two). Alt+Up / Alt+Down move
+ * the selected task up or down inside its asset.
+ *
+ * The look-ahead window chosen on the toolbar is shaded behind the bars.
  *
  * Editing: double-click a task's name or duration (or press F2 for the name) to edit it in
  * place; Enter or leaving the cell saves (one undo step), Escape cancels. Delete asks to
@@ -21,12 +26,14 @@
  */
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
 import { parseIso, predecessorLabels, TIMES_KEYS, type Id, type ProgressChange, type Project, type Task, type TimesKey } from '@cx/core';
+import type { LookAheadWindow } from '@cx/render';
 import type { TaskScheduleSummary } from '../../../shared/api';
 import { ReadinessSymbol } from '../../components/Symbols';
 import { shortDate } from '../../format';
 import { useSelect, useStore } from '../../store';
 import { useProgressEditor } from './ProgressEdit';
 import { isProgressField, nextProgressCell, type CellMove, type ProgressField } from './progress-grid';
+import { moveTaskAction } from './schedule-actions';
 import { parseActualDate, parseDuration, parsePercent } from './task-fields';
 import { GanttBars, GanttHeaderTime, HEAD_BOTTOM_H, HEAD_H, HEAD_TOP_H, ROW_H } from './GanttBars';
 import { GanttLegend } from './GanttLegend';
@@ -80,18 +87,25 @@ export interface GanttViewProps {
   schedule: Record<Id, TaskScheduleSummary>;
   /** Only show these assets; null shows all. */
   assetIds?: ReadonlySet<Id> | null;
+  /** Dates to shade as the look-ahead window; null or left out shades nothing. */
+  lookAhead?: LookAheadWindow | null;
 }
 
-export function GanttView({ project, schedule, assetIds = null }: GanttViewProps) {
+export function GanttView({ project, schedule, assetIds = null, lookAhead = null }: GanttViewProps) {
   const store = useStore();
   const zoom = useSelect((s) => s.ui.scheduleZoom);
   const selectedId = useSelect((s) => s.ui.selectedTaskId);
+  const selectedIdList = useSelect((s) => s.ui.selectedTaskIds);
+  const selectedIds = useMemo(() => new Set(selectedIdList), [selectedIdList]);
   const progressMode = useSelect((s) => s.ui.progressMode);
   const columns = progressMode ? PROGRESS_COLUMNS : PLAN_COLUMNS;
   const tableW = tableWidth(columns);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [vp, setVp] = useState<Viewport>({ top: 0, left: 0, width: 1200, height: 800, measured: false });
   const [editing, setEditing] = useState<{ id: Id; field: EditField } | null>(null);
+  // Keyboard multi-select: Ctrl+Up/Down moves this row cursor without changing the selection,
+  // Ctrl+Space adds or removes the cursor's task (as Ctrl+click does). Null follows the selection.
+  const [cursorId, setCursorId] = useState<Id | null>(null);
   const progressModeRef = useRef(progressMode);
   progressModeRef.current = progressMode;
   const projectRef = useRef(project);
@@ -169,14 +183,22 @@ export function GanttView({ project, schedule, assetIds = null }: GanttViewProps
   const [first, last] = visibleRows(vp.top, bodyH, ROW_H, rows.length);
   const [x0, x1] = visibleSpan(vp.left, timelineView, scale.width);
   const selectedIndex = rowIndexOfTask(rows, selectedId);
+  const activeId = cursorId && rowIndexOfTask(rows, cursorId) >= 0 ? cursorId : selectedId;
+  const activeIndex = rowIndexOfTask(rows, activeId);
   const totalW = tableW + scale.width;
   const dataDateX = xOf(scale, project.dataDate);
+  const lookAheadSpan = useMemo((): [number, number] | null => {
+    if (!lookAhead) return null;
+    const a = Math.max(0, xOf(scale, lookAhead.start));
+    const b = Math.min(scale.width, xOf(scale, parseIso(lookAhead.end) + 1));
+    return b > a ? [a, b] : null;
+  }, [scale, lookAhead]);
 
-  const select = useCallback(
-    (id: Id | null, reveal: boolean) => {
-      store.selectTask(id);
+  /** Scrolls the task's row (and its bar) into view. */
+  const reveal = useCallback(
+    (id: Id) => {
       const el = scrollRef.current;
-      if (!reveal || !el || !id) return;
+      if (!el) return;
       const i = rowIndexOfTask(rows, id);
       if (i >= 0) el.scrollTop = scrollToRow(i, el.scrollTop, el.clientHeight, ROW_H, HEAD_H);
       // Bring the task's bar into view too when it is off to either side.
@@ -188,7 +210,16 @@ export function GanttView({ project, schedule, assetIds = null }: GanttViewProps
         if (a < el.scrollLeft || b > el.scrollLeft + view) el.scrollLeft = Math.max(0, a - 7 * scale.dayWidth);
       }
     },
-    [store, rows, schedule, scale, tableW],
+    [rows, schedule, scale, tableW],
+  );
+
+  const select = useCallback(
+    (id: Id | null, show: boolean) => {
+      setCursorId(null);
+      store.selectTask(id);
+      if (show && id) reveal(id);
+    },
+    [store, reveal],
   );
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
@@ -263,11 +294,34 @@ export function GanttView({ project, schedule, assetIds = null }: GanttViewProps
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     // Keys typed in an in-place editor are its own.
     if (e.target !== e.currentTarget) return;
-    if (e.altKey || e.ctrlKey || e.metaKey) return;
-    if (progressMode && selectedId && e.key === 'Enter' && selectedIndex >= 0) {
+    if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
       e.preventDefault();
-      select(selectedId, true);
-      setEditing({ id: selectedId, field: 'pct' });
+      const a = moveTaskAction(projectRef.current, selectedId, e.key === 'ArrowUp' ? -1 : 1);
+      if (a.ok) void store.run(() => store.api.apply(a.command));
+      return;
+    }
+    const mod = (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey;
+    if (mod && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault();
+      const next = moveSelection(rows, activeId, e.key === 'ArrowUp' ? -1 : 1);
+      if (next) {
+        setCursorId(next);
+        reveal(next);
+      }
+      return;
+    }
+    if (mod && e.key === ' ') {
+      e.preventDefault();
+      if (activeId) store.toggleTaskSelection(activeId);
+      return;
+    }
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    if (progressMode && activeId && e.key === 'Enter' && activeIndex >= 0) {
+      // Enter opens the % cell of the row under the keyboard cursor (the selected row unless
+      // Ctrl+Up/Down moved the cursor), selecting it.
+      e.preventDefault();
+      select(activeId, true);
+      setEditing({ id: activeId, field: 'pct' });
       return;
     }
     if (selectedId && (e.key === 'Delete' || e.key === 'F2')) {
@@ -296,6 +350,11 @@ export function GanttView({ project, schedule, assetIds = null }: GanttViewProps
     const target = e.target as Element;
     const id = target.closest('[data-task-id]')?.getAttribute('data-task-id');
     if (!id) return;
+    if (e.ctrlKey || e.metaKey) {
+      setCursorId(id);
+      store.toggleTaskSelection(id);
+      return;
+    }
     select(id, false);
     // In progress mode one click opens a progress cell.
     const field = target.closest('[data-edit]')?.getAttribute('data-edit');
@@ -320,7 +379,7 @@ export function GanttView({ project, schedule, assetIds = null }: GanttViewProps
         aria-label="Tasks"
         aria-rowcount={rows.length + 1}
         aria-colcount={columns.length + 1}
-        aria-activedescendant={selectedIndex >= first && selectedIndex < last && selectedId ? `gantt-row-${selectedId}` : undefined}
+        aria-activedescendant={activeIndex >= first && activeIndex < last && activeId ? `gantt-row-${activeId}` : undefined}
         tabIndex={0}
         onKeyDown={onKeyDown}
         data-zoom={zoom}
@@ -359,7 +418,8 @@ export function GanttView({ project, schedule, assetIds = null }: GanttViewProps
                 progressMode={progressMode}
                 summary={row.kind === 'task' ? schedule[row.task.id] : undefined}
                 pred={row.kind === 'task' ? (preds.get(row.task.id) ?? '') : ''}
-                selected={row.kind === 'task' && row.task.id === selectedId}
+                selected={row.kind === 'task' && selectedIds.has(row.task.id)}
+                cursor={row.kind === 'task' && cursorId !== null && row.task.id === cursorId}
                 editing={row.kind === 'task' && editing?.id === row.task.id ? editing.field : null}
                 onEditDone={finishEdit}
               />
@@ -377,6 +437,8 @@ export function GanttView({ project, schedule, assetIds = null }: GanttViewProps
                 x1={x1}
                 dataDateX={dataDateX >= 0 && dataDateX <= scale.width ? dataDateX : null}
                 dataDateTitle={`Data date ${shortDate(project.dataDate)}`}
+                lookAheadSpan={lookAheadSpan}
+                lookAheadTitle={lookAhead ? `Look-ahead window ${shortDate(lookAhead.start)} – ${shortDate(lookAhead.end)}` : undefined}
               />
             </div>
           </div>
@@ -401,13 +463,15 @@ interface RowProps {
   /** The task's predecessor field (task rows only). */
   pred: string;
   selected: boolean;
+  /** The keyboard row cursor is on this row (Ctrl+Up/Down). */
+  cursor: boolean;
   /** The cell being edited in place, if any. */
   editing: EditField | null;
   onEditDone: (id: Id, field: EditField, text: string | null, end: EditEnd, changed: boolean) => void;
 }
 
 /** One table row; memoised so rows already in view are not redrawn on every scroll step. */
-const Row = memo(function Row({ row, index, width, columns, tableWidth, progressMode, summary: s, pred, selected, editing, onEditDone }: RowProps) {
+const Row = memo(function Row({ row, index, width, columns, tableWidth, progressMode, summary: s, pred, selected, cursor, editing, onEditDone }: RowProps) {
   const style = { top: index * ROW_H, width };
   if (row.kind === 'group') {
     const a = row.asset;
@@ -491,7 +555,7 @@ const Row = memo(function Row({ row, index, width, columns, tableWidth, progress
   return (
     <div
       id={`gantt-row-${t.id}`}
-      className={`gantt-row is-task${selected ? ' is-selected' : ''}${s?.critical ? ' is-critical' : ''}`}
+      className={`gantt-row is-task${selected ? ' is-selected' : ''}${s?.critical ? ' is-critical' : ''}${cursor ? ' is-cursor' : ''}`}
       role="row"
       aria-rowindex={index + 2}
       aria-selected={selected}

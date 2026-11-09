@@ -8,5 +8,5 @@ export * from './template-edit.js';
 export * from './add-assets.js';
 export * from './task-info.js';
 export * from './checklists.js';
-export * from './holidays.js';
 export * from './progress.js';
+export * from './holidays.js';

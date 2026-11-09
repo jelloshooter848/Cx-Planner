@@ -216,6 +216,75 @@ describe('renderer store', () => {
     expect(store.getSnapshot().ui.assetFilter).toBeNull();
   });
 
+  it('builds the asset filter from the sidebar text and ticks, and keeps new assets in view', async () => {
+    const f = fakeApi(appState({ seq: 1, project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp' }));
+    const store = createStore(f.api);
+    await tick();
+    const ui = () => store.getSnapshot().ui;
+    expect(ui().assetFilter).toBeNull();
+    store.setAssetQuery('critical');
+    expect(ui().assetFilter).toEqual(['ups-1a', 'gen-1']);
+    store.setAssetsShown(['gen-1'], false);
+    expect(ui().assetFilter).toEqual(['ups-1a']);
+    store.setAssetQuery('');
+    expect(ui().assetFilter).toEqual(['swgr-1a', 'xfmr-1a', 'ups-1a']);
+    // An asset added later shows.
+    const more = riversideProject();
+    more.assets = [...more.assets, { id: 'ats-1', tag: 'ATS-1', description: 'Transfer switch', system: 'Critical power' }];
+    f.push(appState({ seq: 2, project: more, filePath: '/r.cxp', fileName: 'r.cxp', revision: 1 }));
+    expect(ui().assetFilter).toEqual(['swgr-1a', 'xfmr-1a', 'ups-1a', 'ats-1']);
+    store.setAssetsShown(['gen-1'], true);
+    expect(ui().assetFilter).toBeNull();
+    // setAssetFilter ticks exactly the listed assets and clears the text.
+    store.setAssetQuery('swgr');
+    store.setAssetFilter(['gen-1', 'ups-1a']);
+    expect(ui()).toMatchObject({ assetQuery: '', assetFilter: ['ups-1a', 'gen-1'] });
+    store.setAssetFilter(null);
+    expect(ui()).toMatchObject({ assetFilter: null, hiddenAssetIds: [] });
+  });
+
+  it('drops selected tasks whose asset leaves the view', async () => {
+    const f = fakeApi(appState({ seq: 1, project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp' }));
+    const store = createStore(f.api);
+    await tick();
+    store.selectTask('t1.3');
+    store.toggleTaskSelection('t3.1');
+    store.setAssetsShown(['swgr-1a'], false);
+    expect(store.getSnapshot().ui).toMatchObject({ selectedTaskId: 't3.1', selectedTaskIds: ['t3.1'] });
+  });
+
+  it('adds and removes tasks with Ctrl+click, keeping the order chosen', async () => {
+    const f = fakeApi(appState({ seq: 1, project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp' }));
+    const store = createStore(f.api);
+    await tick();
+    const ui = () => store.getSnapshot().ui;
+    store.toggleTaskSelection('t1.3');
+    expect(ui()).toMatchObject({ selectedTaskId: 't1.3', selectedTaskIds: ['t1.3'] });
+    store.toggleTaskSelection('t2.1');
+    expect(ui()).toMatchObject({ selectedTaskId: 't1.3', selectedTaskIds: ['t1.3', 't2.1'] });
+    store.toggleTaskSelection('t1.3');
+    expect(ui()).toMatchObject({ selectedTaskId: 't2.1', selectedTaskIds: ['t2.1'] });
+    store.toggleTaskSelection('t1.4');
+    // A plain click selects one task again.
+    store.selectTask('t1.1');
+    expect(ui()).toMatchObject({ selectedTaskId: 't1.1', selectedTaskIds: ['t1.1'] });
+    store.toggleTaskSelection('t1.2');
+    // An edit that removes one keeps the other.
+    const without = riversideProject();
+    without.tasks = without.tasks.filter((t) => t.id !== 't1.1');
+    f.push(appState({ seq: 2, project: without, filePath: '/r.cxp', fileName: 'r.cxp', revision: 1 }));
+    expect(ui()).toMatchObject({ selectedTaskId: 't1.2', selectedTaskIds: ['t1.2'] });
+    store.selectTask(null);
+    expect(ui()).toMatchObject({ selectedTaskId: null, selectedTaskIds: [] });
+  });
+
+  it('remembers the look-ahead weeks', async () => {
+    const store = createStore(fakeApi(appState()).api);
+    expect(store.getSnapshot().ui.lookAheadWeeks).toBe(3);
+    store.setLookAheadWeeks(6);
+    expect(store.getSnapshot().ui.lookAheadWeeks).toBe(6);
+  });
+
   it('calls exit for File > Exit', async () => {
     const exit = vi.fn();
     const store = createStore(fakeApi(appState()).api, { exit });

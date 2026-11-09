@@ -183,6 +183,19 @@ describe('progress entry', () => {
     await page.getByRole('textbox', { name: '% complete of task 2.5' }).fill('150');
     await page.keyboard.press('Enter');
     await expect(page.getByRole('alert').first().textContent()).resolves.toContain('% complete must be between 0 and 100');
+    await page.keyboard.press('Escape');
+
+    // Ctrl+click still adds to the selection without opening the cell; a plain click opens it.
+    await row(page, 't2.1').locator('.gc-id').click();
+    await row(page, 't2.2').locator('.gc-pct').click({ modifiers: ['Control'] });
+    await expect(page.locator('.gantt-edit').count()).resolves.toBe(0);
+    await expect(row(page, 't2.2').getAttribute('aria-selected')).resolves.toBe('true');
+    await expect(row(page, 't2.1').getAttribute('aria-selected')).resolves.toBe('true');
+    // Enter opens the % cell of the row under the keyboard cursor.
+    await grid.focus();
+    await page.keyboard.press('Enter');
+    await page.getByRole('textbox', { name: '% complete of task 2.2' }).waitFor();
+    await page.keyboard.press('Escape');
 
     await toggle.click();
     await page.getByRole('columnheader', { name: 'Actual start' }).waitFor({ state: 'detached' });

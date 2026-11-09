@@ -117,8 +117,8 @@ describe('print / export PDF', () => {
     await dialog.getByRole('button', { name: 'Close' }).click();
     await dialog.waitFor({ state: 'detached' });
 
-    // The Schedule toolbar's Print… opens on the last kind used.
-    await page.getByRole('toolbar', { name: 'Schedule tools' }).getByRole('button', { name: 'Print…' }).click();
+    // The Schedule toolbar's Print / Export PDF opens on the last kind used.
+    await page.getByRole('toolbar', { name: 'Schedule tools' }).getByRole('button', { name: 'Print / Export PDF' }).click();
     await dialog.waitFor();
     expect(await kindRadio('Full schedule').getAttribute('aria-checked')).toBe('true');
     await dialog.getByRole('button', { name: 'Close' }).click();

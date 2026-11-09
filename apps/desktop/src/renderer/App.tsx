@@ -5,14 +5,13 @@ import { NoticeBar } from './components/NoticeBar';
 import { StatusBar } from './components/StatusBar';
 import { TitleBar } from './components/TitleBar';
 import { buildMenus } from './menus';
+import { isMac } from './platform';
 import { isTextField, shortcutAction } from './shortcuts';
 import { effectiveView, useSnapshot, useStore } from './store';
 import { LookAheadView } from './views/LookAhead/LookAheadView';
 import { ScheduleView } from './views/Schedule/ScheduleView';
 import { TemplatesView } from './views/Templates/TemplatesView';
 import { WelcomeView } from './views/Welcome/WelcomeView';
-
-export const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
 
 /** The window frame: title bar, menu row, the current view, status bar, and any open dialog. */
 export function App() {

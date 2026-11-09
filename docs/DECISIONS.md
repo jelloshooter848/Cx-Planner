@@ -54,3 +54,8 @@ Each entry: the decision, why, and what would make us revisit it.
 ## D13 · Save As makes a new project (2026-11-09)
 - A Save As copy gets a new project id, saved as a logged change in the copy. The original file keeps its id. Two files never share one project identity, so later field sync and packet matching can key on the project id.
 - The copy keeps the original's change log, so its history still shows where it came from.
+
+## D14 · Progress entry: future actuals allowed, default start capped at the data date (2026-11-09)
+- Actual start and finish dates typed after the data date are accepted. Weekly entry is often done a day or two before the data date is moved forward, and refusing those dates would force the data date to be changed first. The data date is the reviewer's check, not a hard limit.
+- The defaults the app fills in never land after the data date: a missing actual start defaults to the computed start, but no later than the data date (progress is reported as of that date, so the work had started by then), and a 100% finish defaults to the data date. This is a deliberate narrowing of "defaulting to the computed start".
+- Setting a milestone to 0% clears both actual dates, so a milestone is either not reached (no actuals) or reached (start = finish).

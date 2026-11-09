@@ -1,6 +1,6 @@
 import { formatIso, parseIso } from './calendar.js';
 import type { Command, TaskPatch } from './commands.js';
-import type { Id, IsoDate, Task } from './model.js';
+import type { Id, IsoDate, Project, Task } from './model.js';
 
 /**
  * Progress entry rules: how a change to a task's % complete or actual dates fills in or
@@ -21,7 +21,8 @@ import type { Id, IsoDate, Task } from './model.js';
  * - Clearing the actual start resets the task to not started: % goes to 0 and the actual
  *   finish is cleared.
  * - Clearing the actual finish of a 100% task is refused; lower % complete instead.
- * - A milestone is either 0% or 100%.
+ * - A milestone is either 0% or 100%. Setting a milestone to 0% clears both actual dates.
+ * - Actual dates after the data date are allowed (docs/DECISIONS.md D14).
  */
 
 /** The progress fields an edit sets. `null` clears an actual date; a missing key leaves it alone. */
@@ -102,6 +103,8 @@ export function planProgress(task: ProgressTask, change: ProgressChange, ctx: Pr
   if (p !== undefined) {
     pct = p;
     if (p < 100 && f === undefined) finish = null;
+    // A milestone at 0% has not happened: it has no actual start either.
+    if (p === 0 && task.type === 'milestone' && s === undefined) start = null;
   }
   if (s !== undefined) {
     start = s;
@@ -148,4 +151,33 @@ export function planProgress(task: ProgressTask, change: ProgressChange, ctx: Pr
 /** The `updateTask` command for a planned progress patch, or null when it changes nothing. */
 export function progressCommand(taskId: Id, patch: TaskPatch): Command | null {
   return Object.keys(patch).length === 0 ? null : { kind: 'updateTask', id: taskId, patch };
+}
+
+/**
+ * Percent complete of a set of tasks, weighted by duration: a 4-day task at 50% counts as
+ * much as two 2-day tasks at 50%. When every task is 0 days long (milestones, holds), each
+ * counts equally. Returns 0 for no tasks. Not rounded.
+ */
+export function weightedPercent(tasks: readonly Pick<Task, 'durationDays' | 'percentComplete'>[]): number {
+  if (tasks.length === 0) return 0;
+  let days = 0;
+  let done = 0;
+  for (const t of tasks) {
+    const d = Math.max(0, t.durationDays);
+    days += d;
+    done += d * clampPercent(t.percentComplete);
+  }
+  if (days > 0) return done / days;
+  return tasks.reduce((n, t) => n + clampPercent(t.percentComplete), 0) / tasks.length;
+}
+
+/** Duration-weighted percent complete of every asset of the project (0 for an asset with no tasks). */
+export function assetProgress(project: Pick<Project, 'assets' | 'tasks'>): Map<Id, number> {
+  const byAsset = new Map<Id, Task[]>(project.assets.map((a) => [a.id, []]));
+  for (const t of project.tasks) byAsset.get(t.assetId)?.push(t);
+  return new Map([...byAsset].map(([id, tasks]) => [id, weightedPercent(tasks)]));
+}
+
+function clampPercent(p: number): number {
+  return Number.isFinite(p) ? Math.min(100, Math.max(0, p)) : 0;
 }

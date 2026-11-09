@@ -1,5 +1,6 @@
-import { statusText } from '../format';
-import { useAppState, useStore, useUi } from '../store';
+import { useMemo } from 'react';
+import { statusText, type InView } from '../format';
+import { effectiveView, useAssetFilter, useAppState, useSelect, useStore, useUi } from '../store';
 
 /**
  * Bottom line: the project name (opens Project settings), counts on the left, data date
@@ -10,8 +11,19 @@ export function StatusBar() {
   const app = useAppState();
   const store = useStore();
   const { status } = useUi();
+  const onSchedule = useSelect((s) => effectiveView(s) === 'schedule');
+  const filter = useAssetFilter();
+  const appProject = app?.project;
+  // On the Schedule view (once it has assets) the counts read "N of M assets in view"; the
+  // asset filter narrows them.
+  const inView = useMemo((): InView | null => {
+    if (!onSchedule || !appProject || appProject.assets.length === 0) return null;
+    if (!filter) return { assets: appProject.assets.length, tasks: appProject.tasks.length };
+    const shown = new Set(filter);
+    return { assets: filter.length, tasks: appProject.tasks.filter((t) => shown.has(t.assetId)).length };
+  }, [onSchedule, filter, appProject]);
   if (!app) return <footer className="statusbar" />;
-  const t = status ? { ...status, savedDetail: '' } : statusText(app);
+  const t = status ? { ...status, savedDetail: '' } : statusText(app, undefined, inView);
   const project = status ? null : app.project;
   return (
     <footer className="statusbar" data-testid="statusbar">
