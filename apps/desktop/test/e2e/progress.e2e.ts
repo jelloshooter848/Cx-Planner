@@ -178,6 +178,17 @@ describe('progress entry', () => {
     await expect.poll(() => grid.evaluate((el) => el === document.activeElement)).toBe(true);
     expect(taskOf(await h.state(), 't1.4').percentComplete).toBe(0);
 
+    // Clearing a finished task's actual start resets it to not started, and says so.
+    await row(page, 't1.3').locator('.gc-astart').click();
+    await page.getByRole('textbox', { name: 'Actual start of task 1.3' }).fill('');
+    await page.keyboard.press('Enter');
+    await h.waitState((x) => taskOf(x, 't1.3').percentComplete === 0 && taskOf(x, 't1.3').actualFinish === undefined, 'the grid reset');
+    await expect.poll(() => page.getByRole('alert').allTextContents()).toContainEqual(expect.stringContaining('1.3 reset to not started (Ctrl+Z to undo)'));
+    await page.keyboard.press('Escape');
+    await grid.focus();
+    await page.keyboard.press('Control+z');
+    await h.waitState((x) => taskOf(x, 't1.3').percentComplete === 100 && taskOf(x, 't1.3').actualFinish === '2026-11-06', 'the reset undo');
+
     // A bad value is refused with a notice and the cell stays as it was.
     await row(page, 't2.5').locator('.gc-pct').click();
     await page.getByRole('textbox', { name: '% complete of task 2.5' }).fill('150');

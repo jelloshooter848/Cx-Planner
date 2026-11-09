@@ -279,7 +279,13 @@ export function GanttView({ project, schedule, assetIds = null, lookAhead = null
       change = { [key]: p.value };
     }
     const r = progressRef.current.edit(task, change);
-    void r.saved.then((m) => m && store.notify(`${task.code}: ${m}`));
+    // Clearing the actual start resets the task to not started, wiping its % and actual
+    // finish too: say so, since one stray clear during weekly entry loses recorded progress.
+    const resets = change.actualStart === null && r.outcome.kind === 'patch' && (task.percentComplete > 0 || task.actualFinish != null);
+    void r.saved.then((m) => {
+      if (m) store.notify(`${task.code}: ${m}`);
+      else if (resets) store.notify(`${task.code} reset to not started (Ctrl+Z to undo)`);
+    });
     return r.outcome.kind === 'patch';
   };
   const fail = (message: string) => {

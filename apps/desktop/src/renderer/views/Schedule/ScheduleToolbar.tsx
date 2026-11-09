@@ -85,12 +85,11 @@ export function ScheduleToolbar({ project, assetsInView }: ScheduleToolbarProps)
           type="button"
           className="btn"
           aria-pressed={progressMode}
-          title="Edit % complete and actual dates right in the grid. Enter moves down, Tab moves across."
+          title="Edit % complete and actual dates right in the grid: click a cell to edit it. Enter moves down, Tab moves across."
           onClick={() => store.setProgressMode(!progressMode)}
         >
           Progress mode
         </button>
-        {progressMode && <span className="toolbar-hint">Click a % or actual date to edit it · Enter moves down · Tab moves across</span>}
       </div>
       <span className="toolbar-spacer" />
       <div className="toolbar-group">

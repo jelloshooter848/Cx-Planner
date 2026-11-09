@@ -140,10 +140,6 @@
 
 /* Progress mode: the % and actual-date cells look like fields (30-WeeklyUpdate), so they read
    as editable without relying on colour. */
-.toolbar-hint {
-  color: var(--ink-muted);
-  font-size: var(--fs-sm);
-}
 .gc.is-editable {
   cursor: text;
 }

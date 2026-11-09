@@ -16,6 +16,8 @@ import type { Id, IsoDate, Project, Task } from './model.js';
  *   defaults to the computed start, no later than the data date or the actual finish (the
  *   data date when the task has no computed schedule). A milestone's start defaults to its
  *   finish.
+ * - A reached milestone happens on one day: changing its actual finish (without giving an
+ *   actual start) moves its actual start to the same day.
  * - An actual finish before the actual start is refused.
  * - Lowering % below 100 reopens a finished task: its actual finish is cleared.
  * - Clearing the actual start resets the task to not started: % goes to 0 and the actual
@@ -122,6 +124,8 @@ export function planProgress(task: ProgressTask, change: ProgressChange, ctx: Pr
     } else {
       finish = f;
       pct = 100;
+      // A reached milestone has start = finish, so moving its finish moves its start too.
+      if (task.type === 'milestone' && s === undefined) start = f;
     }
   }
 

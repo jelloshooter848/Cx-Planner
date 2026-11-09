@@ -108,6 +108,15 @@ describe('planProgress', () => {
     expect(plan(reached, { percentComplete: 0 })).toEqual({ kind: 'patch', patch: { percentComplete: 0, actualStart: null, actualFinish: null } });
   });
 
+  it('moves a reached milestone\'s actual start with its actual finish', () => {
+    const reached = task({ type: 'milestone', durationDays: 0, percentComplete: 100, actualStart: '2026-11-05', actualFinish: '2026-11-05' });
+    expect(plan(reached, { actualFinish: '2026-11-04' })).toEqual({ kind: 'patch', patch: { actualStart: '2026-11-04', actualFinish: '2026-11-04' } });
+    expect(plan(reached, { actualFinish: '2026-11-09' })).toEqual({ kind: 'patch', patch: { actualStart: '2026-11-09', actualFinish: '2026-11-09' } });
+    // A task (not a milestone) keeps its actual start.
+    const done = task({ percentComplete: 100, actualStart: '2026-11-02', actualFinish: '2026-11-05' });
+    expect(plan(done, { actualFinish: '2026-11-04' })).toEqual({ kind: 'patch', patch: { actualFinish: '2026-11-04' } });
+  });
+
   it('gives a patch that applies as one undoable updateTask command', () => {
     const project: Project = {
       id: 'p',
