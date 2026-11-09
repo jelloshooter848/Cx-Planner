@@ -28,6 +28,7 @@ const api: CxApi = {
   templates: {
     list: () => invoke(CH.templateList),
     get: (id) => invoke(CH.templateGet, id),
+    inProject: (id) => invoke(CH.templateInProject, id),
     save: (t) => invoke(CH.templateSave, t),
     duplicate: (id, newName) => invoke(CH.templateDuplicate, id, newName),
     delete: (id) => invoke(CH.templateDelete, id),

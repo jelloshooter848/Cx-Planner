@@ -6,4 +6,5 @@ export * from './commands.js';
 export * from './reapply.js';
 export * from './template-edit.js';
 export * from './add-assets.js';
+export * from './task-info.js';
 export * from './checklists.js';

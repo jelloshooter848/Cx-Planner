@@ -13,7 +13,7 @@ import type { ApiResult, AppState, CxApi, EditOutcome, PrintKind, TaskScheduleSu
 
 /** Views shown when a project is open (the welcome screen shows when none is). */
 export type ViewId = 'schedule' | 'templates' | 'lookahead';
-export type DialogId = 'new-project' | 'about' | 'add-assets' | 'print';
+export type DialogId = 'new-project' | 'about' | 'add-assets' | 'delete-task' | 'print';
 /** Time scale of the Schedule view's Gantt. */
 export type ScheduleZoom = 'day' | 'week' | 'month';
 
@@ -73,6 +73,8 @@ export type Action =
   | { type: 'redo' }
   /** Opens the add-assets-from-template dialog (needs an open project). */
   | { type: 'add-assets' }
+  /** Asks to delete the selected task (a confirm dialog); nothing happens with no task selected. */
+  | { type: 'delete-task' }
   /** Opens the Print dialog (needs an open project), on `kind` or the last kind used. */
   | { type: 'print'; kind?: PrintKind }
   | { type: 'view'; view: ViewId }
@@ -153,6 +155,10 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
   const offMenu = api.onMenu((cmd) => {
     if (cmd === 'new-project') void store.dispatch({ type: 'new-project' });
     else if (cmd === 'print') void store.dispatch({ type: 'print' });
+    // The selection belongs to the Schedule view; elsewhere the item does nothing (as in the in-window menu).
+    else if (cmd === 'delete-task') {
+      if (snapshot.ui.view === 'schedule') void store.dispatch({ type: 'delete-task' });
+    }
     // Only the template editor reports unsaved work: show it so it can ask what to do.
     else if (cmd === 'confirm-close') setUi({ view: 'templates', dialog: null, closeRequest: snapshot.ui.closeRequest + 1 });
   });
@@ -208,6 +214,11 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
         case 'add-assets':
           if (snapshot.app?.project) store.openDialog('add-assets');
           return;
+        case 'delete-task': {
+          const id = snapshot.ui.selectedTaskId;
+          if (id && snapshot.app?.project?.tasks.some((t) => t.id === id)) store.openDialog('delete-task');
+          return;
+        }
         case 'print':
           if (snapshot.app?.project) setUi({ dialog: 'print', printKind: action.kind ?? snapshot.ui.printKind });
           return;

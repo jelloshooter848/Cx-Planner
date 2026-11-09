@@ -39,7 +39,8 @@ export function keyHint(keys: string, mac: boolean): string {
 
 const sep: MenuItem = { kind: 'separator' };
 
-export function buildMenus(state: AppState | null, view: ViewId | 'welcome', mac = false): MenuDef[] {
+/** `taskSelected`: a task is selected in the Schedule view (enables Delete task). */
+export function buildMenus(state: AppState | null, view: ViewId | 'welcome', mac = false, taskSelected = false): MenuDef[] {
   const open = !!state?.project;
   const hasWorkspace = !!state?.workspacePath;
   const k = (keys: string) => keyHint(keys, mac);
@@ -81,6 +82,7 @@ export function buildMenus(state: AppState | null, view: ViewId | 'welcome', mac
     item(state?.redoLabel ? `Redo ${state.redoLabel}` : 'Redo', { type: 'redo' }, { enabled: !!state?.canRedo, ...(projectKeys ? { shortcut: 'Ctrl+Y' } : {}) }),
     sep,
     item('Add assets from template…', { type: 'add-assets' }, { enabled: open }),
+    item('Delete task…', { type: 'delete-task' }, { enabled: open && view === 'schedule' && taskSelected, shortcut: 'Del' }),
   ];
   // With no project open, Schedule (tab and View item) leads back to the welcome screen.
   const viewItems: MenuItem[] = [
