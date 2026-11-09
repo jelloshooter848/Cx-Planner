@@ -1,0 +1,82 @@
+/**
+ * Plain helpers for the template editor (no React), so they can be unit-tested. The
+ * template edits themselves (add, remove, move tasks, predecessor text, preview) are in
+ * @cx/core template-edit.ts.
+ */
+import { validateTemplate, type Asset, type Template, type TemplateProblem, type TemplateProblemCode } from '@cx/core';
+
+/** A problem shown in the editor: a template rule, or a missing name. */
+export interface EditorProblem extends Omit<TemplateProblem, 'code'> {
+  code: TemplateProblemCode | 'empty-name';
+}
+
+/** True when two templates hold the same content (and id, name, version). */
+export function sameTemplate(a: Template, b: Template): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/** Trims names and drops empty list entries (stages, documents, certifications, checklist lines) before saving. */
+export function cleanTemplate(t: Template): Template {
+  const list = (items: string[]) => items.map((s) => s.trim()).filter((s) => s !== '');
+  return {
+    ...t,
+    name: t.name.trim(),
+    assetDescription: t.assetDescription.trim(),
+    stages: list(t.stages),
+    requiredDocs: list(t.requiredDocs),
+    tasks: t.tasks.map((task) => ({
+      ...task,
+      name: task.name.trim(),
+      trade: task.trade.trim(),
+      requiredCerts: list(task.requiredCerts),
+      checklist: task.checklist.map((c) => ({ ...c, text: c.text.trim() })).filter((c) => c.text !== ''),
+    })),
+  };
+}
+
+/**
+ * Everything that stops a template being saved: the rules in validateTemplate plus a name
+ * on the template and on every task. Checked on the cleaned template.
+ */
+export function templateProblems(t: Template): EditorProblem[] {
+  const c = cleanTemplate(t);
+  const problems: EditorProblem[] = [];
+  if (c.name === '') problems.push({ code: 'empty-name', message: 'The template needs a name' });
+  c.tasks.forEach((task, i) => {
+    if (task.name === '') problems.push({ code: 'empty-name', message: `Task ${i + 1} needs a name`, taskKey: task.key });
+  });
+  const label = new Map(c.tasks.map((task, i) => [task.key, `${i + 1} ${task.name || '(no name)'}`]));
+  for (const p of validateTemplate(c)) {
+    // Keys mean nothing to the user; name loops by row number and task name.
+    const loop = p.code === 'cycle' ? CYCLE_PREFIX.exec(p.message) : null;
+    if (loop) {
+      const rows = loop[1]!.split(', ').map((k) => label.get(k) ?? k);
+      problems.push({ ...p, message: `Predecessor loop between tasks ${rows.join(', ')}` });
+    } else {
+      problems.push(p);
+    }
+  }
+  return problems;
+}
+
+const CYCLE_PREFIX = /^Predecessor loop between tasks: (.*)$/;
+
+/** `base`, or `base 2`, `base 3` ... whichever no name in `taken` uses (compared without case). */
+export function uniqueName(base: string, taken: readonly string[]): string {
+  const used = new Set(taken.map((n) => n.trim().toLowerCase()));
+  if (!used.has(base.toLowerCase())) return base;
+  let n = 2;
+  while (used.has(`${base} ${n}`.toLowerCase())) n++;
+  return `${base} ${n}`;
+}
+
+/** Assets of the project made from the template. */
+export function assetsUsing(assets: readonly Asset[] | undefined, templateId: string): Asset[] {
+  return (assets ?? []).filter((a) => a.templateId === templateId);
+}
+
+/** "one", "two" ... "ten", then digits, for the "Three existing assets use this template" note. */
+export function countWord(n: number): string {
+  const words = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
+  return words[n] ?? String(n);
+}

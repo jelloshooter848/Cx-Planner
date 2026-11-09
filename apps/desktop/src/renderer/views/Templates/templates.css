@@ -1,0 +1,475 @@
+/* Template editor (mockup 02). Values come from tokens.css. */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---- Library ------------------------------------------------------------------------- */
+.tpl-library {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+.tpl-library-lists {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: 12px;
+}
+.tpl-library-foot {
+  flex: none;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+.tpl-wide {
+  width: 100%;
+}
+.side-button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  align-items: baseline;
+}
+.side-button:hover {
+  background: var(--bg-hover);
+}
+.side-button.is-current {
+  background: var(--accent-soft);
+  font-weight: var(--fw-medium);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.side-button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+.side-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Editor -------------------------------------------------------------------------- */
+.tpl-main {
+  padding: 14px 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.tpl-main > * {
+  flex: none;
+}
+.tpl-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.tpl-title {
+  flex: 1;
+  min-width: 0;
+}
+.tpl-name {
+  width: 100%;
+  margin: 0 0 2px -6px;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  font-size: 18px;
+  font-weight: var(--fw-semibold);
+}
+.tpl-name:hover {
+  border-color: var(--line);
+}
+.tpl-name:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus);
+  background: var(--bg-panel);
+}
+.tpl-unsaved {
+  color: var(--critical);
+  font-weight: var(--fw-semibold);
+}
+.tpl-actions {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--gap);
+}
+.tpl-message {
+  margin-top: -6px;
+}
+
+.tpl-tasks {
+  overflow: hidden;
+}
+.tpl-grid tbody tr {
+  cursor: pointer;
+}
+.tpl-grid tbody tr:hover {
+  background: var(--bg-hover);
+}
+.tpl-grid tbody tr.is-selected {
+  background: var(--accent-soft);
+}
+.tpl-grid tbody tr:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--accent-line);
+}
+.tpl-grid td {
+  height: 37px;
+}
+.tpl-grid .col-num {
+  width: 36px;
+}
+.tpl-grid .col-dur {
+  width: 52px;
+}
+.tpl-grid .col-pred {
+  width: 72px;
+}
+.tpl-grid .col-type {
+  width: 120px;
+}
+.tpl-grid .col-sheet {
+  width: 80px;
+}
+.tpl-grid .col-actions {
+  width: 92px;
+  text-align: right;
+}
+.tpl-task-name {
+  max-width: 0;
+  width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tpl-tasks-foot {
+  padding: 8px;
+}
+
+.row-actions {
+  display: inline-flex;
+  gap: 2px;
+}
+.icon-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: var(--fs-md);
+  line-height: 1;
+  cursor: pointer;
+}
+.icon-btn:hover:not(:disabled) {
+  border-color: var(--line);
+  background: var(--bg-panel);
+  color: var(--ink);
+}
+.icon-btn:disabled {
+  color: var(--line-strong);
+  cursor: default;
+}
+.icon-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+/* Row buttons stay out of the way until the row is hovered, focused or selected. */
+.tpl-grid .row-actions {
+  opacity: 0;
+}
+.tpl-grid tr:hover .row-actions,
+.tpl-grid tr:focus-within .row-actions,
+.tpl-grid tr.is-selected .row-actions {
+  opacity: 1;
+}
+
+.conflict-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+  border: 1.5px solid var(--danger);
+  color: var(--danger);
+  font-size: 10px;
+  font-weight: var(--fw-bold);
+  vertical-align: 1px;
+}
+
+.tpl-problems {
+  padding: 10px 12px;
+  border: 1px solid var(--critical);
+  border-radius: var(--radius-lg);
+  background: var(--critical-soft);
+  font-size: var(--fs);
+  outline: none;
+}
+.tpl-problems.is-shown {
+  border-width: 2px;
+}
+.tpl-problems ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
+.tpl-problems .btn-link {
+  color: inherit;
+  font-weight: var(--fw);
+  text-decoration: underline;
+  text-align: left;
+}
+
+/* ---- Preview ------------------------------------------------------------------------- */
+.tpl-preview {
+  padding: 4px 14px 12px;
+}
+.tpl-preview .section-label,
+.tpl-details .section-label {
+  margin-top: 14px;
+}
+.tpl-chart {
+  display: grid;
+  gap: 4px;
+}
+.tpl-chart-row {
+  display: grid;
+  grid-template-columns: 210px 1fr;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+}
+.tpl-chart-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs);
+}
+.tpl-chart-row.is-selected .tpl-chart-name {
+  font-weight: var(--fw-semibold);
+}
+.tpl-chart-track {
+  position: relative;
+  height: 100%;
+  /* One column per working day. */
+  background-image: linear-gradient(to right, var(--line-soft) 1px, transparent 1px);
+  border-right: 1px solid var(--line-soft);
+}
+.tpl-bar {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+}
+.tpl-bar-hold {
+  background: var(--hold);
+  border: 2px solid var(--ink);
+}
+.tpl-bar-witness {
+  background: var(--bg-panel);
+  border: 2px solid var(--ink);
+}
+.tpl-chart-row.is-selected .tpl-bar {
+  outline: 2px solid var(--accent-line);
+  outline-offset: 1px;
+}
+.tpl-diamond {
+  position: absolute;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  background: var(--ink);
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+.tpl-preview-note {
+  margin-top: 10px;
+}
+
+/* ---- Details and lists --------------------------------------------------------------- */
+.tpl-details {
+  padding: 4px 14px 14px;
+  display: grid;
+  gap: 10px;
+}
+.tpl-details-lists {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+.tpl-props-sub {
+  margin: 14px 0 6px;
+  font-size: var(--fs-sm);
+}
+
+.list-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+.list-editor > .btn {
+  justify-self: start;
+}
+.list-editor-items {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+.list-editor-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 2px 4px 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+}
+.list-editor-item:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--focus);
+}
+.list-editor-num {
+  flex: none;
+  padding-top: 7px;
+  min-width: 14px;
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+}
+.list-editor-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 30px;
+  padding: 6px 0;
+  /* Long checklist lines wrap like they do on the printed sheet. */
+  field-sizing: content;
+  resize: none;
+  line-height: 1.35;
+  border: 0;
+  background: transparent;
+  font-size: var(--fs);
+  outline: none;
+}
+.list-editor-item .row-actions {
+  padding-top: 3px;
+  opacity: 0.35;
+}
+.list-editor-item:hover .row-actions,
+.list-editor-item:focus-within .row-actions {
+  opacity: 1;
+}
+
+/* ---- Right panel --------------------------------------------------------------------- */
+.tpl-side {
+  width: 330px;
+  flex: none;
+  overflow: hidden auto;
+  padding: 4px 14px 16px;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tpl-side > .hint {
+  margin-top: 20px;
+}
+.tpl-props {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+.tpl-props .field {
+  min-width: 0;
+}
+.tpl-props .section-label {
+  margin-bottom: 2px;
+}
+.field-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+.field-row .input,
+.tpl-props .input {
+  width: 100%;
+  min-width: 0;
+}
+.input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+.input:disabled {
+  background: var(--bg-subtle);
+  color: var(--ink-muted);
+}
+.tpl-reapply {
+  margin-top: 8px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--bg-subtle);
+  font-size: var(--fs);
+}
+.tpl-reapply p {
+  margin: 0 0 8px;
+}
+
+/* ---- Re-apply dialog ----------------------------------------------------------------- */
+.reapply-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  max-height: 50vh;
+  overflow: auto;
+  border-top: 1px solid var(--line-soft);
+}
+.reapply-asset {
+  padding: 8px 2px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.reapply-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.reapply-version {
+  margin-left: auto;
+}
+.reapply-details {
+  margin: 4px 0 0 26px;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-sm);
+  color: var(--ink-muted);
+  display: grid;
+  gap: 2px;
+}
+.reapply-conflict {
+  color: var(--ink);
+}
+
+/* Narrower windows: the properties panel gets less room before anything scrolls sideways. */
+@media (max-width: 1180px) {
+  .tpl-side {
+    width: 290px;
+  }
+  .sidebar.tpl-library {
+    width: 230px;
+  }
+  .tpl-chart-row {
+    grid-template-columns: 150px 1fr;
+  }
+}

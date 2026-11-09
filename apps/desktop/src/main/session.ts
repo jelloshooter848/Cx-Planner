@@ -93,6 +93,19 @@ export function ok<T>(value: T): { ok: true; value: T } {
   return { ok: true, value };
 }
 
+/** Templates a command applies (adding assets from a template, re-applying one), in order. */
+export function templatesIn(cmd: Command): Template[] {
+  switch (cmd.kind) {
+    case 'addAssetsFromTemplate':
+    case 'reapplyTemplate':
+      return [cmd.template];
+    case 'batch':
+      return cmd.commands.flatMap(templatesIn);
+    default:
+      return [];
+  }
+}
+
 export class Session {
   private doc: OpenProject | null = null;
   private ws: WorkspaceStore | null = null;
@@ -177,6 +190,13 @@ export class Session {
     } catch (e) {
       if (e instanceof CommandError && e.code === 'no-change') return ok({ changed: false, summary: null });
       return failure(e);
+    }
+    // Decision D4: the project keeps a snapshot of every template it applies, so checklists
+    // and the like can be read back by key without the workspace.
+    try {
+      for (const t of templatesIn(cmd)) doc.store.saveTemplateSnapshot(t, 'user', result.summary);
+    } catch (e) {
+      return failure(e, 'file-error');
     }
     const saved = this.save(doc, result.project, result.summary);
     if (!saved.ok) return saved;
