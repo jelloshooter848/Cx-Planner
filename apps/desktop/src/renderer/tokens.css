@@ -40,6 +40,7 @@
 
   /* Accent and states */
   --accent: #1f5fbf;
+  --accent-hover: #1a52a6;
   --accent-soft: #e8f0fc;
   --accent-line: #bcd3f4;
   --ok: #1e6b43;

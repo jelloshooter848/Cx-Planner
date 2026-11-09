@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AppState } from '../src/shared/api.js';
 import { longDate, shortDate, statusText } from '../src/renderer/format.js';
 import { buildMenus, keyHint, type MenuItem } from '../src/renderer/menus.js';
-import { shortcutAction } from '../src/renderer/shortcuts.js';
+import { isTextField, shortcutAction } from '../src/renderer/shortcuts.js';
 import { riversideProject } from '@cx/fixtures';
 
 const key = (k: string, mods: { ctrl?: boolean; meta?: boolean; shift?: boolean; alt?: boolean } = {}) => ({
@@ -31,6 +31,18 @@ describe('shortcuts', () => {
     expect(shortcutAction(key('z'), false)).toBeNull();
     expect(shortcutAction(key('z', { ctrl: true, alt: true }), false)).toBeNull();
     expect(shortcutAction(key('s', { ctrl: true }), false)).toBeNull();
+  });
+
+  it('leaves Cmd+N, Cmd+O and Cmd+Shift+S to the native menu on macOS', () => {
+    expect(shortcutAction(key('n', { meta: true }), false, true)).toBeNull();
+    expect(shortcutAction(key('o', { meta: true }), false, true)).toBeNull();
+    expect(shortcutAction(key('S', { meta: true, shift: true }), false, true)).toBeNull();
+    expect(shortcutAction(key('z', { meta: true }), false, true)).toEqual({ type: 'undo' });
+  });
+
+  it('treats selects as having no text undo', () => {
+    expect(isTextField({ tagName: 'SELECT', isContentEditable: false } as unknown as EventTarget)).toBe(false);
+    expect(isTextField({ tagName: 'TEXTAREA', isContentEditable: false } as unknown as EventTarget)).toBe(true);
   });
 });
 

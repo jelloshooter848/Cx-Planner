@@ -1,6 +1,11 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 
-/** A centred modal dialog. Escape and the backdrop close it. Shared by everything in dialogs/. */
+const FOCUSABLE = 'a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), button:not(:disabled), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * A centred modal dialog. Escape and the backdrop close it, and Tab / Shift+Tab stay inside
+ * it (wrapping at the ends). Shared by everything in dialogs/.
+ */
 export function Modal({ title, onClose, children, width = 440 }: { title: string; onClose: () => void; children: ReactNode; width?: number }) {
   const titleId = useId();
   const ref = useRef<HTMLDivElement>(null);
@@ -25,6 +30,22 @@ export function Modal({ title, onClose, children, width = 440 }: { title: string
           if (e.key === 'Escape') {
             e.stopPropagation();
             onClose();
+          } else if (e.key === 'Tab') {
+            const items = [...e.currentTarget.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.offsetParent !== null);
+            const first = items[0];
+            const last = items[items.length - 1];
+            if (!first || !last) {
+              e.preventDefault();
+              return;
+            }
+            const active = document.activeElement;
+            if (e.shiftKey && (active === first || active === e.currentTarget)) {
+              e.preventDefault();
+              last.focus();
+            } else if (!e.shiftKey && active === last) {
+              e.preventDefault();
+              first.focus();
+            }
           }
         }}
       >

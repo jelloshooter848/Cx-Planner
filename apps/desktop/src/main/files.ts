@@ -242,6 +242,8 @@ export class FileController {
       return this.openFailed(path, e);
     }
     this.recent.add(path);
+    // openStore pushed the state before the recent list changed; push it again.
+    this.session.notify();
     return ok({ filePath: path });
   }
 

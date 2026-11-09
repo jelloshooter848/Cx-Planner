@@ -90,9 +90,11 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
     // A getState() answer can arrive after a newer push; keep the newer one.
     if (prev && prev.seq > state.seq) return;
     const ui = { ...snapshot.ui };
-    // A different file (opened, created, closed) starts on the schedule with no dialog left over.
+    // A file change leaves no dialog over the new file. Closing a project, or opening one from
+    // the welcome screen, starts on the schedule; going straight from one open file to another
+    // (Save As, or opening a second project) keeps the current view.
     if (prev && prev.filePath !== state.filePath) {
-      ui.view = ui.view === 'templates' ? 'templates' : 'schedule';
+      if (!(prev.project && state.project)) ui.view = ui.view === 'templates' ? 'templates' : 'schedule';
       if (state.filePath) ui.dialog = null;
     }
     snapshot = { app: state, ui };

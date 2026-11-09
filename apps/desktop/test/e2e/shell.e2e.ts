@@ -1,5 +1,7 @@
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { riversideProject } from '@cx/fixtures';
+import { ProjectStore } from '@cx/storage';
 import { launchApp, type AppHarness } from './harness.js';
 
 let h: AppHarness | undefined;
@@ -40,6 +42,23 @@ describe('desktop shell', () => {
     // Ctrl+N opens the form from anywhere; Escape closes it.
     await page.keyboard.press('Control+n');
     await dialog.waitFor();
+    await page.keyboard.press('Escape');
+    await dialog.waitFor({ state: 'detached' });
+
+    // Tab and Shift+Tab stay inside the dialog.
+    await page.keyboard.press('Control+n');
+    await dialog.waitFor();
+    const focusInDialog = () => page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'));
+    for (let i = 0; i < 8; i++) {
+      await page.keyboard.press('Tab');
+      expect(await focusInDialog()).toBe(true);
+    }
+    for (let i = 0; i < 8; i++) {
+      await page.keyboard.press('Shift+Tab');
+      expect(await focusInDialog()).toBe(true);
+    }
+    // Escape closes it even when focus has left it.
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await page.keyboard.press('Escape');
     await dialog.waitFor({ state: 'detached' });
   });
@@ -138,15 +157,59 @@ describe('desktop shell', () => {
     await page.getByRole('table', { name: 'Tasks' }).waitFor();
   });
 
-  it('opens a project with Ctrl+O', async () => {
+  it('lists a project opened from the command line under Open recent', async () => {
     h = await launchApp({ project: 'riverside' });
     const { page } = h;
+    await page.getByRole('table', { name: 'Tasks' }).waitFor();
     await page.getByRole('menubar').getByRole('menuitem', { name: 'File', exact: true }).click();
-    await page.getByRole('menu', { name: 'File' }).getByRole('menuitem', { name: 'Close project' }).click();
+    const openRecent = page.getByRole('menu', { name: 'File' }).getByRole('menuitem', { name: 'Open recent' });
+    expect(await openRecent.isEnabled()).toBe(true);
+    await openRecent.hover();
+    await page.getByRole('menu', { name: 'Open recent' }).getByRole('menuitem', { name: /^Riverside\.cxp/ }).waitFor();
+  });
+
+  it('opens a project with Ctrl+O in a fresh profile and reopens it from the keyboard menu', async () => {
+    h = await launchApp();
+    const { page } = h;
     await page.getByRole('main', { name: 'Welcome' }).waitFor();
-    await h.answerOpen(h.projectFile);
+    const path = join(h.workspace, 'Keyboard.cxp');
+    const store = ProjectStore.open(path, { create: true });
+    store.replaceProject(riversideProject(), 'e2e');
+    store.close();
+
+    await h.answerOpen(path);
     await page.keyboard.press('Control+o');
-    await h.waitState((s) => s.fileName === 'Riverside.cxp', 'Ctrl+O open');
-    await page.getByTestId('titlebar').getByText('— Riverside.cxp').waitFor();
+    await h.waitState((s) => s.fileName === 'Keyboard.cxp', 'Ctrl+O open');
+    await page.getByTestId('titlebar').getByText('— Keyboard.cxp').waitFor();
+
+    // The recent list the renderer shows already has the file.
+    const fileTop = page.getByRole('menubar').getByRole('menuitem', { name: 'File', exact: true });
+    await fileTop.click();
+    const fileMenu = page.getByRole('menu', { name: 'File' });
+    const openRecent = fileMenu.getByRole('menuitem', { name: 'Open recent' });
+    expect(await openRecent.isEnabled()).toBe(true);
+    await openRecent.hover();
+    await page.getByRole('menu', { name: 'Open recent' }).getByRole('menuitem', { name: /^Keyboard\.cxp/ }).waitFor();
+    await fileMenu.getByRole('menuitem', { name: 'Close project' }).click();
+    await page.getByRole('main', { name: 'Welcome' }).waitFor();
+
+    // Keyboard only: File, ArrowDown into the menu, down to Open recent, ArrowRight, Enter.
+    await fileTop.focus();
+    await page.keyboard.press('ArrowDown');
+    await fileMenu.waitFor();
+    const focused = () => page.evaluate(() => document.activeElement?.textContent?.trim() ?? '');
+    expect(await focused()).toMatch(/^New project/);
+    for (let i = 0; i < 5 && !(await focused()).startsWith('Open recent'); i++) await page.keyboard.press('ArrowDown');
+    expect(await focused()).toMatch(/^Open recent/);
+    await page.keyboard.press('ArrowRight');
+    const flyout = page.getByRole('menu', { name: 'Open recent' });
+    await flyout.waitFor();
+    await page.waitForFunction(() => !!document.activeElement?.closest('[role="menu"][aria-label="Open recent"]'));
+    expect(await focused()).toMatch(/^Keyboard\.cxp/);
+    await h.screenshot('open-recent-keyboard');
+    await page.keyboard.press('Enter');
+    await h.waitState((s) => s.fileName === 'Keyboard.cxp', 'reopen from Open recent');
+    await page.getByRole('table', { name: 'Tasks' }).waitFor();
+    expect(await fileMenu.count()).toBe(0);
   });
 });

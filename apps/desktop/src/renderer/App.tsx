@@ -23,9 +23,15 @@ export function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // While a dialog is open only its own keys apply.
-      if (store.getSnapshot().ui.dialog) return;
-      const action = shortcutAction(e, isTextField(e.target));
+      // While a dialog is open only its own keys apply; Escape closes it wherever focus is.
+      if (store.getSnapshot().ui.dialog) {
+        if (e.key === 'Escape' && !e.defaultPrevented) {
+          e.preventDefault();
+          store.closeDialog();
+        }
+        return;
+      }
+      const action = shortcutAction(e, isTextField(e.target), isMac);
       if (!action) return;
       e.preventDefault();
       void store.dispatch(action);

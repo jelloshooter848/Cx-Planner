@@ -141,4 +141,17 @@ describe('renderer store', () => {
     // A newly opened file starts on the schedule.
     expect(effectiveView(store.getSnapshot())).toBe('schedule');
   });
+
+  it('keeps the view across Save As and resets it after a close', async () => {
+    const f = fakeApi(appState());
+    const store = createStore(f.api);
+    await tick();
+    f.push(appState({ seq: 2, project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp' }));
+    store.setView('lookahead');
+    f.push(appState({ seq: 3, project: { ...riversideProject(), id: 'copy' }, filePath: '/r copy.cxp', fileName: 'r copy.cxp' }));
+    expect(effectiveView(store.getSnapshot())).toBe('lookahead');
+    f.push(appState({ seq: 4 }));
+    f.push(appState({ seq: 5, project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp' }));
+    expect(effectiveView(store.getSnapshot())).toBe('schedule');
+  });
 });

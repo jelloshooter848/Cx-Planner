@@ -33,6 +33,11 @@ export function menuKey(s: AppState): string {
  * shows its own menu row (renderer components/MenuBar.tsx) and this menu is hidden, so its
  * shortcuts are hints only: the renderer binds Ctrl+N / Ctrl+O / Ctrl+Shift+S, and Ctrl+Z /
  * Ctrl+Y when focus is not in a text field (text fields keep their own undo).
+ *
+ * One owner per key and platform: on macOS this menu registers Cmd+N / Cmd+O / Cmd+Shift+S
+ * and the renderer leaves those keys alone (shortcutAction's `mac` flag), so they never run
+ * twice. Cmd+Z / Cmd+Shift+Z stay with the renderer outside text fields (it prevents default),
+ * and with the Undo Typing / Redo Typing roles inside them.
  */
 export function buildMenu(ctx: MenuContext, s: AppState): Menu {
   const { session, files } = ctx;

@@ -236,7 +236,7 @@
   color: var(--ink-inverse);
 }
 .btn-primary:hover:not(:disabled) {
-  background: #1a52a6;
+  background: var(--accent-hover);
 }
 .btn-primary:disabled {
   background: var(--accent-line);
