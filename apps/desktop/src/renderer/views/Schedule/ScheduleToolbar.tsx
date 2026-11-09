@@ -3,6 +3,7 @@
  * zoom, the baseline (later) and look-ahead window, and print. Edit buttons explain in their
  * tooltip what they will do, or why they are disabled.
  */
+import { useId } from 'react';
 import type { Command, Id, Project } from '@cx/core';
 import { LOOK_AHEAD_WEEKS, type LookAheadWeeks } from '../../../shared/api';
 import { isMac } from '../../platform';
@@ -33,14 +34,14 @@ export function ScheduleToolbar({ project, assetsInView }: ScheduleToolbarProps)
   const newId = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `task-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const run = async (cmd: Command) => store.run(() => store.api.apply(cmd));
 
-  const add = addTaskAction(project, selectedId, 'new');
-  const link = linkAction(project, selectedIds);
+  const add = addTaskAction(project, selectedId, 'new', assetsInView);
+  const link = linkAction(project, selectedIds, isMac);
   const indent = shiftAction(project, selectedId, assetsInView, 'indent');
   const outdent = shiftAction(project, selectedId, assetsInView, 'outdent');
 
   const onAdd = async () => {
     const id = newId();
-    const a = addTaskAction(project, selectedId, id);
+    const a = addTaskAction(project, selectedId, id, assetsInView);
     if (!a.ok) return;
     const r = await run(a.command);
     if (r.ok) store.selectTask(id);
@@ -103,11 +104,33 @@ export function ScheduleToolbar({ project, assetsInView }: ScheduleToolbarProps)
   );
 }
 
+/**
+ * An edit button whose tooltip says what it will do or why it cannot. A disabled one stays
+ * focusable (aria-disabled) and carries its reason as its description, so keyboard and
+ * screen-reader users learn it too.
+ */
 function ToolButton({ label, action, onClick }: { label: string; action: ToolAction; onClick(): void }) {
+  const reasonId = useId();
   const title = action.ok ? action.label : action.reason;
   return (
-    <button type="button" className="btn" disabled={!action.ok} title={title} onClick={onClick}>
-      {label}
-    </button>
+    <>
+      <button
+        type="button"
+        className="btn"
+        aria-disabled={action.ok ? undefined : true}
+        aria-describedby={action.ok ? undefined : reasonId}
+        title={title}
+        onClick={() => {
+          if (action.ok) onClick();
+        }}
+      >
+        {label}
+      </button>
+      {!action.ok && (
+        <span id={reasonId} className="sr-only">
+          {action.reason}
+        </span>
+      )}
+    </>
   );
 }

@@ -69,6 +69,25 @@ describe('schedule toolbar and asset sidebar', () => {
     // The same pair cannot be linked twice.
     await expect.poll(() => link.getAttribute('title')).toBe('3.1 already follows 1.4');
 
+    // From the keyboard: Ctrl+Down moves the row cursor without changing the selection, and
+    // Ctrl+Space adds the task under it.
+    await page.locator('#gantt-row-t3\\.4 .gc-task').click();
+    const grid = page.getByRole('grid', { name: 'Tasks' });
+    await grid.focus();
+    await page.keyboard.press('Control+ArrowDown');
+    expect(await page.locator('.gantt-row[aria-selected="true"]').count()).toBe(1);
+    expect(await grid.getAttribute('aria-activedescendant')).toBe('gantt-row-t4.1');
+    await page.keyboard.press('Control+Space');
+    expect(await page.locator('.gantt-row[aria-selected="true"]').count()).toBe(2);
+    expect(await link.getAttribute('title')).toBe('Link 3.4 → 4.1 (finish-to-start)');
+    // A disabled button stays focusable and describes why it is disabled.
+    await page.locator('#gantt-row-t1\\.3 .gc-task').click();
+    expect(await link.getAttribute('aria-disabled')).toBe('true');
+    await link.focus();
+    expect(await page.evaluate(() => document.activeElement?.textContent)).toBe('Link tasks');
+    const reasonId = await link.getAttribute('aria-describedby');
+    expect(await page.locator(`[id="${reasonId}"]`).textContent()).toBe('Select a task, then Ctrl+click a second task to link them');
+
     // Indent moves 2.1 into the asset above (as its last task); Outdent moves it back.
     await page.locator('#gantt-row-t2\\.1 .gc-task').click();
     const indent = tools.getByRole('button', { name: 'Indent' });
@@ -100,13 +119,13 @@ describe('schedule toolbar and asset sidebar', () => {
     const days = swgrTasks.reduce((n, t) => n + t.durationDays, 0);
     const pct = Math.round(swgrTasks.reduce((n, t) => n + t.durationDays * t.percentComplete, 0) / days);
     expect(await sidebar.locator('[data-asset-id="swgr-1a"] .asset-pct').textContent()).toBe(`${pct}%`);
-    expect(await status.textContent()).toMatch(/^4 assets · \d+ tasks/);
+    expect(await status.textContent()).toMatch(/ · 4 of 4 assets in view · \d+ tasks · Critical path ends /);
 
     // Unticking an asset hides it from the Gantt.
     await sidebar.getByRole('checkbox', { name: /^XFMR-1A/ }).uncheck();
     await expect.poll(groups).toEqual(['swgr-1a', 'ups-1a', 'gen-1']);
     const inView = sample.tasks.filter((t) => t.assetId !== 'xfmr-1a').length;
-    await expect.poll(() => status.textContent()).toMatch(new RegExp(`^3 of 4 assets in view · ${inView} tasks · Critical path ends`));
+    await expect.poll(() => status.textContent()).toMatch(new RegExp(` · 3 of 4 assets in view · ${inView} tasks · Critical path ends`));
 
     // The text filter narrows by system (or tag).
     await sidebar.getByRole('searchbox').fill('critical');
@@ -129,6 +148,16 @@ describe('schedule toolbar and asset sidebar', () => {
     await dialog.waitFor();
     expect(await dialog.getByRole('radio', { name: /Current asset filter/ }).first().isDisabled()).toBe(false);
     await dialog.getByRole('button', { name: 'Close' }).click();
+
+    // With every asset unticked the Gantt says why it is empty and offers to clear the filter.
+    await sidebar.getByRole('checkbox', { name: 'Show all Normal power assets' }).uncheck();
+    const empty = page.getByText('No assets in view. Tick assets in the sidebar or clear the filter.');
+    await empty.waitFor();
+    await expect.poll(() => status.textContent()).toMatch(/ · 0 of 4 assets in view · 0 tasks/);
+    await h.screenshot('schedule-no-assets-in-view');
+    await page.getByRole('button', { name: 'Clear filter' }).click();
+    await expect.poll(groups).toEqual(['swgr-1a', 'xfmr-1a', 'ups-1a', 'gen-1']);
+    await empty.waitFor({ state: 'detached' });
   });
 
   it('shades the look-ahead window and changes it from the toolbar', async () => {

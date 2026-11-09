@@ -14,7 +14,8 @@
   margin: 0 4px;
   background: var(--line);
 }
-.schedule-toolbar .btn:disabled[title] {
+.schedule-toolbar .btn:disabled[title],
+.schedule-toolbar .btn[aria-disabled='true'][title] {
   cursor: help;
 }
 /* A native select dressed as a toolbar button ("Look-ahead: 3 weeks"). */
@@ -144,4 +145,15 @@
   font-size: var(--fs-xs);
   color: var(--ink-muted);
   font-variant-numeric: tabular-nums;
+}
+
+/* Every asset filtered out: say why the Gantt is empty. */
+.gantt-empty {
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap);
+  color: var(--ink-muted);
+}
+.gantt-empty p {
+  margin: 0;
 }

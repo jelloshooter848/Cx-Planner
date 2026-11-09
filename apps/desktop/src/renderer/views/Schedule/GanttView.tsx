@@ -75,6 +75,9 @@ export function GanttView({ project, schedule, assetIds = null, lookAhead = null
   const scrollRef = useRef<HTMLDivElement>(null);
   const [vp, setVp] = useState<Viewport>({ top: 0, left: 0, width: 1200, height: 800, measured: false });
   const [editing, setEditing] = useState<{ id: Id; field: EditField } | null>(null);
+  // Keyboard multi-select: Ctrl+Up/Down moves this row cursor without changing the selection,
+  // Ctrl+Space adds or removes the cursor's task (as Ctrl+click does). Null follows the selection.
+  const [cursorId, setCursorId] = useState<Id | null>(null);
   const projectRef = useRef(project);
   projectRef.current = project;
 
@@ -139,6 +142,8 @@ export function GanttView({ project, schedule, assetIds = null, lookAhead = null
   const [first, last] = visibleRows(vp.top, bodyH, ROW_H, rows.length);
   const [x0, x1] = visibleSpan(vp.left, timelineView, scale.width);
   const selectedIndex = rowIndexOfTask(rows, selectedId);
+  const activeId = cursorId && rowIndexOfTask(rows, cursorId) >= 0 ? cursorId : selectedId;
+  const activeIndex = rowIndexOfTask(rows, activeId);
   const totalW = TABLE_W + scale.width;
   const dataDateX = xOf(scale, project.dataDate);
   const lookAheadSpan = useMemo((): [number, number] | null => {
@@ -148,11 +153,11 @@ export function GanttView({ project, schedule, assetIds = null, lookAhead = null
     return b > a ? [a, b] : null;
   }, [scale, lookAhead]);
 
-  const select = useCallback(
-    (id: Id | null, reveal: boolean) => {
-      store.selectTask(id);
+  /** Scrolls the task's row (and its bar) into view. */
+  const reveal = useCallback(
+    (id: Id) => {
       const el = scrollRef.current;
-      if (!reveal || !el || !id) return;
+      if (!el) return;
       const i = rowIndexOfTask(rows, id);
       if (i >= 0) el.scrollTop = scrollToRow(i, el.scrollTop, el.clientHeight, ROW_H, HEAD_H);
       // Bring the task's bar into view too when it is off to either side.
@@ -164,7 +169,16 @@ export function GanttView({ project, schedule, assetIds = null, lookAhead = null
         if (a < el.scrollLeft || b > el.scrollLeft + view) el.scrollLeft = Math.max(0, a - 7 * scale.dayWidth);
       }
     },
-    [store, rows, schedule, scale],
+    [rows, schedule, scale],
+  );
+
+  const select = useCallback(
+    (id: Id | null, show: boolean) => {
+      setCursorId(null);
+      store.selectTask(id);
+      if (show && id) reveal(id);
+    },
+    [store, reveal],
   );
 
   /** Ends an in-place edit: saves `text` (null = cancelled), then gives focus back to the grid if the edit ended by key. */
@@ -197,6 +211,21 @@ export function GanttView({ project, schedule, assetIds = null, lookAhead = null
       if (a.ok) void store.run(() => store.api.apply(a.command));
       return;
     }
+    const mod = (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey;
+    if (mod && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault();
+      const next = moveSelection(rows, activeId, e.key === 'ArrowUp' ? -1 : 1);
+      if (next) {
+        setCursorId(next);
+        reveal(next);
+      }
+      return;
+    }
+    if (mod && e.key === ' ') {
+      e.preventDefault();
+      if (activeId) store.toggleTaskSelection(activeId);
+      return;
+    }
     if (e.altKey || e.ctrlKey || e.metaKey) return;
     if (selectedId && (e.key === 'Delete' || e.key === 'F2')) {
       e.preventDefault();
@@ -224,8 +253,10 @@ export function GanttView({ project, schedule, assetIds = null, lookAhead = null
     const hit = (e.target as Element).closest('[data-task-id]');
     const id = hit?.getAttribute('data-task-id');
     if (!id) return;
-    if (e.ctrlKey || e.metaKey) store.toggleTaskSelection(id);
-    else select(id, false);
+    if (e.ctrlKey || e.metaKey) {
+      setCursorId(id);
+      store.toggleTaskSelection(id);
+    } else select(id, false);
   };
 
   const onDoubleClick = (e: MouseEvent<HTMLDivElement>) => {
@@ -246,7 +277,7 @@ export function GanttView({ project, schedule, assetIds = null, lookAhead = null
         aria-label="Tasks"
         aria-rowcount={rows.length + 1}
         aria-colcount={COLUMNS.length + 1}
-        aria-activedescendant={selectedIndex >= first && selectedIndex < last && selectedId ? `gantt-row-${selectedId}` : undefined}
+        aria-activedescendant={activeIndex >= first && activeIndex < last && activeId ? `gantt-row-${activeId}` : undefined}
         tabIndex={0}
         onKeyDown={onKeyDown}
         data-zoom={zoom}
@@ -283,6 +314,7 @@ export function GanttView({ project, schedule, assetIds = null, lookAhead = null
                 summary={row.kind === 'task' ? schedule[row.task.id] : undefined}
                 pred={row.kind === 'task' ? (preds.get(row.task.id) ?? '') : ''}
                 selected={row.kind === 'task' && selectedIds.has(row.task.id)}
+                cursor={row.kind === 'task' && cursorId !== null && row.task.id === cursorId}
                 editing={row.kind === 'task' && editing?.id === row.task.id ? editing.field : null}
                 onEditDone={finishEdit}
               />
@@ -321,13 +353,15 @@ interface RowProps {
   /** The task's predecessor field (task rows only). */
   pred: string;
   selected: boolean;
+  /** The keyboard row cursor is on this row (Ctrl+Up/Down). */
+  cursor: boolean;
   /** The cell being edited in place, if any. */
   editing: EditField | null;
   onEditDone: (id: Id, field: EditField, text: string | null, byKey: boolean) => void;
 }
 
 /** One table row; memoised so rows already in view are not redrawn on every scroll step. */
-const Row = memo(function Row({ row, index, width, summary: s, pred, selected, editing, onEditDone }: RowProps) {
+const Row = memo(function Row({ row, index, width, summary: s, pred, selected, cursor, editing, onEditDone }: RowProps) {
   const style = { top: index * ROW_H, width };
   if (row.kind === 'group') {
     const a = row.asset;
@@ -351,7 +385,7 @@ const Row = memo(function Row({ row, index, width, summary: s, pred, selected, e
   return (
     <div
       id={`gantt-row-${t.id}`}
-      className={`gantt-row is-task${selected ? ' is-selected' : ''}${s?.critical ? ' is-critical' : ''}`}
+      className={`gantt-row is-task${selected ? ' is-selected' : ''}${s?.critical ? ' is-critical' : ''}${cursor ? ' is-cursor' : ''}`}
       role="row"
       aria-rowindex={index + 2}
       aria-selected={selected}

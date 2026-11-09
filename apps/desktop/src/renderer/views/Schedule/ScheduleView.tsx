@@ -47,7 +47,18 @@ export function ScheduleView() {
       ) : (
         <div className="schedule-body">
           <AssetSidebar project={project} />
-          <GanttView key={`${info.filePath}#${project.id}`} project={project} schedule={schedule.tasks} assetIds={assetIds} lookAhead={lookAhead} />
+          {filter?.length === 0 ? (
+            <div className="gantt gantt-empty" role="status">
+              <p>No assets in view. Tick assets in the sidebar or clear the filter.</p>
+              <p>
+                <button type="button" className="btn" onClick={() => store.setAssetFilter(null)}>
+                  Clear filter
+                </button>
+              </p>
+            </div>
+          ) : (
+            <GanttView key={`${info.filePath}#${project.id}`} project={project} schedule={schedule.tasks} assetIds={assetIds} lookAhead={lookAhead} />
+          )}
           <TaskPanel />
         </div>
       )}
