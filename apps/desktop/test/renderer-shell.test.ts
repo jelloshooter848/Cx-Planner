@@ -119,6 +119,13 @@ describe('menu row', () => {
     expect(find(items(buildMenus({ ...base, project: null }, 'welcome'), 'edit'), label)).toMatchObject({ enabled: false });
   });
 
+  it('offers Delete task only on the schedule with a task selected', () => {
+    const label = 'Delete task…';
+    expect(find(items(buildMenus(base, 'schedule', false, true), 'edit'), label)).toMatchObject({ enabled: true, shortcut: 'Del', action: { type: 'delete-task' } });
+    expect(find(items(buildMenus(base, 'schedule'), 'edit'), label)).toMatchObject({ enabled: false });
+    expect(find(items(buildMenus(base, 'templates', false, true), 'edit'), label)).toMatchObject({ enabled: false });
+  });
+
   it('lists recent files and disables project items with no project', () => {
     const file = items(buildMenus(base, 'schedule'), 'file');
     const recent = file.find((i) => i.kind === 'submenu');
@@ -131,6 +138,8 @@ describe('menu row', () => {
     expect(find(f, 'Save As…')?.enabled).toBe(false);
     expect(find(f, 'Close project')?.enabled).toBe(false);
     expect(find(f, 'Print / Export PDF…')?.enabled).toBe(false);
+    expect(find(f, 'Project settings…')?.enabled).toBe(false);
+    expect(find(items(buildMenus(base, 'schedule'), 'file'), 'Project settings…')).toMatchObject({ enabled: true, action: { type: 'project-settings' } });
     expect(find(items(buildMenus(base, 'schedule'), 'file'), 'Print / Export PDF…')).toMatchObject({ enabled: true, shortcut: 'Ctrl+P', action: { type: 'print' } });
     expect(find(f, 'New project…')?.enabled).toBe(true);
     expect(find(f, 'Open recent')).toMatchObject({ kind: 'submenu', enabled: false });

@@ -68,7 +68,7 @@ describe('desktop shell', () => {
     const { page } = h;
     await page.getByRole('grid', { name: 'Tasks' }).waitFor();
     expect(await page.getByTestId('titlebar').textContent()).toBe('Cx Planner — Riverside.cxp');
-    expect(await page.getByTestId('statusbar').textContent()).toMatch(/^4 assets · \d+ tasks · Critical path ends \w{3} \d{1,2}Data as of Nov \d{1,2}, 2026 · Saved$/);
+    expect(await page.getByTestId('statusbar').textContent()).toMatch(/^Riverside Data Center – Bldg A · 4 assets · \d+ tasks · Critical path ends \w{3} \d{1,2}Data as of Nov \d{1,2}, 2026 · Saved$/);
     await h.screenshot('schedule');
 
     const editMenu = page.getByRole('menu', { name: 'Edit' });

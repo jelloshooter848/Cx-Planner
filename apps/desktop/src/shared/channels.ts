@@ -20,6 +20,7 @@ export const CH = {
   setUnsavedWork: 'window:unsaved-work',
   templateList: 'template:list',
   templateGet: 'template:get',
+  templateInProject: 'template:in-project',
   templateSave: 'template:save',
   templateDuplicate: 'template:duplicate',
   templateDelete: 'template:delete',

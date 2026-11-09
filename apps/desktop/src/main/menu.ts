@@ -61,6 +61,7 @@ export function buildMenu(ctx: MenuContext, s: AppState): Menu {
         { label: 'Save As…', ...hint('CmdOrCtrl+Shift+S'), enabled: open, click: () => void files.saveAs() },
         { label: 'Close Project', enabled: open, click: () => files.close() },
         { type: 'separator' },
+        { label: 'Project Settings…', enabled: open, click: () => ctx.toRenderer('project-settings') },
         { label: 'Print / Export PDF…', ...hint('CmdOrCtrl+P'), enabled: open, click: () => ctx.toRenderer('print') },
         { type: 'separator' },
         { label: 'Workspace Folder…', click: () => void files.chooseWorkspace() },
@@ -76,6 +77,10 @@ export function buildMenu(ctx: MenuContext, s: AppState): Menu {
         // On macOS, Cmd+Z in text fields only works through these roles. Outside text fields
         // the renderer handles the key first (and prevents default), so these do not fire.
         ...(isMac ? [{ type: 'separator' as const }, { role: 'undo' as const, label: 'Undo Typing' }, { role: 'redo' as const, label: 'Redo Typing' }] : []),
+        { type: 'separator' },
+        // No accelerator: the Delete key belongs to text fields; the Schedule grid handles it itself.
+        // The renderer knows the selected task, so it checks there is one and asks to confirm.
+        { label: 'Delete Task…', enabled: open, click: () => ctx.toRenderer('delete-task') },
         { type: 'separator' },
         { role: 'cut' },
         { role: 'copy' },

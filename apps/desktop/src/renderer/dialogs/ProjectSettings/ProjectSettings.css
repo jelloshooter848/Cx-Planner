@@ -1,0 +1,140 @@
+/* File > Project settings: header band, scrolling body, footer (like mockup 05's dialog). */
+.modal.project-settings {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 48px);
+  padding: 0;
+  overflow: hidden;
+}
+.project-settings .modal-head {
+  margin: 0;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.project-settings .modal-title {
+  font-size: 18px;
+  font-weight: var(--fw-bold);
+}
+.ps-form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.ps-body {
+  display: grid;
+  gap: 14px;
+  padding: 16px 20px;
+  overflow: auto;
+}
+.ps-row {
+  display: flex;
+  gap: 12px;
+}
+.ps-grow {
+  flex: 1;
+}
+.ps-body .field .input {
+  width: 100%;
+  min-width: 0;
+}
+.project-settings .input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+.ps-fieldset {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.ps-fieldset legend {
+  padding: 0;
+  margin-bottom: 6px;
+}
+.ps-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ps-day {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--control-h);
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+  font-size: var(--fs);
+  cursor: pointer;
+}
+.ps-day:has(input:checked) {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  font-weight: var(--fw-medium);
+}
+.ps-holidays {
+  max-height: 210px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.ps-holiday {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 32px;
+  padding: 0 4px 0 10px;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: var(--fs);
+}
+.ps-holiday:last-child {
+  border-bottom: 0;
+}
+.ps-holiday-date {
+  flex: none;
+  width: 130px;
+  font-variant-numeric: tabular-nums;
+}
+.ps-holiday-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+}
+.ps-remove {
+  height: 26px;
+}
+.ps-empty {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: var(--fs-sm);
+}
+.ps-add {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ps-add .field .input {
+  width: auto;
+}
+.ps-spacer {
+  flex: 1;
+}
+.ps-message {
+  min-height: 1.4em;
+}
+.ps-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: 12px 20px;
+  border-top: 1px solid var(--line);
+  background: var(--bg-subtle);
+}
+.ps-foot .form-error {
+  flex: 1;
+}

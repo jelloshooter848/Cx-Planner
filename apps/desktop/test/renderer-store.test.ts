@@ -143,6 +143,32 @@ describe('renderer store', () => {
     expect(store.getSnapshot().ui.dialog).toBe('add-assets');
   });
 
+  it('asks to delete a task only when one is selected', async () => {
+    const f = fakeApi(appState({ project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp' }));
+    const store = createStore(f.api);
+    await tick();
+    await store.dispatch({ type: 'delete-task' });
+    expect(store.getSnapshot().ui.dialog).toBeNull();
+    store.selectTask('t1.4');
+    await store.dispatch({ type: 'delete-task' });
+    expect(store.getSnapshot().ui.dialog).toBe('delete-task');
+  });
+
+  it('asks to delete the selected task from the native Edit menu, in the Schedule view only', async () => {
+    const f = fakeApi(appState({ project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp' }));
+    const store = createStore(f.api);
+    await tick();
+    store.selectTask('t1.4');
+    store.setView('templates');
+    f.menu('delete-task');
+    await tick();
+    expect(store.getSnapshot().ui.dialog).toBeNull();
+    store.setView('schedule');
+    f.menu('delete-task');
+    await tick();
+    expect(store.getSnapshot().ui.dialog).toBe('delete-task');
+  });
+
   it('opens the Print dialog from the menu, on the kind asked for or the last one', async () => {
     const f = fakeApi(appState());
     const store = createStore(f.api);
