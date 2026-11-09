@@ -54,6 +54,7 @@ const TASK_FIELDS: Record<keyof TaskPatch, string> = {
   actualStart: 'actual_start',
   actualFinish: 'actual_finish',
   readiness: 'readiness',
+  templateKey: 'template_key',
 };
 
 /**
@@ -122,16 +123,18 @@ export class ProjectStore {
       meta.run('work_weekdays', JSON.stringify(p.calendar.workWeekdays));
       const hol = db.prepare('INSERT INTO calendar_holiday (date) VALUES (?)');
       for (const h of p.calendar.holidays) hol.run(h);
-      const asset = db.prepare('INSERT INTO asset (id, tag, description, location, system, template_id, sort) VALUES (?, ?, ?, ?, ?, ?, ?)');
-      p.assets.forEach((a, i) => asset.run(a.id, a.tag, a.description, a.location ?? null, a.system ?? null, a.templateId ?? null, i));
+      const asset = db.prepare('INSERT INTO asset (id, tag, description, location, system, template_id, template_version, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+      p.assets.forEach((a, i) =>
+        asset.run(a.id, a.tag, a.description, a.location ?? null, a.system ?? null, a.templateId ?? null, a.templateVersion ?? null, i),
+      );
       const task = db.prepare(
         `INSERT INTO task (id, asset_id, code, name, type, duration_days, percent_complete, responsible,
-           start_no_earlier_than, actual_start, actual_finish, readiness, sort)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           start_no_earlier_than, actual_start, actual_finish, readiness, template_key, sort)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       p.tasks.forEach((t, i) =>
         task.run(t.id, t.assetId, t.code, t.name, t.type, t.durationDays, t.percentComplete, t.responsible ?? null,
-          t.startNoEarlierThan ?? null, t.actualStart ?? null, t.actualFinish ?? null, t.readiness ? JSON.stringify(t.readiness) : null, i),
+          t.startNoEarlierThan ?? null, t.actualStart ?? null, t.actualFinish ?? null, t.readiness ? JSON.stringify(t.readiness) : null, t.templateKey ?? null, i),
       );
       const dep = db.prepare('INSERT INTO dependency (predecessor_id, successor_id, type, lag_days) VALUES (?, ?, ?, ?)');
       for (const d of p.dependencies) dep.run(d.predecessorId, d.successorId, d.type, d.lagDays);
@@ -142,12 +145,13 @@ export class ProjectStore {
   loadProject(): Project {
     const db = this.db;
     const meta = Object.fromEntries((db.prepare('SELECT key, value FROM meta').all() as Array<{ key: string; value: string }>).map((r) => [r.key, r.value]));
-    const assets = (db.prepare('SELECT * FROM asset ORDER BY sort').all() as Array<Record<string, string | null>>).map(
+    const assets = (db.prepare('SELECT * FROM asset ORDER BY sort').all() as Array<Record<string, string | number | null>>).map(
       (r): Asset => ({
-        id: r.id!, tag: r.tag!, description: r.description ?? '',
-        ...(r.location ? { location: r.location } : {}),
-        ...(r.system ? { system: r.system } : {}),
-        ...(r.template_id ? { templateId: r.template_id } : {}),
+        id: String(r.id), tag: String(r.tag), description: String(r.description ?? ''),
+        ...(r.location ? { location: String(r.location) } : {}),
+        ...(r.system ? { system: String(r.system) } : {}),
+        ...(r.template_id ? { templateId: String(r.template_id) } : {}),
+        ...(r.template_version !== null && r.template_version !== undefined ? { templateVersion: Number(r.template_version) } : {}),
       }),
     );
     const tasks = (db.prepare('SELECT * FROM task ORDER BY sort').all() as Array<Record<string, string | number | null>>).map(rowToTask);
@@ -277,5 +281,6 @@ function rowToTask(r: Record<string, string | number | null>): Task {
   if (r.actual_start !== null) t.actualStart = String(r.actual_start);
   if (r.actual_finish !== null) t.actualFinish = String(r.actual_finish);
   if (r.readiness !== null) t.readiness = JSON.parse(String(r.readiness)) as Readiness;
+  if (r.template_key !== null && r.template_key !== undefined) t.templateKey = String(r.template_key);
   return t;
 }

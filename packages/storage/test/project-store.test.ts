@@ -3,7 +3,7 @@ import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { riversideProject } from '@cx/fixtures';
-import { BACKUP_DIR, FileLock, NotAProjectFileError, ProjectLockedError, ProjectStore } from '../src/index.js';
+import { APPLICATION_ID, BACKUP_DIR, FileLock, MIGRATIONS, NotAProjectFileError, ProjectLockedError, ProjectStore } from '../src/index.js';
 
 let dir: string;
 let file: string;
@@ -24,7 +24,7 @@ describe('ProjectStore', () => {
     s.close();
     const again = ProjectStore.open(file);
     expect(again.loadProject()).toEqual(p);
-    expect(again.schemaVersion).toBe(1);
+    expect(again.schemaVersion).toBe(MIGRATIONS.length);
     again.close();
   });
 
@@ -98,6 +98,31 @@ describe('ProjectStore', () => {
     s.replaceProject(riversideProject());
     expect(() => s.exec('DELETE FROM change_event')).toThrow(/append-only/);
     expect(() => s.exec("UPDATE change_event SET source = 'x'")).toThrow(/append-only/);
+    s.close();
+  });
+
+  it('round-trips template version and template task keys', () => {
+    const s = ProjectStore.open(file, { create: true });
+    const p = riversideProject();
+    p.assets[0] = { ...p.assets[0]!, templateId: 'tpl-lv-swgr', templateVersion: 3 };
+    p.tasks[0] = { ...p.tasks[0]!, templateKey: 'vmi' };
+    s.replaceProject(p, 'test');
+    expect(s.loadProject()).toEqual(p);
+    s.updateTask(p.tasks[0]!.id, { templateKey: 'inspect' });
+    expect(s.loadProject().tasks[0]!.templateKey).toBe('inspect');
+    s.close();
+  });
+
+  it('migrates a version 1 file', async () => {
+    const { DatabaseSync } = await import('node:sqlite');
+    const db = new DatabaseSync(file);
+    db.exec(MIGRATIONS[0]!);
+    db.exec(`PRAGMA user_version = 1; PRAGMA application_id = ${APPLICATION_ID};`);
+    db.exec("INSERT INTO asset (id, tag, description, template_id, sort) VALUES ('A', 'SWGR-1A', '', 'tpl', 0)");
+    db.close();
+    const s = ProjectStore.open(file, { backup: false });
+    expect(s.schemaVersion).toBe(MIGRATIONS.length);
+    expect(s.loadProject().assets).toEqual([{ id: 'A', tag: 'SWGR-1A', description: '', templateId: 'tpl' }]);
     s.close();
   });
 });

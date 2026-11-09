@@ -66,4 +66,9 @@ export const MIGRATIONS: string[] = [
     last_change_seq INTEGER NOT NULL
   );
   `,
+  // 1 -> 2: remember which template snapshot and template task each asset and task came from.
+  `
+  ALTER TABLE asset ADD COLUMN template_version INTEGER;
+  ALTER TABLE task ADD COLUMN template_key TEXT;
+  `,
 ];
