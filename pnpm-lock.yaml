@@ -71,6 +71,9 @@ importers:
       '@cx/storage':
         specifier: workspace:*
         version: link:../../packages/storage
+      '@cx/templates':
+        specifier: workspace:*
+        version: link:../../packages/templates
       '@types/react':
         specifier: ^19.3.0
         version: 19.3.0

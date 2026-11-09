@@ -46,11 +46,19 @@ Render the sample prints to `spike-output/` (needs Playwright's Chromium):
 pnpm print:samples
 ```
 
-Run the desktop spike checks (SQLite and PDF output through Electron):
+Run the desktop spike checks (SQLite, the project session and PDF output through Electron):
 
 ```bash
 pnpm --filter @cx/desktop smoke
 ```
+
+Drive the desktop app end to end (opens a sample project, edits, undoes, creates a new project; screenshots go to `spike-output/desktop-e2e/`). On Linux without a display, wrap it in `xvfb-run -a`:
+
+```bash
+pnpm --filter @cx/desktop build && pnpm desktop:e2e
+```
+
+The desktop app opens `.cxp` files given on the command line. Set `CX_USER_DATA` to run it with a throwaway profile (settings and recent list).
 
 ## Licence
 

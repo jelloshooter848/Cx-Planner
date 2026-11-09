@@ -225,6 +225,17 @@ export class ProjectStore {
     return userVersion(this.db);
   }
 
+  /**
+   * Writes a consistent copy of the whole file (project, change log, print records) to
+   * `target` with SQLite's VACUUM INTO, for "Save As". The copy is not opened or locked.
+   * Refuses a target that already exists; the caller deletes it first after checking that
+   * no other session holds it.
+   */
+  copyTo(target: string): void {
+    if (existsSync(target)) throw new Error(`${target} already exists`);
+    this.db.prepare('VACUUM INTO ?').run(target);
+  }
+
   /** Replace the whole project (new file, or import). Logged as one event. */
   replaceProject(p: Project, source = 'import', summary?: string): void {
     this.tx(summary, () => {
