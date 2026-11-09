@@ -56,6 +56,7 @@ export function buildMenu(ctx: MenuContext, s: AppState): Menu {
         { label: 'New Project…', ...hint('CmdOrCtrl+N'), click: () => ctx.toRenderer('new-project') },
         { label: 'Open…', ...hint('CmdOrCtrl+O'), click: () => void files.openWithDialog() },
         { label: 'Open Recent', submenu: recent },
+        { label: 'Open Sample Project', click: () => void files.openSample() },
         { type: 'separator' },
         { label: 'Save As…', ...hint('CmdOrCtrl+Shift+S'), enabled: open, click: () => void files.saveAs() },
         { label: 'Close Project', enabled: open, click: () => files.close() },

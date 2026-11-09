@@ -52,6 +52,8 @@ export interface RecentFile {
   name: string;
   /** False when the file is no longer there (moved, deleted, share offline). */
   exists: boolean;
+  /** When it was last opened in Cx Planner (ISO timestamp), or null when not known. */
+  lastOpened: string | null;
 }
 
 /** Everything the renderer draws from. Sent whole on every change (see CxApi.onState). */
@@ -243,6 +245,13 @@ export interface CxApi {
   openProject(): Promise<ApiResult<{ filePath: string }>>;
   /** Opens a file from AppState.recent (other paths are refused). */
   openRecent(path: string): Promise<ApiResult<{ filePath: string }>>;
+  /** Removes a file from AppState.recent (the file itself is left alone). */
+  removeRecent(path: string): Promise<ApiResult>;
+  /**
+   * Writes a fresh copy of the sample project to Documents/Cx Planner Samples and opens it.
+   * When a copy is already there, asks whether to open it or replace it with a fresh one.
+   */
+  openSample(): Promise<ApiResult<{ filePath: string }>>;
   /** Shows a save dialog, copies the open file there and continues working in the copy. */
   saveAs(): Promise<ApiResult<{ filePath: string }>>;
   closeProject(): Promise<ApiResult>;

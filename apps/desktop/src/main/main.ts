@@ -4,7 +4,7 @@ import type { AppState, MenuCommand } from '../shared/api.js';
 import { CH } from '../shared/channels.js';
 import { CHROME, TRAFFIC_LIGHT_POSITION } from '../shared/chrome.js';
 import { electronDialogs } from './electron-dialogs.js';
-import { FileController, projectArg } from './files.js';
+import { FileController, projectArg, SAMPLES_FOLDER_NAME } from './files.js';
 import { registerIpc } from './ipc.js';
 import { buildMenu, menuKey } from './menu.js';
 import { RecentFiles, SettingsFile } from './prefs.js';
@@ -20,6 +20,8 @@ const headless = args.some((a) => a.startsWith('--spike-'));
 
 // Lets tests run against a throwaway profile (settings, recent list).
 if (process.env.CX_USER_DATA) app.setPath('userData', resolve(process.env.CX_USER_DATA));
+// ...and a throwaway Documents folder (default workspace, sample project copies).
+if (process.env.CX_DOCUMENTS) app.setPath('documents', resolve(process.env.CX_DOCUMENTS));
 
 let win: BrowserWindow | undefined;
 /** A file the OS asked us to open before the window was ready (macOS open-file). */
@@ -58,8 +60,9 @@ function startApp(): void {
       Menu.setApplicationMenu(buildMenu({ session, files, dialogs, toRenderer }, state));
     }
   };
-  const session = new Session({ broadcast, recent: () => recent.list() });
-  const files = new FileController({ session, dialogs, recent, settings, defaultWorkspace: join(app.getPath('documents'), 'Cx Planner Workspace') });
+  const session = new Session({ broadcast, recent: () => recent.entries() });
+  const documents = app.getPath('documents');
+  const files = new FileController({ session, dialogs, recent, settings, defaultWorkspace: join(documents, 'Cx Planner Workspace'), samplesFolder: join(documents, SAMPLES_FOLDER_NAME) });
   const print = new PrintController({ session, files, toPdf: htmlToPdf, toPrinter: printHtml, showInFolder: (p) => shell.showItemInFolder(p), fontCss: printFontCss });
   registerIpc({ session, files, dialogs, print });
 

@@ -2,9 +2,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { hostname, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { riversideProject } from '@cx/fixtures';
+import { taskChecklists } from '@cx/core';
+import { riversideProject, riversideSample } from '@cx/fixtures';
 import { BACKUP_DIR, ProjectStore, WorkspaceStore } from '@cx/storage';
-import { emptyProject, FileController, projectArg, safeFileName } from '../src/main/files.js';
+import { emptyProject, FileController, projectArg, safeFileName, sampleFileName } from '../src/main/files.js';
 import { RecentFiles, SettingsFile } from '../src/main/prefs.js';
 import { ScriptedDialogs } from '../src/main/scripted-dialogs.js';
 import { Session } from '../src/main/session.js';
@@ -35,7 +36,7 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'cx-files-'));
   dialogs = new ScriptedDialogs();
   lastPushed = null;
-  session = new Session({ broadcast: (s) => (lastPushed = s), recent: () => recent.list() });
+  session = new Session({ broadcast: (s) => (lastPushed = s), recent: () => recent.entries() });
   recent = new RecentFiles(join(dir, 'user', 'recent.json'));
   settings = new SettingsFile(join(dir, 'user', 'settings.json'));
   files = new FileController({ session, dialogs, recent, settings, defaultWorkspace: join(dir, 'Cx Planner Workspace') });
@@ -204,6 +205,83 @@ describe('open', () => {
     const path = sampleFile();
     await files.openPath(path);
     expect(await files.openPath(path)).toEqual({ ok: true, value: { filePath: path } });
+  });
+});
+
+describe('recent list', () => {
+  it('removes a file from the list and pushes the new state', () => {
+    const path = sampleFile();
+    recent.add(path);
+    recent.add(join(dir, 'gone.cxp'));
+    expect(files.removeRecent(join(dir, 'gone.cxp'))).toEqual({ ok: true, value: undefined });
+    expect(recent.list()).toEqual([path]);
+    expect(lastPushed?.recent.map((r) => r.path)).toEqual([path]);
+    expect(existsSync(path)).toBe(true);
+    // Paths not on the list are ignored.
+    lastPushed = null;
+    expect(files.removeRecent(join(dir, 'other.cxp')).ok).toBe(true);
+    expect(lastPushed).toBeNull();
+  });
+
+  it('reports when each recent file was last opened', async () => {
+    const path = sampleFile();
+    await files.openPath(path);
+    const r = session.getState().recent[0]!;
+    expect(r).toMatchObject({ path, exists: true });
+    expect(Date.now() - Date.parse(r.lastOpened!)).toBeLessThan(60_000);
+  });
+});
+
+describe('sample project', () => {
+  const samplePath = () => join(dir, 'Cx Planner Samples', 'Riverside Data Center – Bldg A (sample).cxp');
+
+  it('writes a copy of the sample next to the workspace folder and opens it', async () => {
+    const r = await files.openSample();
+    expect(r).toEqual({ ok: true, value: { filePath: samplePath() } });
+    const s = session.getState();
+    expect(s.fileName).toBe('Riverside Data Center – Bldg A (sample).cxp');
+    expect(s.project!.assets.map((a) => a.tag)).toEqual(riversideSample().project.assets.map((a) => a.tag));
+    expect(s.project!.id).not.toBe(riversideSample().project.id);
+    expect(s.project!.tasks.every((t) => t.templateKey)).toBe(true);
+    expect(s.recent[0]!.path).toBe(samplePath());
+    // The template snapshots are stored, so tasks have test-sheet checklists.
+    expect(taskChecklists(s.project!, session.templateSnapshots()).length).toBeGreaterThan(20);
+  });
+
+  it('asks before replacing an existing copy, and can open it as it is', async () => {
+    await files.openSample();
+    expect(session.apply({ kind: 'updateProjectInfo', name: 'My practice copy' }).ok).toBe(true);
+    files.close();
+
+    dialogs.push({ message: 0, expect: 'already in your Documents' });
+    expect(await files.openSample()).toMatchObject({ ok: false, code: 'canceled' });
+    expect(session.project).toBeNull();
+
+    dialogs.push({ message: 2 });
+    expect((await files.openSample()).ok).toBe(true);
+    expect(session.project!.name).toBe('My practice copy');
+    files.close();
+
+    dialogs.push({ message: 1 });
+    expect((await files.openSample()).ok).toBe(true);
+    expect(session.project!.name).toBe('Riverside Data Center – Bldg A');
+  });
+
+  it('just returns the open sample when it is already open', async () => {
+    await files.openSample();
+    expect(await files.openSample()).toEqual({ ok: true, value: { filePath: samplePath() } });
+  });
+
+  it('refuses to replace a copy another session has open', async () => {
+    await files.openSample();
+    files.close();
+    lockFromElsewhere(samplePath());
+    dialogs.push({ message: 1 }, { message: 0, expect: 'is open' });
+    expect(await files.openSample()).toMatchObject({ ok: false, code: 'locked' });
+  });
+
+  it('names the file after the project', () => {
+    expect(sampleFileName('Riverside: Bldg A')).toBe('Riverside Bldg A (sample).cxp');
   });
 });
 

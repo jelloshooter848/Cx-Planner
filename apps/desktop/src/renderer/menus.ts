@@ -63,6 +63,7 @@ export function buildMenus(state: AppState | null, view: ViewId | 'welcome', mac
       enabled: recent.length > 0,
       items: recent.map((r) => item(r.name, { type: 'open-recent', path: r.path }, { detail: r.exists ? r.path : `${r.path} (not found)` })),
     },
+    item('Open sample project', { type: 'open-sample' }),
     sep,
     item('Save As…', { type: 'save-as' }, { enabled: open, shortcut: 'Ctrl+Shift+S' }),
     item('Close project', { type: 'close-project' }, { enabled: open }),

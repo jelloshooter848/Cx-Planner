@@ -486,7 +486,7 @@
 }
 .welcome-card {
   align-self: flex-start;
-  width: 600px;
+  width: 680px;
   max-width: 100%;
   padding: 28px 30px;
   background: var(--bg-panel);
@@ -507,30 +507,65 @@
   display: flex;
   gap: var(--gap);
 }
+.welcome-sample {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 20px;
+  padding: 12px 14px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+}
+.welcome-sample-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.welcome-sample-title {
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-md);
+}
+.welcome-sample .btn {
+  flex: none;
+}
 .recent-list {
   list-style: none;
   margin: 0;
   padding: 0;
   border-top: 1px solid var(--line-soft);
 }
-.recent-item {
-  width: 100%;
+.recent-row {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
-  padding: 9px 6px;
-  border: 0;
+  align-items: center;
+  gap: 12px;
+  padding-right: 6px;
   border-bottom: 1px solid var(--line-soft);
+}
+.recent-row:hover {
+  background: var(--accent-soft);
+}
+.recent-item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 6px;
+  border: 0;
   background: transparent;
+  color: inherit;
+  font: inherit;
   text-align: left;
   cursor: pointer;
-}
-.recent-item:hover {
-  background: var(--accent-soft);
 }
 .recent-name {
   font-weight: var(--fw-semibold);
   font-size: var(--fs-md);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .recent-path {
@@ -539,6 +574,30 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.recent-when {
+  flex: none;
+  color: var(--ink-muted);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+.recent-missing:hover {
+  background: transparent;
+}
+.recent-missing .recent-item {
+  cursor: default;
+}
+.recent-missing .recent-name,
+.recent-missing .recent-path {
+  color: var(--ink-faint);
+  font-weight: var(--fw);
+}
+.recent-missing .recent-when {
+  font-style: italic;
+}
+.recent-remove {
+  flex: none;
+  font-size: var(--fs-sm);
 }
 .welcome-workspace {
   display: flex;
