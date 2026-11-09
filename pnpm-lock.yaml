@@ -164,6 +164,9 @@ importers:
       '@cx/core':
         specifier: workspace:*
         version: link:../core
+      '@cx/templates':
+        specifier: workspace:*
+        version: link:../templates
 
   packages/templates:
     dependencies:
