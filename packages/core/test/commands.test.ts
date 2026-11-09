@@ -4,6 +4,7 @@ import {
   CommandError,
   formatPredecessors,
   parsePredecessors,
+  predecessorLabels,
   renumberTasks,
   setPredecessorsCommand,
   type Command,
@@ -642,6 +643,8 @@ describe('parsePredecessors / formatPredecessors', () => {
   it('formats a task\'s predecessors and round-trips through the parser', () => {
     expect(formatPredecessors(p, 't5')).toBe('2.1 FS, 1.3 SS+2');
     expect(formatPredecessors(p, 't1')).toBe('');
+    const labels = predecessorLabels(p);
+    for (const t of p.tasks) expect(labels.get(t.id) ?? '').toBe(formatPredecessors(p, t.id));
     const q = applyCommand(p, { kind: 'updateDependency', predecessorId: 't3', successorId: 't5', patch: { type: 'FF', lagDays: -1 } }).project;
     expect(formatPredecessors(q, 't5')).toBe('2.1 FS, 1.3 FF-1');
     expect(parsePredecessors(formatPredecessors(q, 't5'), q, 't5').predecessors).toEqual(

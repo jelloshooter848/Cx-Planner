@@ -22,11 +22,14 @@ const READINESS_INK: Record<ReadinessState, string> = {
   blocked: 'var(--danger)',
 };
 
-/** One TIMES readiness symbol (filled, half, open circle, dash or "!" square). */
-export function ReadinessSymbol({ state, size = 14 }: { state: ReadinessState; size?: number }) {
+/**
+ * One TIMES readiness symbol (filled, half, open circle, dash or "!" square). `label` names
+ * what the state belongs to (e.g. "Tools"), so a screen reader hears "Tools: Ready".
+ */
+export function ReadinessSymbol({ state, size = 14, label }: { state: ReadinessState; size?: number; label?: string }) {
   const r = size / 2 - 1;
   return (
-    <svg className="sym" width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={READINESS_LABEL[state]}>
+    <svg className="sym" width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={label ? `${label}: ${READINESS_LABEL[state]}` : READINESS_LABEL[state]}>
       <g dangerouslySetInnerHTML={{ __html: timesSymbol(state, size / 2, size / 2, r, READINESS_INK[state]) }} />
     </svg>
   );
@@ -37,16 +40,23 @@ const TYPE_LABEL: Record<TaskType, string> = { task: 'Task', hold: 'Hold', witne
 /** Diamond for holds (filled, amber), witness points (open) and milestones (filled); nothing for plain tasks. */
 export function TaskTypeSymbol({ type, size = 12 }: { type: TaskType; size?: number }) {
   if (type === 'task') return null;
-  const r = size / 2 - 1;
-  const ink = type === 'hold' ? 'var(--hold)' : 'var(--ink)';
-  const svg = diamond(size / 2, size / 2, r, type !== 'witness', ink);
-  // The hold diamond gets a dark outline so it still reads as a filled diamond in grey.
-  const outlined = type === 'hold' ? svg.replace('/>', ' stroke="var(--ink)" stroke-width="1"/>') : svg;
   return (
     <svg className="sym" width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={TYPE_LABEL[type]}>
-      <g dangerouslySetInnerHTML={{ __html: outlined }} />
+      <g dangerouslySetInnerHTML={{ __html: typeDiamondMarkup(type, size / 2, size / 2, size / 2 - 1) }} />
     </svg>
   );
+}
+
+/**
+ * SVG markup of the diamond for a hold (filled amber, dark outline), witness point (open)
+ * or milestone (filled), centred on (cx, cy) with half-diagonal r. For inline use inside
+ * a larger SVG such as the Gantt.
+ */
+export function typeDiamondMarkup(type: Exclude<TaskType, 'task'>, cx: number, cy: number, r: number, holdOutline = 1): string {
+  const ink = type === 'hold' ? 'var(--hold)' : 'var(--ink)';
+  const svg = diamond(cx, cy, r, type !== 'witness', ink);
+  // The hold diamond gets a dark outline so it still reads as a filled diamond in grey.
+  return type === 'hold' ? svg.replace('/>', ` stroke="var(--ink)" stroke-width="${holdOutline}"/>`) : svg;
 }
 
 export const taskTypeLabel = (type: TaskType): string => TYPE_LABEL[type];
