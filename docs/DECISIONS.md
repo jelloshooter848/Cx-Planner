@@ -36,3 +36,13 @@ Each entry: the decision, why, and what would make us revisit it.
 
 ## D8 · TypeScript 6.x (2026-11-09)
 - TypeScript 7 is out, but typescript-eslint doesn't support it yet. Revisit when it does.
+
+## D9 · Manpower vs. plan uses hand-entered actuals (2026-11-09)
+- Actual hours are typed in per person, week and cost code. No timesheet import in v1.
+
+## D10 · GC schedule: manual milestones, optional file import (2026-11-09)
+- Each project can hold hand-entered GC milestones that tasks link to. Importing MS Project XML, P6 XER or CSV is optional, for GCs that provide a native file.
+
+## D11 · Build process: one milestone per run, agent build/review/fix loop (2026-11-09)
+- Each milestone is split into small tasks. Every task is built by one agent, reviewed independently by another, and fixed until the review passes and the checks are green. No more than about 10 agents run at once.
+- The run stops after each milestone so the owner can try it before the next one starts.

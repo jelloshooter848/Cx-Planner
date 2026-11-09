@@ -173,13 +173,13 @@ Also in M0: repo scaffold, CI (lint, typecheck, tests, Windows build), licence, 
 - Team view [15], demand view [16], and a printable manpower look-ahead [17] that uses the print scope, so leave reasons never appear.
 - Certifications [33] with expiry dates. Warn when an assigned person lacks a certification the template requires, or when it expires before the task ends.
 - Instruments [32]: calibration, certificates and check-out. Flag any test recorded with an instrument whose calibration had expired.
-- Timesheet CSV import (mapping profile) and manpower vs. plan [36].
+- Manpower vs. plan [36], with actual hours typed in per week (decision D9; no timesheet import).
 
 ### M7 · Schedule control (~3–4 wks) [29, 30, 31]
 - Weekly update screen [30].
 - Baseline comparison view [29].
 - "Changed since last print" log, read from the change log against the last PrintRecord. It can be printed on the next look-ahead.
-- GC schedule import [31] from MSP XML, P6 XER or CSV:
+- GC milestones [31], entered by hand per project, with an optional import from MSP XML, P6 XER or CSV (decision D10):
   - read-only milestones linked to your tasks as constraints
   - re-importing shows what moved.
 
