@@ -131,6 +131,17 @@ describe('renderer store', () => {
     expect(store.getSnapshot().ui.dialog).toBe('add-assets');
   });
 
+  it('asks to delete a task only when one is selected', async () => {
+    const f = fakeApi(appState({ project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp' }));
+    const store = createStore(f.api);
+    await tick();
+    await store.dispatch({ type: 'delete-task' });
+    expect(store.getSnapshot().ui.dialog).toBeNull();
+    store.selectTask('t1.4');
+    await store.dispatch({ type: 'delete-task' });
+    expect(store.getSnapshot().ui.dialog).toBe('delete-task');
+  });
+
   it('calls exit for File > Exit', async () => {
     const exit = vi.fn();
     const store = createStore(fakeApi(appState()).api, { exit });

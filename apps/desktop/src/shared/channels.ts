@@ -16,6 +16,7 @@ export const CH = {
   chooseWorkspace: 'workspace:choose',
   templateList: 'template:list',
   templateGet: 'template:get',
+  templateInProject: 'template:in-project',
   templateSave: 'template:save',
   templateDuplicate: 'template:duplicate',
   templateDelete: 'template:delete',

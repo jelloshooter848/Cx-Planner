@@ -55,6 +55,7 @@ export function registerIpc(ctx: IpcContext): void {
 
   handle(CH.templateList, () => session.listTemplates());
   handle(CH.templateGet, (id) => session.getTemplate(checkId(id, 'template id')));
+  handle(CH.templateInProject, (id) => session.getProjectTemplate(checkId(id, 'template id')));
   handle(CH.templateSave, (t) => session.saveTemplate(checkTemplate(t)));
   handle(CH.templateDuplicate, (id, name) => session.duplicateTemplate(checkId(id, 'template id'), checkName(name, 'template name')));
   handle(CH.templateDelete, (id) => session.deleteTemplate(checkId(id, 'template id')));

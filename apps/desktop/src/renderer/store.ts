@@ -13,7 +13,7 @@ import type { ApiResult, AppState, CxApi, EditOutcome, TaskScheduleSummary } fro
 
 /** Views shown when a project is open (the welcome screen shows when none is). */
 export type ViewId = 'schedule' | 'templates' | 'lookahead';
-export type DialogId = 'new-project' | 'about' | 'add-assets';
+export type DialogId = 'new-project' | 'about' | 'add-assets' | 'delete-task';
 /** Time scale of the Schedule view's Gantt. */
 export type ScheduleZoom = 'day' | 'week' | 'month';
 
@@ -54,6 +54,8 @@ export type Action =
   | { type: 'redo' }
   /** Opens the add-assets-from-template dialog (needs an open project). */
   | { type: 'add-assets' }
+  /** Asks to delete the selected task (a confirm dialog); nothing happens with no task selected. */
+  | { type: 'delete-task' }
   | { type: 'view'; view: ViewId }
   | { type: 'about' };
 
@@ -177,6 +179,11 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
         case 'add-assets':
           if (snapshot.app?.project) store.openDialog('add-assets');
           return;
+        case 'delete-task': {
+          const id = snapshot.ui.selectedTaskId;
+          if (id && snapshot.app?.project?.tasks.some((t) => t.id === id)) store.openDialog('delete-task');
+          return;
+        }
         case 'view':
           return store.setView(action.view);
       }
