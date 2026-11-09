@@ -165,8 +165,39 @@ describe('planReapply', () => {
     const [plan] = planReapply(sample(), ['b'], v2());
     expect(plan!.removed).toEqual([]);
     expect(plan!.conflicts).toEqual([
-      { taskId: 'b:hipot', message: '2.3 Step hipot is no longer in Switchgear but has progress, so it was kept' },
+      { taskId: 'b:ir', message: 'Step ir has progress and its duration changes from 2 to 3 days; check its actuals' },
+      { taskId: 'b:hipot', message: 'Step hipot is no longer in Switchgear but has progress, so it was kept' },
     ]);
+  });
+
+  it('warns when a task with progress changes type or duration', () => {
+    const tpl: Template = { ...v1(), version: 2, tasks: [tt('vmi', 1), tt('ir', 0, ['vmi'], { type: 'milestone' }), tt('hipot', 1, ['ir']), tt('energize', 0, ['hipot'], { type: 'milestone' })] };
+    const [plan] = planReapply(sample(), ['b'], tpl);
+    expect(plan!.conflicts).toEqual([
+      { taskId: 'b:ir', message: 'Step ir has progress and its type changes from task to milestone and its duration changes from 2 to 0 days; check its actuals' },
+    ]);
+    // Actuals are kept.
+    const { project: p } = reapplyTemplate(sample(), ['b'], tpl);
+    expect(byId(p, 'b:ir')).toMatchObject({ actualStart: '2026-11-04', percentComplete: 40, type: 'milestone', durationDays: 0 });
+    // Name-only changes to a started task are not conflicts.
+    expect(planReapply(sample(), ['b'], { ...v1(), version: 2 })[0]!.conflicts).toEqual([]);
+  });
+
+  it('treats links from tasks removed in another listed asset as gone when dating', () => {
+    const p0 = sample();
+    byId(p0, 'b:hipot').percentComplete = 0;
+    p0.dependencies = p0.dependencies.filter((d) => !(d.predecessorId === 'a:vmi' && d.successorId === 'a:ir'));
+    p0.dependencies.push({ predecessorId: 'b:hipot', successorId: 'a:ir', type: 'FS', lagDays: 0 });
+    const tpl: Template = { ...v1(), version: 2, tasks: [tt('vmi', 1), tt('ir', 2), tt('energize', 0, ['ir'], { type: 'milestone' })] };
+    const dated = { taskId: 'a:ir', changes: [{ field: 'startNoEarlierThan', from: undefined, to: '2026-11-09' }] };
+    // Alone, b:hipot stays and still holds a:ir back.
+    expect(planReapply(p0, ['a'], tpl)[0]!.updated).not.toContainEqual(dated);
+    // Together, b:hipot is removed, so a:ir gets the asset date as it would within one asset.
+    const [planA, planB] = planReapply(p0, ['a', 'b'], tpl);
+    expect(planB!.removed.map((r) => r.taskId)).toContain('b:hipot');
+    expect(planA!.updated).toContainEqual(dated);
+    const { project: p } = reapplyTemplate(p0, ['a', 'b'], tpl);
+    expect(byId(p, 'a:ir').startNoEarlierThan).toBe('2026-11-09');
   });
 
   it('reports a second task with the same key as a conflict and leaves it alone', () => {
@@ -315,7 +346,7 @@ describe('reapplyTemplate command', () => {
       ['b:vmi', '2.1'], ['b:torque', '2.2'], ['b:ir', '2.3'], ['b:witness', '2.4'], ['b:hipot', '2.5'], ['b:energize', '2.6'],
     ]);
     expect(group(r.project, 'x')).toEqual([['x:set', '3.1']]);
-    expect(r.summary).toBe('Re-applied Switchgear v2 to SWGR-A, SWGR-B: 4 tasks added, 2 tasks updated, 1 task removed, 1 task kept with conflicts');
+    expect(r.summary).toBe('Re-applied Switchgear v2 to SWGR-A, SWGR-B: 4 tasks added, 2 tasks updated, 1 task removed, 2 tasks kept with conflicts');
     expect((r.inverse as { summary?: string }).summary).toBe(`Undo: ${r.summary}`);
   });
 
@@ -329,7 +360,7 @@ describe('reapplyTemplate command', () => {
 
   it('refuses another template unless allowed, and undoes when allowed', () => {
     const other: Template = { ...v2(), id: 'tpl-other', name: 'Other' };
-    expectError(sample(), { kind: 'reapplyTemplate', assetIds: ['a'], template: other }, 'invalid-template');
+    expectError(sample(), { kind: 'reapplyTemplate', assetIds: ['a'], template: other }, 'other-template');
     const r = roundTrip(sample(), { kind: 'reapplyTemplate', assetIds: ['a'], template: other, allowOtherTemplate: true });
     expect(r.project.assets[0]!.templateId).toBe('tpl-other');
     expectError(sample(), { kind: 'reapplyTemplate', assetIds: ['a'], template: other, allowOtherTemplate: false as unknown as true }, 'invalid-field');

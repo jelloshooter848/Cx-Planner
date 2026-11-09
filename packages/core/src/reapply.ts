@@ -10,6 +10,8 @@ import { TemplateInvalidError, validateTemplate, type Template, type TemplateTas
  *   complete is never removed; when its template task is gone it stays and is reported
  *   as a conflict. Actual dates, percent complete, readiness and notes are never touched,
  *   and a start-no-earlier date a task has is kept.
+ *   A task with progress whose type or duration changes is updated and also reported as
+ *   a conflict, so the preview warns about it.
  * - Matched tasks take the template's name, type, duration and responsible trade.
  *   Checklists, test forms, certifications and notice lead times are not copied onto
  *   tasks: they are read from the template snapshot by key, so they follow the asset's
@@ -22,7 +24,8 @@ import { TemplateInvalidError, validateTemplate, type Template, type TemplateTas
  *   that were held back by a link before but no longer are and have no date of their own.
  *   The latter is reported in `updated`.
  * - An asset made from a different template (another template id) is flagged with
- *   `templateMismatch`; the command refuses it unless asked to go ahead.
+ *   `templateMismatch`; the command refuses it ('other-template') unless asked to go ahead.
+ * - Conflict messages name tasks, not codes, because the command renumbers codes.
  * - Tasks whose key is no longer in the template and that have no progress are deleted,
  *   with their links.
  * - Links between two template tasks of the same asset are rebuilt from the template
@@ -110,11 +113,16 @@ export class UnknownAssetError extends Error {
 export function planReapply(project: Project, assetIds: Id[], template: Template): ReapplyAssetPlan[] {
   const problems = validateTemplate(template);
   if (problems.length > 0) throw new TemplateInvalidError(problems);
-  return [...new Set(assetIds)].map((id) => {
+  const assets = [...new Set(assetIds)].map((id) => {
     const asset = project.assets.find((a) => a.id === id);
     if (!asset) throw new UnknownAssetError(id);
-    return planAsset(project, asset, template);
+    return asset;
   });
+  const plans = assets.map((asset) => planAsset(project, asset, template));
+  // Links from a task removed in any listed asset are gone, so the date step looks at all removals.
+  const removed = new Set(plans.flatMap((p) => p.removed.map((r) => r.taskId)));
+  assets.forEach((asset, i) => planStartDates(project, asset, template, plans[i]!, removed));
+  return plans;
 }
 
 function planAsset(project: Project, asset: Asset, template: Template): ReapplyAssetPlan {
@@ -139,18 +147,32 @@ function planAsset(project: Project, asset: Asset, template: Template): ReapplyA
     const tt = byKey.get(key);
     if (tt) {
       if (matched.get(key) !== task) {
+        // Codes are left out of messages: the command renumbers them afterwards.
         plan.conflicts.push({
           taskId: task.id,
-          message: `${task.code} ${task.name} uses template step "${key}" as well as ${matched.get(key)!.code}; it was left as it is`,
+          message: `${task.name} uses template step "${key}" as well as another task of the asset; it was left as it is`,
         });
         continue;
       }
       const changes = fieldChanges(task, tt);
       if (changes.length > 0) plan.updated.push({ taskId: task.id, changes });
+      if (hasProgress(task)) {
+        const notes = changes.flatMap((c) =>
+          c.field === 'type' ? [`type changes from ${c.from} to ${c.to}`]
+          : c.field === 'durationDays' ? [`duration changes from ${c.from} to ${c.to} days`]
+          : [],
+        );
+        if (notes.length > 0) {
+          plan.conflicts.push({
+            taskId: task.id,
+            message: `${task.name} has progress and its ${notes.join(' and its ')}; check its actuals`,
+          });
+        }
+      }
     } else if (hasProgress(task)) {
       plan.conflicts.push({
         taskId: task.id,
-        message: `${task.code} ${task.name} is no longer in ${template.name} but has progress, so it was kept`,
+        message: `${task.name} is no longer in ${template.name} but has progress, so it was kept`,
       });
     } else {
       plan.removed.push({ taskId: task.id, reason: `No longer in ${template.name}` });
@@ -185,11 +207,21 @@ function planAsset(project: Project, asset: Asset, template: Template): ReapplyA
     }
   }
   for (const [k, w] of wanted) if (!present.has(k)) plan.links.added.push(w);
+  return plan;
+}
 
-  // Matched tasks that a link held back before but nothing holds back now get the asset's date.
+/**
+ * Matched tasks that a link held back before but nothing holds back now get the asset's
+ * date. `removed` holds the tasks removed from all listed assets.
+ */
+function planStartDates(project: Project, asset: Asset, template: Template, plan: ReapplyAssetPlan, removed: ReadonlySet<Id>): void {
+  const byKey = new Map(template.tasks.map((t) => [t.key, t]));
+  const assetTasks = project.tasks.filter((t) => t.assetId === asset.id);
+  const matched = matchTasks(assetTasks, byKey);
+  const keyOf = new Map<Id, string>();
+  for (const [key, task] of matched) keyOf.set(task.id, key);
   const snet = assetStartNoEarlierThan(assetTasks);
   if (snet !== undefined) {
-    const removed = new Set(plan.removed.map((r) => r.taskId));
     for (const [key, task] of matched) {
       if (task.startNoEarlierThan !== undefined || holdsBack(byKey.get(key)!.predecessors)) continue;
       const incoming = project.dependencies.filter((d) => d.successorId === task.id && holdsBack([d]));
@@ -202,7 +234,6 @@ function planAsset(project: Project, asset: Asset, template: Template): ReapplyA
       else plan.updated.push({ taskId: task.id, changes: [change] });
     }
   }
-  return plan;
 }
 
 /** Like instantiateTemplate: an FS or SS link with no lead holds its successor back. */

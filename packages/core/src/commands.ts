@@ -74,6 +74,7 @@ export type CommandErrorCode =
   | 'invalid-index'
   | 'invalid-calendar'
   | 'invalid-template'
+  | 'other-template'
   | 'invalid-field'
   | 'empty-name'
   | 'empty-batch'
@@ -446,7 +447,7 @@ function reapplyTemplateCommand(project: Project, cmd: Extract<Command, { kind: 
   const other = plans.filter((p) => p.templateMismatch);
   if (other.length > 0 && cmd.allowOtherTemplate !== true) {
     const otherTags = other.map((p) => project.assets.find((a) => a.id === p.assetId)!.tag).join(', ');
-    throw new CommandError('invalid-template', `${otherTags} ${other.length === 1 ? 'was' : 'were'} made from another template than ${cmd.template.name}`);
+    throw new CommandError('other-template', `${otherTags} ${other.length === 1 ? 'was' : 'were'} made from another template than ${cmd.template.name}`);
   }
   if (plans.every(isEmptyReapplyPlan)) {
     throw new CommandError('no-change', `${tags} already match${cmd.assetIds.length === 1 ? 'es' : ''} ${cmd.template.name}`);
