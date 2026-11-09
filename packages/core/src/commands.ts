@@ -1302,8 +1302,13 @@ function checkTemplateShape(t: unknown): asserts t is Template {
     if (!Array.isArray(tt.requiredCerts) || tt.requiredCerts.some((c) => typeof c !== 'string')) {
       bad(`${label} needs a list of certifications`);
     }
-    if (!Array.isArray(tt.checklist) || tt.checklist.some((c) => !isPlainObject(c) || typeof c.id !== 'string' || typeof c.text !== 'string')) {
-      bad(`${label} needs a checklist of { id, text } items`);
+    if (
+      !Array.isArray(tt.checklist) ||
+      tt.checklist.some(
+        (c) => !isPlainObject(c) || typeof c.id !== 'string' || typeof c.text !== 'string' || (c.acceptance !== undefined && typeof c.acceptance !== 'string'),
+      )
+    ) {
+      bad(`${label} needs a checklist of { id, text, acceptance? } items`);
     }
     if (!Array.isArray(tt.predecessors)) bad(`${label} needs a list of predecessors`);
     for (const p of tt.predecessors as unknown[]) {

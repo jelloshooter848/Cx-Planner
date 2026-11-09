@@ -164,6 +164,17 @@ describe('print jobs', () => {
     expect(print.preview({ kind: 'test-sheets', taskIds: ['t1.1'], note: '' })).toMatchObject({ ok: false, code: 'invalid-input' });
   });
 
+  it('prints the template\'s acceptance criteria on the test sheet', () => {
+    openRiverside(true);
+    const setup = print.setup();
+    if (!setup.ok) throw new Error(setup.message);
+    const torque = setup.value.checklistTasks.find((t) => t.testForm === 'Torque record')!;
+    const r = print.preview({ kind: 'test-sheets', taskIds: [torque.taskId], note: '' });
+    if (!r.ok) throw new Error(r.message);
+    expect(r.value.html).toContain('>Acceptance<');
+    expect(r.value.html).toContain('Per mfr. torque table');
+  });
+
   it('builds without Electron, from the project and its print history', () => {
     const history = [{ id: 1, kind: 'lookahead', rev: 'C', issued: '2026-10-30', printedAt: '', paper: 'tabloid', sheets: 1, dataDate: '2026-10-30', lastChangeSeq: 0, note: '', title: '' }];
     const p = buildPrint({ project: riversideProject(), templates: [], history, request: lookAhead() });

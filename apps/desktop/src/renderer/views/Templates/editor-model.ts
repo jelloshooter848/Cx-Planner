@@ -3,7 +3,7 @@
  * template edits themselves (add, remove, move tasks, predecessor text, preview) are in
  * @cx/core template-edit.ts.
  */
-import { validateTemplate, type Asset, type Template, type TemplateProblem, type TemplateProblemCode } from '@cx/core';
+import { validateTemplate, type Asset, type ChecklistItem, type Template, type TemplateProblem, type TemplateProblemCode } from '@cx/core';
 
 /** A problem shown in the editor: a template rule, or a missing name. */
 export interface EditorProblem extends Omit<TemplateProblem, 'code'> {
@@ -29,9 +29,16 @@ export function cleanTemplate(t: Template): Template {
       name: task.name.trim(),
       trade: task.trade.trim(),
       requiredCerts: list(task.requiredCerts),
-      checklist: task.checklist.map((c) => ({ ...c, text: c.text.trim() })).filter((c) => c.text !== ''),
+      checklist: task.checklist.filter((c) => c.text.trim() !== '').map(cleanChecklistItem),
     })),
   };
+}
+
+/** Trims a checklist item; an empty acceptance is dropped rather than saved as "". */
+function cleanChecklistItem(c: ChecklistItem): ChecklistItem {
+  const { acceptance, ...rest } = c;
+  const a = acceptance?.trim() ?? '';
+  return { ...rest, text: c.text.trim(), ...(a !== '' ? { acceptance: a } : {}) };
 }
 
 /**

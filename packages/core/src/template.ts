@@ -35,6 +35,11 @@ export interface ChecklistItem {
   id: string;
   /** One line on the printed test sheet. */
   text: string;
+  /**
+   * What counts as a pass, e.g. "Per mfr. torque table". Printed in the test sheet's
+   * Acceptance column. Optional; absent (not empty) when there is none.
+   */
+  acceptance?: string;
 }
 
 export interface TemplateTask {

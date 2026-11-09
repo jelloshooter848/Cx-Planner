@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { ChecklistItem } from '@cx/core';
 import { riversideProject } from '@cx/fixtures';
 import {
   layoutTestSheet, orientationOf, PAPER, portrait, printDocumentHtml, textWidth, wrapText, type TestSheetItem, type TestSheetOptions,
@@ -93,6 +94,27 @@ describe('layoutTestSheet', () => {
     const svg = allSvg({ checklist: [{ id: 'a', text: 'Insulation resistance', acceptance: '≥ 100 MΩ' }] });
     expect(svg).toContain('>Acceptance<');
     expect(svg).toContain('≥ 100 MΩ');
+  });
+
+  it('prints a template checklist item\'s acceptance in that item\'s row', () => {
+    const checklist: ChecklistItem[] = [
+      { id: 'lugs', text: 'Cable lugs torqued to manufacturer values', acceptance: 'Per mfr. torque table' },
+      { id: 'marks', text: 'Torque marks applied' },
+    ];
+    const svg = allSvg({ checklist });
+    expect(svg).toContain('>Acceptance<');
+    const row = (id: string) => {
+      const from = svg.slice(svg.indexOf(`data-item="${id}"`));
+      return from.slice(0, from.indexOf('</g>'));
+    };
+    expect(row('lugs')).toContain('Per mfr. torque table');
+    expect(row('marks')).not.toContain('Per mfr.');
+  });
+
+  it('keeps typical acceptance criteria of about 25 characters on one line', () => {
+    const criteria = ['Per project spec / NETA ATS', '≥ 100 MΩ at 1000 V DC', '≥ [value] at [test V]'];
+    const svg = allSvg({ checklist: criteria.map((acceptance, i) => ({ id: `a${i}`, text: 'Insulation resistance', acceptance })) });
+    for (const c of criteria) expect(svg).toContain(`>${c}<`);
   });
 
   it('fits the twelve-item mockup checklist with a hold point on one page', () => {

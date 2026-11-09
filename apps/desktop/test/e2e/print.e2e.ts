@@ -215,4 +215,66 @@ describe('print / export PDF', () => {
     expect(await kindRadio('Look-ahead').getAttribute('aria-checked')).toBe('true');
     await expect.poll(() => rev.textContent()).toBe('C');
   });
+
+  it('prints acceptance criteria entered in the template editor on the test sheet', async () => {
+    h = await launchApp({ project: 'riverside' });
+    const { page } = h;
+    await page.getByRole('grid', { name: 'Tasks' }).waitFor();
+
+    // Duplicate the switchgear starter and give a checklist item acceptance criteria.
+    await page.getByRole('menubar').getByRole('menuitem', { name: 'Templates', exact: true }).click();
+    const editor = page.getByRole('main', { name: 'Template editor' });
+    await editor.waitFor();
+    await expect.poll(() => page.getByLabel('Template name').inputValue()).toBe('Low-voltage switchgear');
+    await editor.getByRole('button', { name: 'Duplicate' }).click();
+    await expect.poll(() => page.getByLabel('Template name').inputValue()).toBe('Low-voltage switchgear (copy)');
+    await page.getByRole('grid', { name: 'Template tasks' }).getByRole('row').filter({ hasText: 'Insulation resistance test' }).click();
+    const props = page.getByRole('region', { name: 'Task properties' });
+    // The starter already has criteria on item 1; item 3 has none yet.
+    expect(await props.getByLabel('Acceptance 1', { exact: true }).inputValue()).toBe('Per project spec / NETA ATS');
+    const acc = props.getByLabel('Acceptance 3', { exact: true });
+    expect(await acc.getAttribute('placeholder')).toBe('Acceptance (optional)');
+    await acc.fill('≥ 100 MΩ at 1000 V DC');
+    await h.screenshot('templates-acceptance');
+    await editor.getByRole('button', { name: 'Save', exact: true }).click();
+    await page.getByRole('status').filter({ hasText: 'Saved as version 2' }).waitFor();
+
+    // Add an asset from the saved template.
+    const added = await page.evaluate(async () => {
+      const list = await window.cx.templates.list();
+      if (!list.ok) return list;
+      const t = await window.cx.templates.get(list.value.find((x) => x.name === 'Low-voltage switchgear (copy)')!.id);
+      if (!t.ok) return t;
+      return window.cx.apply({ kind: 'addAssetsFromTemplate', template: t.value, assets: [{ tag: 'SWGR-ACC', description: 'Switchgear' }] });
+    });
+    expect(added.ok).toBe(true);
+    await page.getByRole('menubar').getByRole('menuitem', { name: 'Schedule', exact: true }).click();
+    await page.getByRole('grid', { name: 'Tasks' }).waitFor();
+
+    // Test sheet for its insulation resistance task: the Acceptance column shows both values.
+    await page.keyboard.press('Control+p');
+    const dialog = page.getByRole('dialog', { name: 'Print / Export PDF' });
+    await dialog.waitFor();
+    await dialog.getByRole('radio', { name: 'Test sheets' }).click();
+    const tasks = dialog.getByRole('list', { name: 'Tasks with checklists' });
+    await tasks.waitFor();
+    await dialog.getByRole('button', { name: 'Clear' }).click();
+    await tasks.locator(':scope > li').filter({ hasText: 'SWGR-ACC' }).getByRole('checkbox', { name: /Insulation resistance test/ }).check();
+    await expect.poll(() => dialog.getByTestId('print-sheet-count').textContent()).toMatch(/^1 sheet · 8\.5 × 11 in$/);
+    const frame = dialog.locator('iframe').contentFrame();
+    // Long values wrap onto several lines (tspans), so compare without spaces.
+    const squash = (s: string | null) => (s ?? '').replace(/\s+/g, '');
+    await expect.poll(async () => squash(await frame.locator('body').textContent())).toContain(squash('≥ 100 MΩ at 1000 V DC'));
+    const text = squash(await frame.locator('body').textContent());
+    expect(text).toContain('#CheckAcceptanceResult');
+    expect(text).toContain('SWGR-ACC');
+    expect(text).toContain(squash('Per project spec / NETA ATS'));
+    await h.screenshot('print-test-sheet-acceptance');
+
+    const pdf = join(h.dir, 'IR sheet.pdf');
+    await h.answerSave(pdf);
+    await dialog.getByRole('button', { name: 'Export PDF (Rev A)' }).click();
+    await dialog.getByRole('status').getByText(`Saved Rev A: ${pdf}`).waitFor();
+    expect(pdfPages(readFileSync(pdf))).toBe(1);
+  });
 });

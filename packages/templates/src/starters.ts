@@ -14,14 +14,18 @@ interface TaskSpec {
   trade: string;
   /** Keys of finish-to-start predecessors with no lag, or full links. */
   after?: (string | { key: string; type: DependencyType; lagDays: number })[];
-  checklist?: string[];
+  /** A line of text, or [text, acceptance criteria] for the test sheet's Acceptance column. */
+  checklist?: (string | [text: string, acceptance: string])[];
   testForm?: string;
   requiredCerts?: string[];
   noticeLeadDays?: number;
 }
 
 function task(spec: TaskSpec): TemplateTask {
-  const checklist: ChecklistItem[] = (spec.checklist ?? []).map((text, i) => ({ id: `${spec.key}-${i + 1}`, text }));
+  const checklist: ChecklistItem[] = (spec.checklist ?? []).map((line, i) => {
+    const id = `${spec.key}-${i + 1}`;
+    return typeof line === 'string' ? { id, text: line } : { id, text: line[0], acceptance: line[1] };
+  });
   const t: TemplateTask = {
     key: spec.key,
     name: spec.name,
@@ -66,8 +70,8 @@ const lvSwitchgear: Template = {
       key: 'torque', name: 'Torque verification', durationDays: 2, trade: 'Electrical', after: ['vmi'],
       testForm: 'Torque record',
       checklist: [
-        'Bus joints torqued to manufacturer values',
-        'Cable lugs torqued to manufacturer values',
+        ['Bus joints torqued to manufacturer values', 'Per mfr. torque table'],
+        ['Cable lugs torqued to manufacturer values', 'Per mfr. torque table'],
         'Torque marks applied to every checked connection',
         'Torque wrench serial and calibration date recorded',
       ],
@@ -76,7 +80,7 @@ const lvSwitchgear: Template = {
       key: 'ir', name: 'Insulation resistance test', durationDays: 2, trade: 'Test tech', after: ['torque'],
       testForm: 'Insulation resistance', requiredCerts: [QUALIFIED],
       checklist: [
-        'Bus tested phase-to-phase and phase-to-ground',
+        ['Bus tested phase-to-phase and phase-to-ground', 'Per project spec / NETA ATS'],
         'Readings corrected for temperature and recorded',
         'Results meet the project acceptance values',
       ],
@@ -132,7 +136,7 @@ const mvSwitchgear: Template = {
       key: 'ir', name: 'Insulation resistance test', durationDays: 1, trade: 'Test tech', after: ['vmi'],
       testForm: 'Insulation resistance', requiredCerts: [QUALIFIED],
       checklist: [
-        'Bus and breakers tested phase-to-phase and phase-to-ground',
+        ['Bus and breakers tested phase-to-phase and phase-to-ground', 'Per project spec / NETA ATS'],
         'Test voltage suited to the equipment rating',
         'Readings corrected for temperature and recorded',
       ],
@@ -141,8 +145,8 @@ const mvSwitchgear: Template = {
       key: 'breaker', name: 'Contact resistance & breaker timing', durationDays: 2, trade: 'Test tech', after: ['ir'],
       testForm: 'Circuit breaker test', requiredCerts: [QUALIFIED],
       checklist: [
-        'Contact resistance measured on each pole',
-        'Close and trip times recorded',
+        ['Contact resistance measured on each pole', 'Within 50% of lowest pole / per mfr.'],
+        ['Close and trip times recorded', 'Per mfr. timing data'],
         'Pole readings compared with each other and with factory data',
         'Trip and close coils operate at minimum control voltage',
       ],
@@ -153,7 +157,7 @@ const mvSwitchgear: Template = {
       checklist: [
         'Test area barricaded and attended',
         'Voltage and duration per the approved test procedure',
-        'No breakdown or flashover during the test',
+        ['No breakdown or flashover during the test', 'Hold for the full duration'],
         'Witness name recorded',
       ],
     }),
@@ -206,8 +210,8 @@ const transformer: Template = {
       key: 'ir', name: 'Insulation resistance & polarization index', durationDays: 1, trade: 'Test tech', after: ['vmi'],
       testForm: 'Insulation resistance', requiredCerts: [QUALIFIED],
       checklist: [
-        'Windings tested high-to-low, high-to-ground and low-to-ground',
-        'Polarization index calculated and recorded',
+        ['Windings tested high-to-low, high-to-ground and low-to-ground', 'Per project spec / NETA ATS'],
+        ['Polarization index calculated and recorded', 'PI ≥ [value] per project spec'],
         'Readings corrected for temperature',
       ],
     }),
@@ -216,7 +220,7 @@ const transformer: Template = {
       testForm: 'Transformer turns ratio', requiredCerts: [QUALIFIED], noticeLeadDays: 5,
       checklist: [
         'Turns ratio measured on every tap position',
-        'Ratios within tolerance of the nameplate',
+        ['Ratios within tolerance of the nameplate', 'Within ±0.5% of calculated ratio'],
         'Winding resistance measured on each phase',
         'Witness name recorded',
       ],
@@ -258,7 +262,7 @@ const panelboard: Template = {
       key: 'ir', name: 'Insulation resistance test', durationDays: 1, trade: 'Test tech', after: ['vmi'],
       testForm: 'Insulation resistance', requiredCerts: [QUALIFIED],
       checklist: [
-        'Bus tested phase-to-phase and phase-to-ground',
+        ['Bus tested phase-to-phase and phase-to-ground', 'Per project spec / NETA ATS'],
         'Feeder tested before connection',
         'Readings recorded',
       ],
@@ -426,7 +430,7 @@ const ups: Template = {
       checklist: [
         'Float voltage recorded for each cell',
         'Internal resistance or impedance recorded for each cell',
-        'Readings compared with the string average',
+        ['Readings compared with the string average', 'Per mfr. limits from string average'],
       ],
     }),
     task({
