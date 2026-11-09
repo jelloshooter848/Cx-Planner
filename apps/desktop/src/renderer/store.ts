@@ -11,6 +11,7 @@ import { createContext, createElement, useContext, useMemo, useSyncExternalStore
 import type { Asset, Command, Id, IsoDate, Project, Task } from '@cx/core';
 import type { ApiResult, AppState, CxApi, EditOutcome, LookAheadWeeks, PrintKind, TaskScheduleSummary } from '../shared/api';
 import { assetsInView } from './asset-filter';
+import { DEFAULT_SCHEDULE_LAYOUT, type LayoutStore, type ScheduleLayout, type SchedulePanel } from './layout-prefs';
 
 /** Views shown when a project is open (the welcome screen shows when none is). */
 export type ViewId = 'schedule' | 'templates' | 'lookahead';
@@ -68,6 +69,8 @@ export interface UiState {
   hiddenAssetIds: Id[];
   /** Weeks of the look-ahead window shaded on the Gantt (and the Print dialog's default). */
   lookAheadWeeks: LookAheadWeeks;
+  /** The Schedule view's splitter position and collapsed side panels (remembered per viewer). */
+  scheduleLayout: ScheduleLayout;
 }
 
 export interface StatusLine {
@@ -112,11 +115,15 @@ export type Action =
   /** Opens the data date picker (needs an open project). */
   | { type: 'data-date' }
   | { type: 'view'; view: ViewId }
+  /** Collapses a Schedule side panel, or opens it again (View menu). */
+  | { type: 'toggle-panel'; panel: SchedulePanel }
   | { type: 'about' };
 
 export interface StoreOptions {
   /** Closes the window (File > Exit). */
   exit?(): void;
+  /** Where the Schedule layout (splitter, collapsed panels) is remembered; left out, it is not. */
+  layout?: LayoutStore;
 }
 
 export interface Store {
@@ -155,6 +162,10 @@ export interface Store {
   /** Ticks (shown = true) or unticks assets in the sidebar. */
   setAssetsShown(ids: readonly Id[], shown: boolean): void;
   setLookAheadWeeks(weeks: LookAheadWeeks): void;
+  /** Changes the Schedule layout (splitter width, collapsed panels) and remembers it. */
+  setScheduleLayout(patch: Partial<ScheduleLayout>): void;
+  /** Collapses the panel, or opens it again. Selecting a task never opens a collapsed panel. */
+  togglePanel(panel: SchedulePanel): void;
   /** Stops listening to the main process. */
   dispose(): void;
 }
@@ -181,6 +192,7 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
       assetQuery: '',
       hiddenAssetIds: [],
       lookAheadWeeks: 3,
+      scheduleLayout: options.layout?.load() ?? DEFAULT_SCHEDULE_LAYOUT,
     },
   };
   let noticeId = 0;
@@ -348,6 +360,8 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
           return;
         case 'view':
           return store.setView(action.view);
+        case 'toggle-panel':
+          return store.togglePanel(action.panel);
       }
     },
     setView: (view) => setUi({ view }),
@@ -402,6 +416,17 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
     },
     setLookAheadWeeks: (lookAheadWeeks) => {
       if (snapshot.ui.lookAheadWeeks !== lookAheadWeeks) setUi({ lookAheadWeeks });
+    },
+    setScheduleLayout: (patch) => {
+      const cur = snapshot.ui.scheduleLayout;
+      const next = { ...cur, ...patch };
+      if (next.gridWidth === cur.gridWidth && next.assetsCollapsed === cur.assetsCollapsed && next.detailsCollapsed === cur.detailsCollapsed) return;
+      setUi({ scheduleLayout: next });
+      options.layout?.save(next);
+    },
+    togglePanel: (panel) => {
+      const key = panel === 'assets' ? 'assetsCollapsed' : 'detailsCollapsed';
+      store.setScheduleLayout({ [key]: !snapshot.ui.scheduleLayout[key] });
     },
     dispose() {
       offState();

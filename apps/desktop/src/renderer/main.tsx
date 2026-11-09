@@ -7,9 +7,10 @@ import '@fontsource/inter/latin-700.css';
 import './tokens.css';
 import './styles.css';
 import { App } from './App';
+import { storageLayoutStore } from './layout-prefs';
 import { createStore, StoreProvider } from './store';
 
-const store = createStore(window.cx, { exit: () => window.close() });
+const store = createStore(window.cx, { exit: () => window.close(), layout: storageLayoutStore() });
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

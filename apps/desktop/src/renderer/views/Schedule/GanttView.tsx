@@ -18,6 +18,12 @@
  *
  * The look-ahead window chosen on the toolbar is shaded behind the bars.
  *
+ * Splitter: the line between the table and the timeline can be dragged (or moved with Left /
+ * Right while focused; Home / End for the narrowest / widest table) and double-clicked to
+ * reset. The Task column takes up the slack; when the table is too narrow for every column the
+ * right-hand ones are hidden whole (a "+N" mark in the header says so). The width is kept in
+ * ui.scheduleLayout.gridWidth.
+ *
  * Editing: double-click a task's name or duration (or press F2 for the name) to edit it in
  * place; Enter or leaving the cell saves (one undo step), Escape cancels. Delete asks to
  * remove the selected task.
@@ -27,7 +33,7 @@
  * Enter on the selected row). Enter saves and moves down, Tab / Shift+Tab move across (see
  * progress-grid.ts). Edits follow core's progress rules (ProgressEdit.tsx).
  */
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
 import { parseIso, predecessorLabels, TIMES_KEYS, type Id, type ProgressChange, type Project, type Task, type TimesKey } from '@cx/core';
 import type { LookAheadWindow } from '@cx/render';
 import type { TaskScheduleSummary } from '../../../shared/api';
@@ -40,7 +46,25 @@ import { moveTaskAction } from './schedule-actions';
 import { parseActualDate, parseDuration, parsePercent } from './task-fields';
 import { GanttBars, GanttHeaderTime, HEAD_BOTTOM_H, HEAD_H, HEAD_TOP_H, ROW_H } from './GanttBars';
 import { GanttLegend } from './GanttLegend';
-import { buildRows, dateAtX, headerTicks, makeScale, moveSelection, rowIndexOfTask, scrollToRow, visibleRows, visibleSpan, weekendDays, xOf, type GanttRow } from './gantt-layout';
+import {
+  buildRows,
+  clampGridWidth,
+  dateAtX,
+  GRID_MIN_W,
+  headerTicks,
+  makeScale,
+  maxGridWidth,
+  moveSelection,
+  rowIndexOfTask,
+  scrollToRow,
+  splitterKeyWidth,
+  visibleColumns,
+  visibleRows,
+  visibleSpan,
+  weekendDays,
+  xOf,
+  type GanttRow,
+} from './gantt-layout';
 
 type ColumnKey = 'id' | 'task' | 'dur' | 'start' | 'pct' | 'astart' | 'afinish' | 'pred' | 'times';
 interface Column {
@@ -81,6 +105,8 @@ interface Viewport {
   left: number;
   width: number;
   height: number;
+  /** Height of the horizontal scrollbar along the bottom (0 when there is none). */
+  scrollbarH: number;
   /** False until the scroll area has been read once; the default size is only a guess. */
   measured: boolean;
 }
@@ -102,10 +128,18 @@ export function GanttView({ project, schedule, assetIds = null, lookAhead = null
   const selectedAssetId = useSelect((s) => s.ui.selectedAssetId);
   const selectedIds = useMemo(() => new Set(selectedIdList), [selectedIdList]);
   const progressMode = useSelect((s) => s.ui.progressMode);
-  const columns = progressMode ? PROGRESS_COLUMNS : PLAN_COLUMNS;
-  const tableW = tableWidth(columns);
+  const naturalColumns = progressMode ? PROGRESS_COLUMNS : PLAN_COLUMNS;
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [vp, setVp] = useState<Viewport>({ top: 0, left: 0, width: 1200, height: 800, measured: false });
+  const [vp, setVp] = useState<Viewport>({ top: 0, left: 0, width: 1200, height: 800, scrollbarH: 0, measured: false });
+  // The table's width: the splitter's (while dragging, or as remembered) or the columns' own,
+  // kept between the table's and the timeline's minimum widths. The Task column takes the slack.
+  const savedGridW = useSelect((s) => s.ui.scheduleLayout.gridWidth);
+  const [dragW, setDragW] = useState<number | null>(null);
+  const tableW = clampGridWidth(dragW ?? savedGridW ?? tableWidth(naturalColumns), vp.width);
+  // Right-hand columns that do not fit are left out whole rather than cut off mid-text.
+  const fitted = useMemo(() => visibleColumns(tableW, naturalColumns), [tableW, naturalColumns]);
+  const columns = fitted.columns;
+  const taskW = columns.find((c) => c.key === 'task')?.width ?? W.task;
   const [editing, setEditing] = useState<{ id: Id; field: EditField } | null>(null);
   // Keyboard multi-select: Ctrl+Up/Down moves this row cursor without changing the selection,
   // Ctrl+Space adds or removes the cursor's task (as Ctrl+click does). Null follows the selection.
@@ -133,10 +167,11 @@ export function GanttView({ project, schedule, assetIds = null, lookAhead = null
     let frame = 0;
     const read = () => {
       frame = 0;
+      const scrollbarH = Math.max(0, el.offsetHeight - el.clientHeight);
       setVp((p) =>
-        p.measured && p.top === el.scrollTop && p.left === el.scrollLeft && p.width === el.clientWidth && p.height === el.clientHeight
+        p.measured && p.top === el.scrollTop && p.left === el.scrollLeft && p.width === el.clientWidth && p.height === el.clientHeight && p.scrollbarH === scrollbarH
           ? p
-          : { top: el.scrollTop, left: el.scrollLeft, width: el.clientWidth, height: el.clientHeight, measured: true },
+          : { top: el.scrollTop, left: el.scrollLeft, width: el.clientWidth, height: el.clientHeight, scrollbarH, measured: true },
       );
     };
     const onScroll = () => {
@@ -362,6 +397,44 @@ export function GanttView({ project, schedule, assetIds = null, lookAhead = null
     }
   };
 
+  // ---- Splitter ----
+  const drag = useRef<{ x: number; w: number } | null>(null);
+  const onSplitDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    e.currentTarget.focus({ preventScroll: true });
+    drag.current = { x: e.clientX, w: tableW };
+    setDragW(tableW);
+  };
+  const onSplitMove = (e: PointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    if (d) setDragW(clampGridWidth(d.w + e.clientX - d.x, vp.width));
+  };
+  /** End a drag, keeping width `w` (null keeps the last width drawn while dragging). */
+  const endDrag = (w: number | null) => {
+    const d = drag.current;
+    if (!d) return;
+    drag.current = null;
+    const final = w ?? dragW;
+    // A click without a move leaves the remembered width alone (it may be the default).
+    if (final !== null && final !== d.w) store.setScheduleLayout({ gridWidth: final });
+    setDragW(null);
+  };
+  const onSplitUp = (e: PointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    if (!d) return;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    endDrag(clampGridWidth(d.w + e.clientX - d.x, vp.width));
+  };
+  const onSplitKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const w = splitterKeyWidth(e.key, tableW, vp.width);
+    if (w === null) return;
+    e.preventDefault();
+    store.setScheduleLayout({ gridWidth: w });
+  };
+
   const onClick = (e: MouseEvent<HTMLDivElement>) => {
     const target = e.target as Element;
     const id = target.closest('[data-task-id]')?.getAttribute('data-task-id');
@@ -394,78 +467,120 @@ export function GanttView({ project, schedule, assetIds = null, lookAhead = null
   };
 
   return (
-    <div className={`gantt${progressMode ? ' is-progress-mode' : ''}`} style={{ '--gantt-table-w': `${tableW}px` } as CSSProperties}>
-      <div
-        ref={scrollRef}
-        className="gantt-scroll"
-        role="grid"
-        aria-label="Tasks"
-        aria-rowcount={rows.length + 1}
-        aria-colcount={columns.length + 1}
-        aria-activedescendant={activeIndex >= first && activeIndex < last && activeId ? `gantt-row-${activeId}` : undefined}
-        tabIndex={0}
-        onKeyDown={onKeyDown}
-        data-zoom={zoom}
-        data-day-width={scale.dayWidth}
-        data-timeline-width={scale.width}
-      >
-        <div className="gantt-canvas" style={{ width: totalW, height: HEAD_H + rows.length * ROW_H }}>
-          <div className="gantt-head" role="rowgroup" style={{ width: totalW }}>
-            <div className="gantt-head-cells" role="row" aria-rowindex={1}>
-              <div style={{ height: HEAD_TOP_H }} />
-              <div className="gantt-colheads" style={{ height: HEAD_BOTTOM_H }}>
-                {columns.map((c) => (
-                  <span key={c.key} role="columnheader" aria-label={c.aria} className={`gc gc-${c.key}${c.num ? ' num' : ''}`} style={{ width: c.width }}>
-                    {c.key === 'times' ? TIMES_KEYS.map((k) => <span key={k}>{k}</span>) : c.label}
+    <div className={`gantt${progressMode ? ' is-progress-mode' : ''}${dragW !== null ? ' is-resizing' : ''}${fitted.hidden > 0 ? ' has-hidden-cols' : ''}`} style={{ '--gantt-table-w': `${tableW}px` } as CSSProperties}>
+      <div className="gantt-main">
+        <div
+          ref={scrollRef}
+          id="gantt-scroll"
+          className="gantt-scroll"
+          role="grid"
+          aria-label="Tasks"
+          aria-rowcount={rows.length + 1}
+          aria-colcount={columns.length + 1}
+          aria-activedescendant={activeIndex >= first && activeIndex < last && activeId ? `gantt-row-${activeId}` : undefined}
+          tabIndex={0}
+          onKeyDown={onKeyDown}
+          data-zoom={zoom}
+          data-day-width={scale.dayWidth}
+          data-timeline-width={scale.width}
+        >
+          <div className="gantt-canvas" style={{ width: totalW, height: HEAD_H + rows.length * ROW_H }}>
+            <div className="gantt-head" role="rowgroup" style={{ width: totalW }}>
+              <div className="gantt-head-cells" role="row" aria-rowindex={1}>
+                <div style={{ height: HEAD_TOP_H }} />
+                <div className="gantt-colheads" style={{ height: HEAD_BOTTOM_H }}>
+                  {columns.map((c) => (
+                    <span key={c.key} role="columnheader" aria-label={c.aria} className={`gc gc-${c.key}${c.num ? ' num' : ''}`} style={{ width: c.width }}>
+                      {c.key === 'times' ? TIMES_KEYS.map((k) => <span key={k}>{k}</span>) : c.label}
+                    </span>
+                  ))}
+                  <span role="columnheader" className="sr-only">
+                    Timeline
                   </span>
-                ))}
-                <span role="columnheader" className="sr-only">
-                  Timeline
-                </span>
+                </div>
+                {fitted.hidden > 0 && (
+                  <span
+                    className="gantt-cols-hidden"
+                    data-testid="gantt-cols-hidden"
+                    title={`${fitted.hidden} column${fitted.hidden === 1 ? '' : 's'} hidden (${naturalColumns
+                      .slice(columns.length)
+                      .map((c) => c.aria ?? c.label)
+                      .join(', ')}): widen the table to show ${fitted.hidden === 1 ? 'it' : 'them'}`}
+                  >
+                    +{fitted.hidden}
+                  </span>
+                )}
+              </div>
+              <div className="gantt-head-timeline" style={{ left: tableW, width: scale.width }}>
+                <GanttHeaderTime scale={scale} ticks={ticks} x0={x0} x1={x1} scrolled={vp.left} />
               </div>
             </div>
-            <div className="gantt-head-timeline" style={{ left: tableW, width: scale.width }}>
-              <GanttHeaderTime scale={scale} ticks={ticks} x0={x0} x1={x1} scrolled={vp.left} />
-            </div>
-          </div>
 
-          <div className="gantt-body" role="rowgroup" style={{ height: rows.length * ROW_H }} onClick={onClick} onDoubleClick={onDoubleClick}>
-            {rows.slice(first, last).map((row, k) => (
-              <Row
-                key={row.key}
-                row={row}
-                index={first + k}
-                width={totalW}
-                columns={columns}
-                tableWidth={tableW}
-                progressMode={progressMode}
-                summary={row.kind === 'task' ? schedule[row.task.id] : undefined}
-                pred={row.kind === 'task' ? (preds.get(row.task.id) ?? '') : ''}
-                selected={row.kind === 'task' ? selectedIds.has(row.task.id) : row.asset.id === selectedAssetId}
-                cursor={row.kind === 'task' && cursorId !== null && row.task.id === cursorId}
-                editing={row.kind === 'task' && editing?.id === row.task.id ? editing.field : null}
-                onEditDone={finishEdit}
-              />
-            ))}
-            <div className="gantt-timeline" style={{ left: tableW, width: scale.width, height: rows.length * ROW_H }}>
-              <GanttBars
-                rows={rows}
-                schedule={schedule}
-                scale={scale}
-                ticks={ticks}
-                weekendXs={weekendXs}
-                first={first}
-                last={last}
-                x0={x0}
-                x1={x1}
-                dataDateX={dataDateX >= 0 && dataDateX <= scale.width ? dataDateX : null}
-                dataDateTitle={`Data date ${shortDate(project.dataDate)}`}
-                lookAheadSpan={lookAheadSpan}
-                lookAheadTitle={lookAhead ? `Look-ahead window ${shortDate(lookAhead.start)} – ${shortDate(lookAhead.end)}` : undefined}
-              />
+            <div className="gantt-body" role="rowgroup" style={{ height: rows.length * ROW_H }} onClick={onClick} onDoubleClick={onDoubleClick}>
+              {rows.slice(first, last).map((row, k) => (
+                <Row
+                  key={row.key}
+                  row={row}
+                  index={first + k}
+                  width={totalW}
+                  columns={columns}
+                  tableWidth={tableW}
+                  taskWidth={taskW}
+                  progressMode={progressMode}
+                  summary={row.kind === 'task' ? schedule[row.task.id] : undefined}
+                  pred={row.kind === 'task' ? (preds.get(row.task.id) ?? '') : ''}
+                  selected={row.kind === 'task' ? selectedIds.has(row.task.id) : row.asset.id === selectedAssetId}
+                  cursor={row.kind === 'task' && cursorId !== null && row.task.id === cursorId}
+                  editing={row.kind === 'task' && editing?.id === row.task.id ? editing.field : null}
+                  onEditDone={finishEdit}
+                />
+              ))}
+              <div className="gantt-timeline" style={{ left: tableW, width: scale.width, height: rows.length * ROW_H }}>
+                <GanttBars
+                  rows={rows}
+                  schedule={schedule}
+                  scale={scale}
+                  ticks={ticks}
+                  weekendXs={weekendXs}
+                  first={first}
+                  last={last}
+                  x0={x0}
+                  x1={x1}
+                  dataDateX={dataDateX >= 0 && dataDateX <= scale.width ? dataDateX : null}
+                  dataDateTitle={`Data date ${shortDate(project.dataDate)}`}
+                  lookAheadSpan={lookAheadSpan}
+                  lookAheadTitle={lookAhead ? `Look-ahead window ${shortDate(lookAhead.start)} – ${shortDate(lookAhead.end)}` : undefined}
+                />
+              </div>
             </div>
           </div>
         </div>
+        {/* The part of the scroll area the timeline shows (for layout checks; draws nothing). */}
+        <div className="gantt-timeline-pane" data-testid="gantt-timeline-pane" aria-hidden="true" style={{ left: tableW, width: Math.max(0, vp.width - tableW) }} />
+        <div
+          className="gantt-splitter"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize task table"
+          aria-controls="gantt-scroll"
+          aria-valuenow={tableW}
+          aria-valuemin={GRID_MIN_W}
+          aria-valuemax={maxGridWidth(vp.width)}
+          tabIndex={0}
+          title="Drag to resize the task table · double-click to reset"
+          style={{ left: tableW, bottom: vp.scrollbarH }}
+          onPointerDown={onSplitDown}
+          onPointerMove={onSplitMove}
+          onPointerUp={onSplitUp}
+          onPointerCancel={() => {
+            drag.current = null;
+            setDragW(null);
+          }}
+          // Capture lost some other way (window blur, the element replaced): keep what was dragged.
+          onLostPointerCapture={() => endDrag(null)}
+          onKeyDown={onSplitKey}
+          onDoubleClick={() => store.setScheduleLayout({ gridWidth: null })}
+        />
       </div>
       <GanttLegend />
       {progress.prompt}
@@ -479,6 +594,8 @@ interface RowProps {
   width: number;
   columns: readonly Column[];
   tableWidth: number;
+  /** Width of the Task column (it takes up the table's slack). */
+  taskWidth: number;
   /** Progress mode: % and actual dates edit on a single click. */
   progressMode: boolean;
   /** The task's schedule (task rows only). */
@@ -494,7 +611,7 @@ interface RowProps {
 }
 
 /** One table row; memoised so rows already in view are not redrawn on every scroll step. */
-const Row = memo(function Row({ row, index, width, columns, tableWidth, progressMode, summary: s, pred, selected, cursor, editing, onEditDone }: RowProps) {
+const Row = memo(function Row({ row, index, width, columns, tableWidth, taskWidth, progressMode, summary: s, pred, selected, cursor, editing, onEditDone }: RowProps) {
   const style = { top: index * ROW_H, width };
   if (row.kind === 'group') {
     const a = row.asset;
@@ -547,7 +664,7 @@ const Row = memo(function Row({ row, index, width, columns, tableWidth, progress
         );
       case 'task':
         return (
-          <span key={key} role="gridcell" className="gc gc-task" style={{ width: W.task }} title={editing === 'name' ? undefined : t.name} data-edit="name">
+          <span key={key} role="gridcell" className="gc gc-task" style={{ width: taskWidth }} title={editing === 'name' ? undefined : t.name} data-edit="name">
             {editing === 'name' ? <InlineEdit initial={t.name} label={`Name of task ${t.code}`} onDone={done('name')} /> : t.name}
           </span>
         );

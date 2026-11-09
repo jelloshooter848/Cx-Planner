@@ -14,25 +14,32 @@ import { Modal } from '../../components/Modal';
 import { shortDate } from '../../format';
 import { useProject, useSchedule, useSelectedAsset, useSelectedTask, useStore } from '../../store';
 import { AssetPanelBody } from './AssetPanel';
+import { PanelCollapseButton } from './SidePanels';
 import { edit, Field, type Commit } from './PanelField';
 import './TaskPanel.css';
 import { useProgressEditor } from './ProgressEdit';
 import { floatNote, parseActualDate, parseDateInput, parseDuration, parsePercent, TASK_TYPE_LABELS, typeChangePatch } from './task-fields';
 
-/** The panel on the right: the selected asset's properties, or the selected task's. */
-export function TaskPanel() {
+/**
+ * The panel on the right: the selected asset's properties, or the selected task's.
+ * `onCollapse` folds it to a strip (ScheduleView owns that state).
+ */
+export function TaskPanel({ onCollapse }: { onCollapse(): void }) {
   const task = useSelectedTask();
   const asset = useSelectedAsset();
   const info = useProject();
+  const collapse = <PanelCollapseButton panel="details" className="task-panel-collapse" onToggle={onCollapse} />;
   if (asset && info) {
     return (
       <aside className="task-panel" aria-label="Asset details">
+        {collapse}
         <AssetPanelBody key={asset.id} asset={asset} project={info.project} />
       </aside>
     );
   }
   return (
     <aside className="task-panel" aria-label="Task details">
+      {collapse}
       {task && info ? (
         <TaskPanelBody key={task.id} task={task} project={info.project} />
       ) : (
