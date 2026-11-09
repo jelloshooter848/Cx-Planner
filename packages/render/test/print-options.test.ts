@@ -14,6 +14,7 @@ const base: SchedulePrintOptions = {
   revision: { rev: 'B', issued: '2026-11-06', baseline: 'Rev A' },
 };
 const svgOf = (o: Partial<SchedulePrintOptions> = {}) => layoutSchedulePrint({ ...base, ...o }).sheets.map((s) => s.svg).join('');
+const countOf = (s: string, needle: string) => s.split(needle).length - 1;
 const HEAVY = 'stroke-width="2.6"';
 
 describe('assetIds', () => {
@@ -31,8 +32,6 @@ describe('assetIds', () => {
     expect(svg).not.toContain('>UPS-1A<');
     expect(svg).not.toContain('>1.1<');
     expect(svg).toContain('>2.1<');
-    const expected = riverside.tasks.filter((t) => t.assetId === 'xfmr-1a' || t.assetId === 'gen-1');
-    expect(l.taskCount).toBeLessThanOrEqual(expected.length);
     expect(l.taskCount).toBe(layoutSchedulePrint(base).taskCount - 6 - 1); // all of SWGR-1A (6) and UPS-1A 3.1 (1) dropped
   });
 
@@ -63,14 +62,16 @@ describe('showCriticalPath', () => {
 describe('showTimes', () => {
   it('shows the T I M E S columns and legend line by default', () => {
     const svg = svgOf();
-    for (const k of ['T', 'I', 'M', 'E', 'S']) expect(svg).toContain(`>${k}</text>`);
+    const sheets = layoutSchedulePrint(base).sheets.length;
+    for (const k of ['T', 'I', 'M', 'E', 'S']) expect(countOf(svg, `>${k}</text>`)).toBe(sheets);
     expect(svg).toContain('T Tools · I Information');
     expect(svg).toContain('Blocked or late');
   });
 
   it('hides the columns and legend line when off', () => {
     const svg = svgOf({ showTimes: false });
-    for (const k of ['T', 'I', 'M', 'E', 'S']) expect(svg).not.toContain(`font-weight="600" fill="#111" text-anchor="middle">${k}</text>`);
+    // A lone T/I/M/E/S text node only ever comes from the column headers, so any markup works.
+    for (const k of ['T', 'I', 'M', 'E', 'S']) expect(countOf(svg, `>${k}</text>`)).toBe(0);
     expect(svg).not.toContain('T Tools');
     expect(svg).not.toContain('Blocked or late');
     expect(svg).not.toContain('Ready / on site');

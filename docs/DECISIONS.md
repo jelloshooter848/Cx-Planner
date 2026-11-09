@@ -46,3 +46,7 @@ Each entry: the decision, why, and what would make us revisit it.
 ## D11 · Build process: one milestone per run, agent build/review/fix loop (2026-11-09)
 - Each milestone is split into small tasks. Every task is built by one agent, reviewed independently by another, and fixed until the review passes and the checks are green. No more than about 10 agents run at once.
 - The run stops after each milestone so the owner can try it before the next one starts.
+
+## D12 · Look-ahead window trims edge holidays (2026-11-09)
+- A look-ahead runs from the Monday of the data-date week to the Friday of the last week, but a holiday on either edge is trimmed so the window starts and ends on working days (Labor Day gives a Tuesday start; Thanksgiving Friday gives a Wednesday end when Thursday is also off).
+- The sheet title shows those first and last working days, so it always matches the dates on the grid.

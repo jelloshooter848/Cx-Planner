@@ -9,7 +9,7 @@ import { interFontCss } from '@cx/render/fonts-node';
 export interface LookAheadRequest {
   paper: PaperId;
   weeks: number;
-  /** Data date the look-ahead starts from (its Monday). Defaults to the project's data date. */
+  /** Data date the look-ahead starts from (its Monday) and the sheet's Issued date. Defaults to the project's data date. */
   dataDate?: string;
   assetIds?: string[];
   showCriticalPath?: boolean;
@@ -23,12 +23,13 @@ export function setFontDir(dir: string): void {
 
 export function lookAheadDocument(project: Project, req: LookAheadRequest): { html: string; layout: PrintLayout; title: string } {
   const schedule = computeSchedule(project);
-  const window = lookAheadWindow(req.dataDate ?? project.dataDate, req.weeks, schedule.calendar);
+  const dataDate = req.dataDate ?? project.dataDate;
+  const window = lookAheadWindow(dataDate, req.weeks, schedule.calendar);
   const title = lookAheadTitle(window, req.weeks);
   const layout = layoutSchedulePrint({
     project, schedule, paper: req.paper, title, window,
     assetIds: req.assetIds, showCriticalPath: req.showCriticalPath, showTimes: req.showTimes,
-    revision: { rev: 'B', issued: project.dataDate, baseline: 'Rev A' },
+    revision: { rev: 'B', issued: dataDate, baseline: 'Rev A' },
     revisions: [
       { rev: 'A', date: '2026-11-02', note: 'Issued for coordination' },
       { rev: 'B', date: '2026-11-06', note: 'Progress update' },
