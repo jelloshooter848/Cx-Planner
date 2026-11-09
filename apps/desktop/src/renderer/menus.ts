@@ -39,8 +39,11 @@ export function keyHint(keys: string, mac: boolean): string {
 
 const sep: MenuItem = { kind: 'separator' };
 
-/** `taskSelected`: a task is selected in the Schedule view (enables Delete task). */
-export function buildMenus(state: AppState | null, view: ViewId | 'welcome', mac = false, taskSelected = false): MenuDef[] {
+/**
+ * `taskSelected`: a task is selected in the Schedule view (enables Delete task).
+ * `assetSelected`: an asset, or a task of one, is selected there (enables Delete asset).
+ */
+export function buildMenus(state: AppState | null, view: ViewId | 'welcome', mac = false, taskSelected = false, assetSelected = false): MenuDef[] {
   const open = !!state?.project;
   const hasWorkspace = !!state?.workspacePath;
   const k = (keys: string) => keyHint(keys, mac);
@@ -86,6 +89,7 @@ export function buildMenus(state: AppState | null, view: ViewId | 'welcome', mac
     sep,
     item('Add assets from template…', { type: 'add-assets' }, { enabled: open }),
     item('Delete task…', { type: 'delete-task' }, { enabled: open && view === 'schedule' && taskSelected, shortcut: 'Del' }),
+    item('Delete asset…', { type: 'delete-asset' }, { enabled: open && view === 'schedule' && assetSelected }),
   ];
   // With no project open, Schedule (tab and View item) leads back to the welcome screen.
   const viewItems: MenuItem[] = [

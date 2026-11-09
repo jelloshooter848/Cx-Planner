@@ -7,7 +7,7 @@ import { TitleBar } from './components/TitleBar';
 import { buildMenus } from './menus';
 import { isMac } from './platform';
 import { isTextField, shortcutAction } from './shortcuts';
-import { effectiveView, useSnapshot, useStore } from './store';
+import { assetToDelete, effectiveView, useSnapshot, useStore } from './store';
 import { LookAheadView } from './views/LookAhead/LookAheadView';
 import { ScheduleView } from './views/Schedule/ScheduleView';
 import { TemplatesView } from './views/Templates/TemplatesView';
@@ -19,7 +19,8 @@ export function App() {
   const snap = useSnapshot();
   const view = effectiveView(snap);
   const taskSelected = snap.ui.selectedTaskId !== null;
-  const menus = useMemo(() => buildMenus(snap.app, view, isMac, taskSelected), [snap.app, view, taskSelected]);
+  const assetSelected = assetToDelete(snap) !== null;
+  const menus = useMemo(() => buildMenus(snap.app, view, isMac, taskSelected, assetSelected), [snap.app, view, taskSelected, assetSelected]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

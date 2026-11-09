@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ApiResult, AppState, CxApi, MenuCommand } from '../src/shared/api.js';
-import { createStore, effectiveView } from '../src/renderer/store.js';
+import { assetToDelete, createStore, effectiveView } from '../src/renderer/store.js';
 import { riversideProject } from '@cx/fixtures';
 
 function appState(over: Partial<AppState> = {}): AppState {
@@ -171,6 +171,41 @@ describe('renderer store', () => {
     store.selectTask('t1.4');
     await store.dispatch({ type: 'delete-task' });
     expect(store.getSnapshot().ui.dialog).toBe('delete-task');
+  });
+
+  it('selects an asset or a task, never both, and drops a deleted asset', async () => {
+    const project = riversideProject();
+    const f = fakeApi(appState({ project, filePath: '/r.cxp', fileName: 'r.cxp' }));
+    const store = createStore(f.api);
+    await tick();
+    store.selectTask('t1.4');
+    store.selectAsset('xfmr-1a');
+    expect(store.getSnapshot().ui).toMatchObject({ selectedAssetId: 'xfmr-1a', selectedTaskId: null, selectedTaskIds: [] });
+    store.selectTask('t1.4');
+    expect(store.getSnapshot().ui).toMatchObject({ selectedAssetId: null, selectedTaskId: 't1.4' });
+    store.selectAsset('xfmr-1a');
+    f.push(appState({ seq: 2, project: { ...project, assets: project.assets.filter((a) => a.id !== 'xfmr-1a') }, filePath: '/r.cxp', fileName: 'r.cxp' }));
+    expect(store.getSnapshot().ui.selectedAssetId).toBeNull();
+  });
+
+  it('asks to delete the selected asset, or the selected task\'s asset', async () => {
+    const f = fakeApi(appState({ project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp' }));
+    const store = createStore(f.api);
+    await tick();
+    await store.dispatch({ type: 'delete-asset' });
+    expect(store.getSnapshot().ui.dialog).toBeNull();
+    store.selectTask('t1.4');
+    expect(assetToDelete(store.getSnapshot())?.id).toBe('swgr-1a');
+    store.selectAsset('xfmr-1a');
+    expect(assetToDelete(store.getSnapshot())?.id).toBe('xfmr-1a');
+    store.setView('templates');
+    f.menu('delete-asset');
+    await tick();
+    expect(store.getSnapshot().ui.dialog).toBeNull();
+    store.setView('schedule');
+    f.menu('delete-asset');
+    await tick();
+    expect(store.getSnapshot().ui.dialog).toBe('delete-asset');
   });
 
   it('asks to delete the selected task from the native Edit menu, in the Schedule view only', async () => {

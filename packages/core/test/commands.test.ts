@@ -207,6 +207,14 @@ describe('updateAsset', () => {
     expectError(sample(), { kind: 'updateAsset', id: 'x', patch: {} }, 'unknown-asset');
     expectError(sample(), { kind: 'updateAsset', id: 'a1', patch: { tag: '' } }, 'empty-name');
   });
+
+  it('rejects a tag another asset uses (trimmed, any case) but allows changing the case of its own', () => {
+    expectError(sample(), { kind: 'updateAsset', id: 'a1', patch: { tag: ' xfmr-1a ' } }, 'duplicate-tag');
+    // The same words as assetTagProblem, which the asset form shows before sending.
+    expect(() => applyCommand(sample(), { kind: 'updateAsset', id: 'a1', patch: { tag: ' xfmr-1a ' } })).toThrow('Tag "xfmr-1a" is already used');
+    const r = roundTrip(sample(), { kind: 'updateAsset', id: 'a1', patch: { tag: 'swgr-1a' } });
+    expect(r.project.assets[0]!.tag).toBe('swgr-1a');
+  });
 });
 
 describe('addTask', () => {

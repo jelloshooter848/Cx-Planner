@@ -15,6 +15,13 @@ describe('IPC input checks', () => {
     expect(checkCommand({ kind: 'batch', commands: [cmd, { kind: 'unlink', predecessorId: 'a', successorId: 'b' }] })).toBeTruthy();
   });
 
+  it('passes asset edits and deletes from the Schedule view', () => {
+    const update = { kind: 'updateAsset', id: 'swgr-1a', patch: { tag: 'SWGR-1C', location: null } };
+    const remove = { kind: 'removeAsset', id: 'xfmr-1a' };
+    expect(checkCommand(update)).toBe(update);
+    expect(checkCommand(remove)).toBe(remove);
+  });
+
   it('refuses undo-only commands, also inside batches', () => {
     const refused = [
       { kind: 'restoreTask', task: {}, index: 0, dependencies: [] },

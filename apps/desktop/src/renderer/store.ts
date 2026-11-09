@@ -8,13 +8,13 @@
  * goes through `dispatch(action)`, so they all behave the same.
  */
 import { createContext, createElement, useContext, useMemo, useSyncExternalStore, type ReactNode } from 'react';
-import type { Command, Id, IsoDate, Project, Task } from '@cx/core';
+import type { Asset, Command, Id, IsoDate, Project, Task } from '@cx/core';
 import type { ApiResult, AppState, CxApi, EditOutcome, LookAheadWeeks, PrintKind, TaskScheduleSummary } from '../shared/api';
 import { assetsInView } from './asset-filter';
 
 /** Views shown when a project is open (the welcome screen shows when none is). */
 export type ViewId = 'schedule' | 'templates' | 'lookahead';
-export type DialogId = 'new-project' | 'about' | 'add-assets' | 'delete-task' | 'print' | 'project-settings' | 'data-date';
+export type DialogId = 'new-project' | 'about' | 'add-assets' | 'delete-task' | 'delete-asset' | 'print' | 'project-settings' | 'data-date';
 /** Time scale of the Schedule view's Gantt. */
 export type ScheduleZoom = 'day' | 'week' | 'month';
 
@@ -45,6 +45,13 @@ export interface UiState {
    * Ctrl+click (Link tasks links the first two). Empty when nothing is selected.
    */
   selectedTaskIds: Id[];
+  /**
+   * The asset selected in the Schedule view (a click on its group row), or null. Selecting an
+   * asset clears the task selection and selecting a task clears this, so the panel on the
+   * right shows one or the other. May name an asset that no longer exists; read it through
+   * useSelectedAsset().
+   */
+  selectedAssetId: Id | null;
   scheduleZoom: ScheduleZoom;
   /** Progress mode: the grid's % and actual-date columns are edited in place (weekly entry). */
   progressMode: boolean;
@@ -93,6 +100,11 @@ export type Action =
   | { type: 'add-assets' }
   /** Asks to delete the selected task (a confirm dialog); nothing happens with no task selected. */
   | { type: 'delete-task' }
+  /**
+   * Asks to delete the selected asset, or the selected task's asset (a confirm dialog naming
+   * it); nothing happens with neither selected.
+   */
+  | { type: 'delete-asset' }
   /** Opens the Print dialog (needs an open project), on `kind` or the last kind used. */
   | { type: 'print'; kind?: PrintKind }
   /** Opens the Project settings dialog (needs an open project). */
@@ -128,6 +140,8 @@ export interface Store {
   selectTask(id: Id | null): void;
   /** Ctrl+click: adds the task to the selection, or takes it out if it is already in it. */
   toggleTaskSelection(id: Id): void;
+  /** Selects one asset (or none), dropping the task selection. */
+  selectAsset(id: Id | null): void;
   setScheduleZoom(zoom: ScheduleZoom): void;
   setProgressMode(on: boolean): void;
   setPrintKind(kind: PrintKind): void;
@@ -159,6 +173,7 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
       status: null,
       selectedTaskId: null,
       selectedTaskIds: [],
+      selectedAssetId: null,
       scheduleZoom: 'week',
       progressMode: false,
       printKind: 'lookahead',
@@ -185,6 +200,7 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
     const next = project ? assetsInView(project.assets, ui.assetQuery, ui.hiddenAssetIds) : null;
     const same = next === ui.assetFilter || (next && ui.assetFilter && next.length === ui.assetFilter.length && next.every((id, i) => id === ui.assetFilter![i]));
     if (!same) ui.assetFilter = next;
+    if (next && ui.selectedAssetId && !next.includes(ui.selectedAssetId)) ui.selectedAssetId = null;
     if (next && project && ui.selectedTaskIds.length) {
       const shown = new Set(next);
       const assetOf = new Map(project.tasks.map((t) => [t.id, t.assetId]));
@@ -226,6 +242,11 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
         ui.selectedTaskId = kept[0] ?? null;
       }
     }
+    // Likewise the selected asset: a different project, or an edit that removed it, clears it.
+    if (ui.selectedAssetId) {
+      const sameProject = prev?.project?.id === state.project?.id;
+      if (!sameProject || !state.project?.assets.some((a) => a.id === ui.selectedAssetId)) ui.selectedAssetId = null;
+    }
     // The asset filter, like the selection, belongs to one project. Within a project it is
     // worked out again, so assets added later show unless the filter text hides them.
     if (prev?.project?.id !== state.project?.id) {
@@ -244,8 +265,8 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
     else if (cmd === 'project-settings') void store.dispatch({ type: 'project-settings' });
     else if (cmd === 'data-date') void store.dispatch({ type: 'data-date' });
     // The selection belongs to the Schedule view; elsewhere the item does nothing (as in the in-window menu).
-    else if (cmd === 'delete-task') {
-      if (snapshot.ui.view === 'schedule') void store.dispatch({ type: 'delete-task' });
+    else if (cmd === 'delete-task' || cmd === 'delete-asset') {
+      if (snapshot.ui.view === 'schedule') void store.dispatch({ type: cmd });
     }
     // Only the template editor reports unsaved work: show it so it can ask what to do.
     else if (cmd === 'confirm-close') setUi({ view: 'templates', dialog: null, closeRequest: snapshot.ui.closeRequest + 1 });
@@ -313,6 +334,9 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
           if (id && snapshot.app?.project?.tasks.some((t) => t.id === id)) store.openDialog('delete-task');
           return;
         }
+        case 'delete-asset':
+          if (assetToDelete(snapshot)) store.openDialog('delete-asset');
+          return;
         case 'print':
           if (snapshot.app?.project) setUi({ dialog: 'print', printKind: action.kind ?? snapshot.ui.printKind });
           return;
@@ -338,13 +362,18 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
     },
     selectTask: (selectedTaskId) => {
       const { ui } = snapshot;
-      if (ui.selectedTaskId === selectedTaskId && ui.selectedTaskIds.length === (selectedTaskId ? 1 : 0)) return;
-      setUi({ selectedTaskId, selectedTaskIds: selectedTaskId ? [selectedTaskId] : [] });
+      if (ui.selectedTaskId === selectedTaskId && ui.selectedTaskIds.length === (selectedTaskId ? 1 : 0) && ui.selectedAssetId === null) return;
+      setUi({ selectedTaskId, selectedTaskIds: selectedTaskId ? [selectedTaskId] : [], selectedAssetId: null });
     },
     toggleTaskSelection: (id) => {
       const cur = snapshot.ui.selectedTaskIds;
       const selectedTaskIds = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
-      setUi({ selectedTaskIds, selectedTaskId: selectedTaskIds[0] ?? null });
+      setUi({ selectedTaskIds, selectedTaskId: selectedTaskIds[0] ?? null, selectedAssetId: null });
+    },
+    selectAsset: (selectedAssetId) => {
+      const { ui } = snapshot;
+      if (ui.selectedAssetId === selectedAssetId && ui.selectedTaskIds.length === 0) return;
+      setUi({ selectedAssetId, selectedTaskId: null, selectedTaskIds: [] });
     },
     setScheduleZoom: (scheduleZoom) => {
       if (snapshot.ui.scheduleZoom !== scheduleZoom) setUi({ scheduleZoom });
@@ -462,6 +491,24 @@ export function useSelectedTask(): Task | null {
   const app = useAppState();
   const id = useSelect((s) => s.ui.selectedTaskId);
   return useMemo(() => (id && app?.project ? (app.project.tasks.find((t) => t.id === id) ?? null) : null), [id, app]);
+}
+
+/** The selected asset of the open project, or null (none selected, or it was deleted). */
+export function useSelectedAsset(): Asset | null {
+  const app = useAppState();
+  const id = useSelect((s) => s.ui.selectedAssetId);
+  return useMemo(() => (id && app?.project ? (app.project.assets.find((a) => a.id === id) ?? null) : null), [id, app]);
+}
+
+/**
+ * The asset Edit > Delete asset… acts on: the selected asset, or else the selected task's
+ * asset. Null when neither is selected or it no longer exists.
+ */
+export function assetToDelete(s: Snapshot): Asset | null {
+  const project = s.app?.project;
+  if (!project) return null;
+  const id = s.ui.selectedAssetId ?? project.tasks.find((t) => t.id === s.ui.selectedTaskId)?.assetId;
+  return (id && project.assets.find((a) => a.id === id)) || null;
 }
 
 export interface CommandApi {
