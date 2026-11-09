@@ -1,6 +1,6 @@
 /**
  * The Schedule view's toolbar (01-Main): add assets and tasks, link and indent, undo/redo,
- * zoom, the baseline (later) and look-ahead window, and print. Edit buttons explain in their
+ * zoom, progress mode, the baseline (later) and look-ahead window, and print. Edit buttons explain in their
  * tooltip what they will do, or why they are disabled.
  */
 import { useId } from 'react';
@@ -30,6 +30,7 @@ export function ScheduleToolbar({ project, assetsInView }: ScheduleToolbarProps)
   const selectedId = useSelect((s) => s.ui.selectedTaskId);
   const selectedIds = useSelect((s) => s.ui.selectedTaskIds);
   const weeks = useSelect((s) => s.ui.lookAheadWeeks);
+  const progressMode = useSelect((s) => s.ui.progressMode);
 
   const newId = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `task-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const run = async (cmd: Command) => store.run(() => store.api.apply(cmd));
@@ -80,6 +81,15 @@ export function ScheduleToolbar({ project, assetsInView }: ScheduleToolbarProps)
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          className="btn"
+          aria-pressed={progressMode}
+          title="Edit % complete and actual dates right in the grid: click a cell to edit it. Enter moves down, Tab moves across."
+          onClick={() => store.setProgressMode(!progressMode)}
+        >
+          Progress mode
+        </button>
       </div>
       <span className="toolbar-spacer" />
       <div className="toolbar-group">

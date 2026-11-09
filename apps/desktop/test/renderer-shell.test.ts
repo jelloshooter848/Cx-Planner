@@ -64,6 +64,7 @@ describe('format', () => {
     );
     expect(t.left).toBe(`4 assets · ${project.tasks.length} tasks · Critical path ends Dec 7`);
     expect(t.right).toBe('Data as of Nov 6, 2026 · Saved');
+    expect(t).toMatchObject({ dataDate: 'Data as of Nov 6, 2026', saveState: 'Saved' });
     expect(t.savedDetail).toBe('Last edit saved at 3:41 PM · Revision 3');
     const broken = statusText({ project: { assets: [{}], tasks: [], dataDate: '2026-11-02' }, projectFinish: null, scheduleError: 'Dependency loop', revision: 0, lastSavedAt: null, workspacePath: null });
     expect(broken.left).toBe('1 asset · 0 tasks · Schedule not computed: Dependency loop');
@@ -142,6 +143,8 @@ describe('menu row', () => {
     expect(find(f, 'Print / Export PDF…')?.enabled).toBe(false);
     expect(find(f, 'Project settings…')?.enabled).toBe(false);
     expect(find(items(buildMenus(base, 'schedule'), 'file'), 'Project settings…')).toMatchObject({ enabled: true, action: { type: 'project-settings' } });
+    expect(find(f, 'Set data date…')?.enabled).toBe(false);
+    expect(find(items(buildMenus(base, 'schedule'), 'file'), 'Set data date…')).toMatchObject({ enabled: true, action: { type: 'data-date' } });
     expect(find(items(buildMenus(base, 'schedule'), 'file'), 'Print / Export PDF…')).toMatchObject({ enabled: true, shortcut: 'Ctrl+P', action: { type: 'print' } });
     expect(find(f, 'New project…')?.enabled).toBe(true);
     expect(find(f, 'Open recent')).toMatchObject({ kind: 'submenu', enabled: false });

@@ -805,6 +805,7 @@ function updateDependency(project: Project, cmd: Extract<Command, { kind: 'updat
 
 function setDataDate(project: Project, date: IsoDate): CommandResult {
   checkDate(date, 'Data date');
+  if (date === project.dataDate) throw new CommandError('no-change', `The data date is already ${date}`);
   return {
     project: { ...project, dataDate: date },
     inverse: { kind: 'setDataDate', date: project.dataDate },

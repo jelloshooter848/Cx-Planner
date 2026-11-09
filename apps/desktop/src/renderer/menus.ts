@@ -70,6 +70,7 @@ export function buildMenus(state: AppState | null, view: ViewId | 'welcome', mac
     item('Close project', { type: 'close-project' }, { enabled: open }),
     sep,
     item('Project settings…', { type: 'project-settings' }, { enabled: open }),
+    item('Set data date…', { type: 'data-date' }, { enabled: open }),
     item('Print / Export PDF…', { type: 'print' }, { enabled: open, shortcut: 'Ctrl+P' }),
     sep,
     item('Workspace folder…', { type: 'choose-workspace' }),

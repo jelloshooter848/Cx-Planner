@@ -54,6 +54,9 @@ export interface StatusText {
   right: string;
   /** Tooltip on the right side: when the last edit was saved and the file revision. */
   savedDetail: string;
+  /** With a project open, the two parts of `right`: "Data as of Nov 6, 2026" (the data date control) and "Saved". */
+  dataDate?: string;
+  saveState?: string;
 }
 
 /** What the Schedule view's asset filter shows: how many assets and tasks are in view. */
@@ -82,5 +85,7 @@ export function statusText(
   // "Saved" holds because the main process commits every edit (apply/undo/redo) to the file
   // before it pushes the new state. If saving ever becomes deferred or can fail after the push,
   // derive this word from a save-state field in AppState instead.
-  return { left: left.join(' · '), right: `Data as of ${longDate(p.dataDate)} · Saved`, savedDetail };
+  const dataDate = `Data as of ${longDate(p.dataDate)}`;
+  const saveState = 'Saved';
+  return { left: left.join(' · '), right: `${dataDate} · ${saveState}`, savedDetail, dataDate, saveState };
 }
