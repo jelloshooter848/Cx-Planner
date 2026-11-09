@@ -88,6 +88,32 @@ describe('validateTemplate', () => {
     expect(cycle[0]!.message).not.toContain('start');
   });
 
+  it('names only the tasks in a loop, not those that follow it', () => {
+    const t = { ...lvSwitchgear(), tasks: [tt('a', 1, ['c']), tt('b', 1, ['a']), tt('c', 1, ['b']), tt('d', 1, ['c']), tt('e', 1, ['d'])] };
+    const cycle = validateTemplate(t).filter((p) => p.code === 'cycle');
+    expect(cycle).toHaveLength(1);
+    expect(cycle[0]!.message).toBe('Predecessor loop between tasks: a, b, c');
+  });
+
+  it('names every task of two separate loops', () => {
+    const t = { ...lvSwitchgear(), tasks: [tt('a', 1, ['b']), tt('b', 1, ['a']), tt('x', 1, ['b', 'y']), tt('y', 1, ['x'])] };
+    const cycle = validateTemplate(t).filter((p) => p.code === 'cycle');
+    expect(cycle[0]!.message).toBe('Predecessor loop between tasks: a, b, x, y');
+  });
+
+  it('reports invalid notice lead times with their own wording', () => {
+    const t = {
+      ...lvSwitchgear(),
+      tasks: [tt('nan', 1, [], { noticeLeadDays: Number.NaN }), tt('frac', 1, [], { noticeLeadDays: 1.5 }), tt('ok', 1, [], { noticeLeadDays: 0 })],
+    };
+    const problems = validateTemplate(t);
+    expect(problems).toEqual([
+      expect.objectContaining({ code: 'invalid-notice', taskKey: 'nan' }),
+      expect.objectContaining({ code: 'invalid-notice', taskKey: 'frac' }),
+    ]);
+    expect(problems[0]!.message).not.toContain('negative');
+  });
+
   it('reports negative, fractional and milestone durations', () => {
     const t = {
       ...lvSwitchgear(),
@@ -169,6 +195,42 @@ describe('instantiateTemplate', () => {
     const r = instantiateTemplate(t, { asset, groupNumber: 2, startNoEarlierThan: '2026-11-11' }, idMaker('x'));
     expect(r.tasks.map((x) => x.startNoEarlierThan)).toEqual(['2026-11-11', '2026-11-11', undefined]);
     expect('startNoEarlierThan' in r.tasks[2]!).toBe(false);
+  });
+
+  it('puts start-no-earlier-than on tasks held only by finish links or leads', () => {
+    const t: Template = {
+      ...lvSwitchgear(),
+      tasks: [
+        tt('a', 1),
+        tt('b', 5, [], { predecessors: [{ key: 'a', type: 'FF', lagDays: 0 }] }),
+        tt('c', 5, [], { predecessors: [{ key: 'a', type: 'SF', lagDays: 0 }] }),
+        tt('d', 2, [], { predecessors: [{ key: 'a', type: 'FS', lagDays: -3 }] }),
+        tt('e', 2, [], { predecessors: [{ key: 'a', type: 'SS', lagDays: 1 }, { key: 'b', type: 'FF', lagDays: 0 }] }),
+      ],
+    };
+    const r = instantiateTemplate(t, { asset, groupNumber: 1, startNoEarlierThan: '2026-11-16' }, idMaker('x'));
+    expect(r.tasks.map((x) => x.startNoEarlierThan)).toEqual(['2026-11-16', '2026-11-16', '2026-11-16', '2026-11-16', undefined]);
+  });
+
+  it('does not schedule an FF-only successor before the start date', () => {
+    const t: Template = {
+      ...lvSwitchgear(),
+      tasks: [tt('a', 1), tt('b', 5, [], { predecessors: [{ key: 'a', type: 'FF', lagDays: 0 }] })],
+    };
+    const r = instantiateTemplate(t, { asset, groupNumber: 1, startNoEarlierThan: '2026-11-16' }, idMaker('x'));
+    const s = computeSchedule(projectFrom([r]));
+    const snet = s.tasks.get('x:a')!.es;
+    expect(s.tasks.get('x:b')!.es).toBeGreaterThanOrEqual(snet);
+  });
+
+  it('refuses a group number that is not a whole number of 1 or more', () => {
+    for (const groupNumber of [0, -1, 1.5, Number.NaN]) {
+      expect(() => instantiateTemplate(lvSwitchgear(), { asset, groupNumber }, idMaker('x'))).toThrow(RangeError);
+    }
+  });
+
+  it('refuses ids repeated by makeId', () => {
+    expect(() => instantiateTemplate(lvSwitchgear(), { asset, groupNumber: 1 }, () => 'same')).toThrow(/more than once/);
   });
 
   it('omits start-no-earlier-than when none is given', () => {
