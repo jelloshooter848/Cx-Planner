@@ -13,7 +13,7 @@ import type { ApiResult, AppState, CxApi, EditOutcome, PrintKind, TaskScheduleSu
 
 /** Views shown when a project is open (the welcome screen shows when none is). */
 export type ViewId = 'schedule' | 'templates' | 'lookahead';
-export type DialogId = 'new-project' | 'about' | 'add-assets' | 'delete-task' | 'print' | 'project-settings';
+export type DialogId = 'new-project' | 'about' | 'add-assets' | 'delete-task' | 'print' | 'project-settings' | 'data-date';
 /** Time scale of the Schedule view's Gantt. */
 export type ScheduleZoom = 'day' | 'week' | 'month';
 
@@ -40,6 +40,8 @@ export interface UiState {
    */
   selectedTaskId: Id | null;
   scheduleZoom: ScheduleZoom;
+  /** Progress mode: the grid's % and actual-date columns are edited in place (weekly entry). */
+  progressMode: boolean;
   /** The kind of print the Print dialog opens on (the last one chosen or asked for). */
   printKind: PrintKind;
   /**
@@ -79,6 +81,8 @@ export type Action =
   | { type: 'print'; kind?: PrintKind }
   /** Opens the Project settings dialog (needs an open project). */
   | { type: 'project-settings' }
+  /** Opens the data date picker (needs an open project). */
+  | { type: 'data-date' }
   | { type: 'view'; view: ViewId }
   | { type: 'about' };
 
@@ -106,6 +110,7 @@ export interface Store {
   setStatus(status: StatusLine | null): void;
   selectTask(id: Id | null): void;
   setScheduleZoom(zoom: ScheduleZoom): void;
+  setProgressMode(on: boolean): void;
   setPrintKind(kind: PrintKind): void;
   /** Limits the schedule (and prints that follow it) to these assets; null shows all. */
   setAssetFilter(ids: Id[] | null): void;
@@ -117,7 +122,7 @@ export interface Store {
 const QUIET_CODES = new Set(['canceled', 'locked', 'file-error', 'nothing-to-undo', 'nothing-to-redo']);
 
 export function createStore(api: CxApi, options: StoreOptions = {}): Store {
-  let snapshot: Snapshot = { app: null, ui: { view: 'schedule', dialog: null, notice: null, closeRequest: 0, status: null, selectedTaskId: null, scheduleZoom: 'week', printKind: 'lookahead', assetFilter: null } };
+  let snapshot: Snapshot = { app: null, ui: { view: 'schedule', dialog: null, notice: null, closeRequest: 0, status: null, selectedTaskId: null, scheduleZoom: 'week', progressMode: false, printKind: 'lookahead', assetFilter: null } };
   let noticeId = 0;
   const listeners = new Set<() => void>();
   const emit = () => {
@@ -158,6 +163,7 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
     if (cmd === 'new-project') void store.dispatch({ type: 'new-project' });
     else if (cmd === 'print') void store.dispatch({ type: 'print' });
     else if (cmd === 'project-settings') void store.dispatch({ type: 'project-settings' });
+    else if (cmd === 'data-date') void store.dispatch({ type: 'data-date' });
     // The selection belongs to the Schedule view; elsewhere the item does nothing (as in the in-window menu).
     else if (cmd === 'delete-task') {
       if (snapshot.ui.view === 'schedule') void store.dispatch({ type: 'delete-task' });
@@ -228,6 +234,9 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
         case 'project-settings':
           if (snapshot.app?.project) store.openDialog('project-settings');
           return;
+        case 'data-date':
+          if (snapshot.app?.project) store.openDialog('data-date');
+          return;
         case 'view':
           return store.setView(action.view);
       }
@@ -247,6 +256,9 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
     },
     setScheduleZoom: (scheduleZoom) => {
       if (snapshot.ui.scheduleZoom !== scheduleZoom) setUi({ scheduleZoom });
+    },
+    setProgressMode: (progressMode) => {
+      if (snapshot.ui.progressMode !== progressMode) setUi({ progressMode });
     },
     setPrintKind: (printKind) => {
       if (snapshot.ui.printKind !== printKind) setUi({ printKind });

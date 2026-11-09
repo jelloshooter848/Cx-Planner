@@ -14,6 +14,7 @@ export function ScheduleView() {
   const info = useProject();
   const schedule = useSchedule();
   const zoom = useSelect((s) => s.ui.scheduleZoom);
+  const progressMode = useSelect((s) => s.ui.progressMode);
   if (!info) return null;
   const { project } = info;
   const addAssets = (
@@ -31,6 +32,16 @@ export function ScheduleView() {
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          className="btn"
+          aria-pressed={progressMode}
+          title="Edit % complete and actual dates right in the grid. Enter moves down, Tab moves across."
+          onClick={() => store.setProgressMode(!progressMode)}
+        >
+          Progress mode
+        </button>
+        {progressMode && <span className="toolbar-hint">Click a % or actual date to edit it · Enter moves down · Tab moves across</span>}
         <span className="toolbar-spacer" />
         {addAssets}
         <button type="button" className="btn" onClick={() => void store.dispatch({ type: 'print' })}>

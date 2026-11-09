@@ -202,17 +202,25 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.statusbar-project {
+.statusbar-link {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--ink);
+  color: inherit;
   font: inherit;
-  font-weight: var(--fw-medium);
   cursor: pointer;
 }
-.statusbar-project:hover,
-.statusbar-project:focus-visible {
+.statusbar-project {
+  color: var(--ink);
+  font-weight: var(--fw-medium);
+}
+/* Dotted underline: the data date reads as something to click, in black and white too. */
+.statusbar-data-date {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.statusbar-link:hover,
+.statusbar-link:focus-visible {
   color: var(--accent);
   text-decoration: underline;
 }
@@ -329,6 +337,13 @@
   border-radius: var(--radius);
   background: var(--bg-panel);
   font-size: var(--fs);
+}
+.data-date-row {
+  display: flex;
+  gap: var(--gap);
+}
+.data-date-row .input {
+  flex: 1;
 }
 .form-actions {
   display: flex;

@@ -143,6 +143,25 @@ describe('renderer store', () => {
     expect(store.getSnapshot().ui.dialog).toBe('add-assets');
   });
 
+  it('opens the data date picker (status bar or native menu) only with a project open, and toggles progress mode', async () => {
+    const f = fakeApi(appState());
+    const store = createStore(f.api);
+    await tick();
+    await store.dispatch({ type: 'data-date' });
+    expect(store.getSnapshot().ui.dialog).toBeNull();
+    f.push(appState({ seq: 2, project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp' }));
+    f.menu('data-date');
+    await tick();
+    expect(store.getSnapshot().ui.dialog).toBe('data-date');
+
+    expect(store.getSnapshot().ui.progressMode).toBe(false);
+    store.setProgressMode(true);
+    expect(store.getSnapshot().ui.progressMode).toBe(true);
+    const snap = store.getSnapshot();
+    store.setProgressMode(true);
+    expect(store.getSnapshot()).toBe(snap);
+  });
+
   it('asks to delete a task only when one is selected', async () => {
     const f = fakeApi(appState({ project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp' }));
     const store = createStore(f.api);

@@ -81,6 +81,13 @@ export function parseDateInput(text: string, ref: IsoDate): Parsed<IsoDate> {
   return bad;
 }
 
+/** An actual-date cell or field: a date (see parseDateInput), or empty / "—" / "-" to clear it (null). */
+export function parseActualDate(text: string, ref: IsoDate): Parsed<IsoDate | null> {
+  const t = text.trim();
+  if (t === '' || t === '—' || t === '-') return { ok: true, value: null };
+  return parseDateInput(t, ref);
+}
+
 function wrap(date: IsoDate | null, bad: { ok: false; error: string }): Parsed<IsoDate> {
   return date ? { ok: true, value: date } : bad;
 }

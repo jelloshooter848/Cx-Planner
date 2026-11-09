@@ -442,6 +442,7 @@ describe('project-level commands', () => {
     const r = roundTrip(sample(), { kind: 'setDataDate', date: '2026-11-09' });
     expect(r.project.dataDate).toBe('2026-11-09');
     expectError(sample(), { kind: 'setDataDate', date: '11/09/2026' }, 'invalid-date');
+    expectError(sample(), { kind: 'setDataDate', date: '2026-11-02' }, 'no-change');
   });
 
   it('updates project info, clearing and adding the subtitle, and undoes', () => {

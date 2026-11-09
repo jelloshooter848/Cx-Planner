@@ -137,3 +137,27 @@
   padding-left: 2px;
   padding-right: 2px;
 }
+
+/* Progress mode: the % and actual-date cells look like fields (30-WeeklyUpdate), so they read
+   as editable without relying on colour. */
+.toolbar-hint {
+  color: var(--ink-muted);
+  font-size: var(--fs-sm);
+}
+.gc.is-editable {
+  cursor: text;
+}
+.gc.is-editable:not(:has(> .gantt-edit)) {
+  height: 26px;
+  line-height: 26px;
+  padding-left: 8px;
+  outline: 1px solid var(--line-strong);
+  outline-offset: -3px;
+  border-radius: 5px;
+}
+.gc.num.is-editable:not(:has(> .gantt-edit)) {
+  padding-right: 10px;
+}
+.gc.is-editable:not(:has(> .gantt-edit)):hover {
+  outline-color: var(--accent);
+}

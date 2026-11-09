@@ -4,6 +4,9 @@
  * through the main process, so every change is one undo step. Problems (a bad duration, an
  * unknown predecessor, a link that would make a loop) show under the field and leave the
  * project as it was.
+ *
+ * Progress (% complete, actual start, actual finish) follows the rules of core's
+ * planProgress: e.g. 100% asks for the actual finish, and % above 0 fills in the actual start.
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { formatPredecessors, parsePredecessors, setPredecessorsCommand, templateTaskFor, type Asset, type Command, type Project, type Task, type TaskPatch, type TaskType, type TaskTemplateLink } from '@cx/core';
@@ -11,7 +14,8 @@ import { Modal } from '../../components/Modal';
 import { shortDate } from '../../format';
 import { useProject, useSchedule, useSelectedTask, useStore, type Store } from '../../store';
 import './TaskPanel.css';
-import { floatNote, parseDateInput, parseDuration, parsePercent, TASK_TYPE_LABELS, typeChangePatch } from './task-fields';
+import { useProgressEditor } from './ProgressEdit';
+import { floatNote, parseActualDate, parseDateInput, parseDuration, parsePercent, TASK_TYPE_LABELS, typeChangePatch } from './task-fields';
 
 /** An error message to show under the field, or null when the edit was saved (or changed nothing). */
 type Commit = (text: string) => Promise<string | null>;
@@ -66,10 +70,16 @@ function TaskPanelBody({ task, project }: { task: Task; project: Project }) {
     if (!p.ok) return p.error;
     return p.value === task.durationDays ? null : update({ durationDays: p.value });
   };
+  const progress = useProgressEditor(project, schedule.tasks);
   const commitPercent: Commit = async (raw) => {
     const p = parsePercent(raw);
     if (!p.ok) return p.error;
-    return p.value === task.percentComplete ? null : update({ percentComplete: p.value });
+    return p.value === task.percentComplete ? null : progress.edit(task, { percentComplete: p.value }).saved;
+  };
+  const commitActual = (key: 'actualStart' | 'actualFinish'): Commit => async (raw) => {
+    const p = parseActualDate(raw, task[key] ?? s?.start ?? project.dataDate);
+    if (!p.ok) return p.error;
+    return p.value === (task[key] ?? null) ? null : progress.edit(task, { [key]: p.value }).saved;
   };
   const commitPreds: Commit = async (raw) => {
     const p = parsePredecessors(raw, project, task.id);
@@ -129,6 +139,24 @@ function TaskPanelBody({ task, project }: { task: Task; project: Project }) {
         <Field label="% complete" value={String(task.percentComplete)} commit={commitPercent} name="percent" inputMode="numeric" />
         <Field label="Predecessors" value={formatPredecessors(project, task.id)} commit={commitPreds} name="predecessors" placeholder="e.g. 1.3 FS" />
       </div>
+      <div className="task-panel-pair">
+        <Field
+          label="Actual start"
+          value={task.actualStart ? shortDate(task.actualStart) : ''}
+          commit={commitActual('actualStart')}
+          name="actual-start"
+          placeholder="Not started"
+          title="The day work began. Clear it to set the task back to not started."
+        />
+        <Field
+          label="Actual finish"
+          value={task.actualFinish ? shortDate(task.actualFinish) : ''}
+          commit={commitActual('actualFinish')}
+          name="actual-finish"
+          placeholder="Not finished"
+          title="The day work finished. Entering it marks the task 100% complete."
+        />
+      </div>
       <div className="field task-field">
         <label className="field-label" htmlFor={ids.type}>
           Type
@@ -165,6 +193,7 @@ function TaskPanelBody({ task, project }: { task: Task; project: Project }) {
           </p>
         ))}
       <Field label="Notes" value={task.notes ?? ''} commit={text('notes', false)} name="notes" multiline />
+      {progress.prompt}
       <div className="task-panel-actions">
         <button type="button" className="btn" onClick={() => void store.dispatch({ type: 'delete-task' })}>
           Delete task…

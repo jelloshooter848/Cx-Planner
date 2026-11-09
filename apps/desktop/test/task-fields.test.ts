@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { riversideProject } from '@cx/fixtures';
-import { floatNote, parseDateInput, parseDuration, parsePercent, typeChangePatch } from '../src/renderer/views/Schedule/task-fields.js';
+import { floatNote, parseActualDate, parseDateInput, parseDuration, parsePercent, typeChangePatch } from '../src/renderer/views/Schedule/task-fields.js';
 import { scheduleView } from '../src/main/session.js';
 
 describe('task panel fields', () => {
@@ -32,6 +32,14 @@ describe('task panel fields', () => {
     expect(parseDateInput('2026-13-01', ref)).toMatchObject({ ok: false });
     expect(parseDateInput('Novx 12', ref)).toMatchObject({ ok: false });
     expect(parseDateInput('soon', ref)).toMatchObject({ ok: false, error: '"soon" is not a date; write e.g. Nov 10 or 2026-11-10' });
+  });
+
+  it('reads actual dates, where empty or a dash clears the date', () => {
+    expect(parseActualDate('Nov 4', '2026-11-10')).toEqual({ ok: true, value: '2026-11-04' });
+    expect(parseActualDate('  ', '2026-11-10')).toEqual({ ok: true, value: null });
+    expect(parseActualDate('—', '2026-11-10')).toEqual({ ok: true, value: null });
+    expect(parseActualDate('-', '2026-11-10')).toEqual({ ok: true, value: null });
+    expect(parseActualDate('later', '2026-11-10')).toMatchObject({ ok: false });
   });
 
   it('picks the nearest year when none is typed', () => {
