@@ -45,4 +45,16 @@ describe('taskChecklists', () => {
   it('finds nothing without the template snapshot', () => {
     expect(taskChecklists(project(), [])).toEqual([]);
   });
+
+  it('reads the snapshot version the asset is on when several are stored', () => {
+    const v3: Template = { ...template, version: 3, tasks: [tt('vmi', ['Changed in v3']), tt('ir', [])] };
+    const p = project();
+    p.assets[1] = { ...p.assets[1]!, templateVersion: 2 };
+    p.assets[0] = { ...p.assets[0]!, templateVersion: 3 };
+    const r = taskChecklists(p, [template, v3]);
+    expect(r.map((c) => c.task.id)).toEqual(['a1']);
+    expect(r[0]!.templateTask.checklist.map((i) => i.text)).toEqual(['Nameplate matches', 'No damage']);
+    // Without a version the newest snapshot is used.
+    expect(taskChecklists(project(), [v3, template]).map((c) => c.template.version)).toEqual([3]);
+  });
 });
