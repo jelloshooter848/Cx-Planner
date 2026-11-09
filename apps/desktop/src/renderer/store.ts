@@ -108,8 +108,12 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
       if (prev.project && !state.project) ui.view = 'schedule';
       else if (!prev.project && state.project) ui.view = ui.view === 'templates' ? 'templates' : 'schedule';
       if (state.filePath) ui.dialog = null;
-      // Task ids belong to one file.
-      ui.selectedTaskId = null;
+    }
+    // Task ids belong to one project: a different project (or none) clears the selection, and
+    // so does an edit that removed the selected task. Save As keeps the project and its ids.
+    if (ui.selectedTaskId) {
+      const id = ui.selectedTaskId;
+      if (prev?.project?.id !== state.project?.id || !state.project?.tasks.some((t) => t.id === id)) ui.selectedTaskId = null;
     }
     snapshot = { app: state, ui };
     emit();

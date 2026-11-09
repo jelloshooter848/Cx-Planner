@@ -18,7 +18,7 @@ import { shortDate } from '../../format';
 import { useSelect, useStore } from '../../store';
 import { GanttBars, GanttHeaderTime, HEAD_BOTTOM_H, HEAD_H, HEAD_TOP_H, ROW_H } from './GanttBars';
 import { GanttLegend } from './GanttLegend';
-import { buildRows, dateAtX, makeScale, moveSelection, rowIndexOfTask, scrollToRow, visibleRows, visibleSpan, xOf, type GanttRow } from './gantt-layout';
+import { buildRows, dateAtX, headerTicks, makeScale, moveSelection, rowIndexOfTask, scrollToRow, visibleRows, visibleSpan, weekendDays, xOf, type GanttRow } from './gantt-layout';
 
 /** Table columns, left to right (widths in px). */
 const COLUMNS = [
@@ -38,6 +38,8 @@ interface Viewport {
   left: number;
   width: number;
   height: number;
+  /** False until the scroll area has been read once; the default size is only a guess. */
+  measured: boolean;
 }
 
 export interface GanttViewProps {
@@ -52,7 +54,7 @@ export function GanttView({ project, schedule, assetIds = null }: GanttViewProps
   const zoom = useSelect((s) => s.ui.scheduleZoom);
   const selectedId = useSelect((s) => s.ui.selectedTaskId);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [vp, setVp] = useState<Viewport>({ top: 0, left: 0, width: 1200, height: 800 });
+  const [vp, setVp] = useState<Viewport>({ top: 0, left: 0, width: 1200, height: 800, measured: false });
 
   // Follow the scroll position (once per frame) and the size of the scroll area.
   useLayoutEffect(() => {
@@ -62,9 +64,9 @@ export function GanttView({ project, schedule, assetIds = null }: GanttViewProps
     const read = () => {
       frame = 0;
       setVp((p) =>
-        p.top === el.scrollTop && p.left === el.scrollLeft && p.width === el.clientWidth && p.height === el.clientHeight
+        p.measured && p.top === el.scrollTop && p.left === el.scrollLeft && p.width === el.clientWidth && p.height === el.clientHeight
           ? p
-          : { top: el.scrollTop, left: el.scrollLeft, width: el.clientWidth, height: el.clientHeight },
+          : { top: el.scrollTop, left: el.scrollLeft, width: el.clientWidth, height: el.clientHeight, measured: true },
       );
     };
     const onScroll = () => {
@@ -84,6 +86,10 @@ export function GanttView({ project, schedule, assetIds = null }: GanttViewProps
   const rows = useMemo(() => buildRows(project, schedule, assetIds), [project, schedule, assetIds]);
   const timelineView = Math.max(0, vp.width - TABLE_W);
   const scale = useMemo(() => makeScale(project, schedule, zoom, timelineView), [project, schedule, zoom, timelineView]);
+  // Ticks and weekend shading for the whole scale, worked out once per scale rather than on
+  // every scroll step; the drawings pick out the ones in view.
+  const ticks = useMemo(() => headerTicks(scale), [scale]);
+  const weekendXs = useMemo(() => (scale.zoom === 'day' ? weekendDays(scale).map((d) => xOf(scale, d)) : []), [scale]);
 
   // When the zoom changes, keep the date at the left edge of the timeline in place.
   const lastScale = useRef(scale);
@@ -95,15 +101,16 @@ export function GanttView({ project, schedule, assetIds = null }: GanttViewProps
     el.scrollLeft = Math.max(0, xOf(scale, dateAtX(prev, el.scrollLeft)));
   }, [scale]);
 
-  // On first show, bring the data date into view if it is off to the right.
+  // On first show, bring the data date into view if it is off to the right. Wait for the
+  // real size of the scroll area so the threshold uses the measured width.
   const scrolledToDataDate = useRef(false);
   useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (!el || scrolledToDataDate.current || timelineView === 0) return;
+    if (!el || !vp.measured || scrolledToDataDate.current || timelineView === 0) return;
     scrolledToDataDate.current = true;
     const x = xOf(scale, project.dataDate);
     if (x > timelineView * 0.6) el.scrollLeft = x - 7 * scale.dayWidth;
-  }, [scale, project.dataDate, timelineView]);
+  }, [scale, project.dataDate, timelineView, vp.measured]);
 
   const bodyH = vp.height - HEAD_H;
   const [first, last] = visibleRows(vp.top, bodyH, ROW_H, rows.length);
@@ -183,7 +190,7 @@ export function GanttView({ project, schedule, assetIds = null }: GanttViewProps
               </div>
             </div>
             <div className="gantt-head-timeline" style={{ left: TABLE_W, width: scale.width }}>
-              <GanttHeaderTime scale={scale} x0={x0} x1={x1} scrolled={vp.left} />
+              <GanttHeaderTime scale={scale} ticks={ticks} x0={x0} x1={x1} scrolled={vp.left} />
             </div>
           </div>
 
@@ -192,7 +199,7 @@ export function GanttView({ project, schedule, assetIds = null }: GanttViewProps
               <Row key={row.key} row={row} index={first + k} width={totalW} project={project} schedule={schedule} selected={row.kind === 'task' && row.task.id === selectedId} />
             ))}
             <div className="gantt-timeline" style={{ left: TABLE_W, width: scale.width, height: rows.length * ROW_H }}>
-              <GanttBars rows={rows} schedule={schedule} scale={scale} first={first} last={last} x0={x0} x1={x1} />
+              <GanttBars rows={rows} schedule={schedule} scale={scale} ticks={ticks} weekendXs={weekendXs} first={first} last={last} x0={x0} x1={x1} />
               {dataDateX >= 0 && dataDateX <= scale.width && <div className="gantt-datadate" style={{ left: dataDateX }} title={`Data date ${shortDate(project.dataDate)}`} data-testid="gantt-data-date" />}
             </div>
           </div>

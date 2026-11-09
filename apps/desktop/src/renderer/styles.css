@@ -740,7 +740,8 @@
   stroke: var(--ok);
 }
 /* Critical: a heavier dark stroke on the bar itself and a red ring around it. */
-.gb-critical .gb-bar {
+.gb-critical .gb-bar,
+.gb-critical .gb-ms path {
   stroke: var(--ink);
   stroke-width: 2;
 }

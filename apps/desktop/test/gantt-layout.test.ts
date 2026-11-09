@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { largeProject, riversideProject } from '@cx/fixtures';
 import type { Project } from '@cx/core';
 import { scheduleView } from '../src/main/session.js';
+import { GanttBars } from '../src/renderer/views/Schedule/GanttBars.js';
 import {
   barShape,
   buildRows,
@@ -161,6 +164,26 @@ describe('gantt bars', () => {
     const m = barShape(task(riverside, '1.6'), sched['t1.6']!, scale);
     expect(m.kind).toBe('milestone');
     expect(m.x1).toBe(m.x0);
+  });
+
+  it('keeps the hold mark and label on a 0-day hold point', () => {
+    const p = riversideProject();
+    p.tasks = p.tasks.map((t) => (t.code === '1.5' ? { ...t, durationDays: 0 } : t));
+    const sc = scheduleView(p).schedule;
+    const sk = makeScale(p, sc, 'week');
+    const b = barShape(task(p, '1.5'), sc['t1.5']!, sk);
+    expect(b.kind).toBe('milestone');
+    expect(b.marker).toBe('hold');
+
+    const rows = buildRows(p, sc);
+    const html = renderToStaticMarkup(
+      createElement(GanttBars, { rows, schedule: sc, scale: sk, ticks: headerTicks(sk), weekendXs: [], first: 0, last: rows.length, x0: 0, x1: sk.width }),
+    );
+    const g = /<g class="[^"]*" data-task-id="t1\.5">.*?<\/text><\/g>/.exec(html)?.[0] ?? '';
+    expect(g).toContain('>Hold</text>');
+    expect(g).toContain('var(--hold)');
+    // A real milestone still shows its date.
+    expect(/data-task-id="t1\.6">.*?<text[^>]*>([^<]+)<\/text>/.exec(html)?.[1]).not.toMatch(/Hold|Witness/);
   });
 });
 

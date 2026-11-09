@@ -188,7 +188,22 @@ describe('renderer store', () => {
     // An edit to the same file keeps it.
     f.push(appState({ seq: 3, project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp', revision: 1 }));
     expect(store.getSnapshot().ui.selectedTaskId).toBe('t1.4');
-    f.push(appState({ seq: 4, project: riversideProject(), filePath: '/other.cxp', fileName: 'other.cxp' }));
+    // Save As keeps the project and its task ids, so it keeps the selection.
+    f.push(appState({ seq: 4, project: riversideProject(), filePath: '/copy.cxp', fileName: 'copy.cxp' }));
+    expect(store.getSnapshot().ui.selectedTaskId).toBe('t1.4');
+    // An edit that removes the selected task clears it.
+    const without = riversideProject();
+    without.tasks = without.tasks.filter((t) => t.id !== 't1.4');
+    f.push(appState({ seq: 5, project: without, filePath: '/copy.cxp', fileName: 'copy.cxp', revision: 2 }));
+    expect(store.getSnapshot().ui.selectedTaskId).toBeNull();
+    // A different project clears it.
+    store.selectTask('t1.3');
+    f.push(appState({ seq: 6, project: { ...riversideProject(), id: 'other-project' }, filePath: '/other.cxp', fileName: 'other.cxp' }));
     expect(store.getSnapshot().ui).toMatchObject({ selectedTaskId: null, scheduleZoom: 'day' });
+    // Closing the project clears it.
+    f.push(appState({ seq: 7, project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp' }));
+    store.selectTask('t1.3');
+    f.push(appState({ seq: 8, project: null, filePath: null, fileName: null }));
+    expect(store.getSnapshot().ui.selectedTaskId).toBeNull();
   });
 });

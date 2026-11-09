@@ -13,7 +13,7 @@ import { parseIso, type Id } from '@cx/core';
 import type { TaskScheduleSummary } from '../../../shared/api';
 import { typeDiamondMarkup } from '../../components/Symbols';
 import { shortDate } from '../../format';
-import { barShape, headerTicks, weekendDays, xOf, type GanttRow, type Tick, type TimeScale } from './gantt-layout';
+import { barShape, xOf, type GanttRow, type HeaderTicks, type Tick, type TimeScale } from './gantt-layout';
 
 export const ROW_H = 31;
 export const HEAD_TOP_H = 26;
@@ -31,14 +31,16 @@ function tickLabel(t: Tick, room: number): string {
 
 export interface HeaderProps {
   scale: TimeScale;
+  /** headerTicks(scale), computed once per scale by the caller. */
+  ticks: HeaderTicks;
   x0: number;
   x1: number;
   /** Timeline x at the left edge of the viewport; upper-row labels stick to it. */
   scrolled: number;
 }
 
-export const GanttHeaderTime = memo(function GanttHeaderTime({ scale, x0, x1, scrolled }: HeaderProps) {
-  const { top, bottom } = headerTicks(scale);
+export const GanttHeaderTime = memo(function GanttHeaderTime({ scale, ticks, x0, x1, scrolled }: HeaderProps) {
+  const { top, bottom } = ticks;
   const inView = (t: Tick) => t.x < x1 && t.x + t.width > x0;
   return (
     <svg className="gantt-head-time" width={x1 - x0} height={HEAD_H} viewBox={`${x0} 0 ${x1 - x0} ${HEAD_H}`} style={{ left: x0 }} aria-hidden="true" data-testid="gantt-time-header">
@@ -79,19 +81,22 @@ export interface BarsProps {
   rows: readonly GanttRow[];
   schedule: Record<Id, TaskScheduleSummary>;
   scale: TimeScale;
+  /** headerTicks(scale), computed once per scale by the caller. */
+  ticks: HeaderTicks;
+  /** Timeline x of each weekend day (day zoom only), computed once per scale by the caller. */
+  weekendXs: readonly number[];
   first: number;
   last: number;
   x0: number;
   x1: number;
 }
 
-export const GanttBars = memo(function GanttBars({ rows, schedule, scale, first, last, x0, x1 }: BarsProps) {
+export const GanttBars = memo(function GanttBars({ rows, schedule, scale, ticks, weekendXs, first, last, x0, x1 }: BarsProps) {
   const y0 = first * ROW_H;
   const h = Math.max(1, (last - first) * ROW_H);
-  const { bottom, top } = headerTicks(scale);
-  const months = new Set(scale.zoom === 'month' ? [] : top.map((t) => t.x));
-  const grid = bottom.filter((t) => t.x >= x0 && t.x <= x1);
-  const shade = scale.zoom === 'day' ? weekendDays(scale).map((d) => xOf(scale, d)).filter((x) => x + scale.dayWidth > x0 && x < x1) : [];
+  const months = new Set(scale.zoom === 'month' ? [] : ticks.top.filter((t) => t.x >= x0 && t.x <= x1).map((t) => t.x));
+  const grid = ticks.bottom.filter((t) => t.x >= x0 && t.x <= x1);
+  const shade = weekendXs.filter((x) => x + scale.dayWidth > x0 && x < x1);
 
   const items = [];
   for (let i = first; i < last; i++) {
@@ -134,13 +139,15 @@ function TaskBar({ row, s, y, bar }: { row: Extract<GanttRow, { kind: 'task' }>;
   const cls = `gb-task gb-${bar.progress}${bar.critical ? ' gb-critical' : ''}`;
 
   if (bar.kind === 'milestone') {
+    // A 0-day hold or witness point keeps its own diamond and label; a milestone shows its date.
+    const label = bar.marker === 'hold' ? 'Hold' : bar.marker === 'witness' ? 'Witness' : shortDate(s.start);
     return (
       <g className={cls} data-task-id={t.id}>
         <title>{title}</title>
         {bar.critical && <path className="gb-crit-ring" d={`M${bar.x0} ${cy - 11} L${bar.x0 + 11} ${cy} L${bar.x0} ${cy + 11} L${bar.x0 - 11} ${cy} Z`} />}
-        <g dangerouslySetInnerHTML={{ __html: typeDiamondMarkup('milestone', bar.x0, cy, 7) }} />
+        <g className="gb-ms" dangerouslySetInnerHTML={{ __html: typeDiamondMarkup(bar.marker ?? 'milestone', bar.x0, cy, 7, 2) }} />
         <text className="gb-label" x={bar.x0 + 13} y={cy + 4}>
-          {shortDate(s.start)}
+          {label}
         </text>
       </g>
     );
