@@ -33,6 +33,6 @@ Automated (Chromium emulating Pixel 7, iPad gen 7 portrait and iPad Pro 11 lands
 Emulation can't prove Safari-specific behaviour. Run the checklist in [IPAD-TEST.md](IPAD-TEST.md) on a real iPad.
 
 ## Also delivered
-- pnpm monorepo, TypeScript, ESLint, Prettier, Vitest (39 tests), CI on Linux and Windows, Apache-2.0 licence.
+- pnpm monorepo, TypeScript, ESLint, Prettier, Vitest (33 tests), CI on Linux and Windows, Apache-2.0 licence.
 - CPM scheduling engine: working-day calendar with holidays, FS/SS/FF/SF links with lag, start-no-earlier-than, progress-aware scheduling from the data date, total float and critical path.
 - Sample data: the mockups' Riverside project and a 215-task generator.
