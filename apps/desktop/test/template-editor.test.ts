@@ -35,13 +35,21 @@ describe('template editor model', () => {
       checklist: [
         { id: 'a', text: ' ok ' },
         { id: 'b', text: ' ' },
+        { id: 'c', text: 'torque', acceptance: ' Per mfr. table ' },
+        { id: 'd', text: 'megger', acceptance: '  ' },
       ],
     };
     const c = cleanTemplate(t);
     expect(c.name).toBe('LV');
     expect(c.stages).toEqual(['Set', 'Tested']);
     expect(c.requiredDocs).toEqual([]);
-    expect(c.tasks[0]).toMatchObject({ name: 'VMI', requiredCerts: ['NETA'], checklist: [{ id: 'a', text: 'ok' }] });
+    expect(c.tasks[0]).toMatchObject({ name: 'VMI', requiredCerts: ['NETA'] });
+    // Acceptance is trimmed; a blank one is dropped rather than saved as "".
+    expect(c.tasks[0]!.checklist).toEqual([
+      { id: 'a', text: 'ok' },
+      { id: 'c', text: 'torque', acceptance: 'Per mfr. table' },
+      { id: 'd', text: 'megger' },
+    ]);
     expect(t.stages).toHaveLength(3);
   });
 

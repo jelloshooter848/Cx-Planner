@@ -351,6 +351,45 @@ describe('WorkspaceStore: templates', () => {
     other.close();
   });
 
+  it('keeps checklist acceptance criteria through export and import', () => {
+    const t = custom('tpl-acc');
+    t.tasks[1]!.checklist = [
+      { id: 'c1', text: 'Insulation resistance phase to ground', acceptance: 'Per project spec' },
+      { id: 'c2', text: 'Readings recorded' },
+    ];
+    ws.saveTemplate(t);
+    const json = ws.exportTemplate('tpl-acc');
+    expect(JSON.parse(json).template.tasks[1].checklist[0]).toEqual({ id: 'c1', text: 'Insulation resistance phase to ground', acceptance: 'Per project spec' });
+    const other = WorkspaceStore.open(join(folder, '..', 'Other3'), { create: true });
+    const res = other.importTemplate(json);
+    expect(res.template).toEqual(t);
+    expect(res.template.tasks[1]!.checklist[1]).not.toHaveProperty('acceptance');
+    other.close();
+  });
+
+  it('imports an older file whose checklist items have no acceptance', () => {
+    const t = custom('tpl-old');
+    t.tasks[1]!.checklist = [{ id: 'c1', text: 'Readings recorded' }];
+    const res = ws.importTemplate(JSON.stringify({ format: 'cx-template', version: 1, template: t }));
+    expect(res.template.tasks[1]!.checklist).toEqual([{ id: 'c1', text: 'Readings recorded' }]);
+  });
+
+  it('drops an empty acceptance and rejects one that is not text', () => {
+    const blank = custom('tpl-blank');
+    blank.tasks[1]!.checklist = [{ id: 'c1', text: 'Readings recorded', acceptance: '  ' }];
+    const res = ws.importTemplate(JSON.stringify({ format: 'cx-template', version: 1, template: blank }));
+    expect(res.template.tasks[1]!.checklist).toEqual([{ id: 'c1', text: 'Readings recorded' }]);
+
+    const bad = { ...custom('tpl-badacc'), tasks: custom().tasks.map((k) => ({ ...k, checklist: [{ id: 'c1', text: 'x', acceptance: 5 }] })) };
+    try {
+      ws.importTemplate(JSON.stringify({ format: 'cx-template', version: 1, template: bad }));
+      throw new Error('expected the import to fail');
+    } catch (e) {
+      expect(e).toBeInstanceOf(TemplateImportError);
+      expect((e as TemplateImportError).problems[0]).toMatch(/checklist item 1: acceptance must be text/);
+    }
+  });
+
   it('imports a file without a kind as custom', () => {
     const { kind: _kind, ...noKind } = custom('tpl-nokind');
     const res = ws.importTemplate(JSON.stringify({ format: 'cx-template', version: 1, template: noKind }));

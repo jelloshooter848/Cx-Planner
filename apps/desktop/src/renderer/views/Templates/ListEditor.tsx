@@ -18,6 +18,17 @@ export interface ListEditorProps<T> {
   placeholder?: string;
   /** Item key for React (defaults to the index). */
   itemKey?(item: T, index: number): string;
+  /** A second, smaller one-line field under each entry, e.g. a checklist item's acceptance criteria. */
+  detail?: ListEditorDetail<T>;
+}
+
+export interface ListEditorDetail<T> {
+  /** Accessible name of the field, e.g. "Acceptance". */
+  label: string;
+  /** Shown while empty (defaults to the label), e.g. "Acceptance (optional)". */
+  placeholder?: string;
+  text(item: T): string;
+  withText(item: T, text: string): T;
 }
 
 /**
@@ -35,6 +46,7 @@ export function ListEditor<T>({
   noun,
   placeholder,
   itemKey,
+  detail,
 }: ListEditorProps<T>) {
   const listRef = useRef<HTMLOListElement>(null);
   const [focusIndex, setFocusIndex] = useState<number | null>(null);
@@ -43,11 +55,10 @@ export function ListEditor<T>({
     listRef.current?.querySelectorAll<HTMLTextAreaElement>('textarea')[focusIndex]?.focus();
     setFocusIndex(null);
   }, [focusIndex]);
-  const set = (i: number, value: string) =>
-    onChange(
-      items.map((it, j) => (j === i ? withText(it, value) : it)),
-      `text:${itemKey ? itemKey(items[i]!, i) : i}`,
-    );
+  const keyOf = (i: number) => (itemKey ? itemKey(items[i]!, i) : String(i));
+  const set = (i: number, value: string) => onChange(items.map((it, j) => (j === i ? withText(it, value) : it)), `text:${keyOf(i)}`);
+  const setDetail = (d: ListEditorDetail<T>, i: number, value: string) =>
+    onChange(items.map((it, j) => (j === i ? d.withText(it, value) : it)), `detail:${keyOf(i)}`);
   const move = (i: number, to: number) => {
     onChange(moveItem(items, i, to));
     setFocusIndex(Math.max(0, Math.min(items.length - 1, to)));
@@ -61,29 +72,40 @@ export function ListEditor<T>({
               <span className="list-editor-num" aria-hidden="true">
                 {i + 1}
               </span>
-              <textarea
-                className="list-editor-input"
-                rows={1}
-                value={text(item)}
-                placeholder={placeholder}
-                aria-label={`${label} ${i + 1}`}
-                onChange={(e) => set(i, e.target.value.replace(/[\r\n]+/g, ' '))}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    const next = [...items];
-                    next.splice(i + 1, 0, create(items));
-                    onChange(next);
-                    setFocusIndex(i + 1);
-                  } else if (e.altKey && e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    move(i, i - 1);
-                  } else if (e.altKey && e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    move(i, i + 1);
-                  }
-                }}
-              />
+              <div className="list-editor-fields">
+                <textarea
+                  className="list-editor-input"
+                  rows={1}
+                  value={text(item)}
+                  placeholder={placeholder}
+                  aria-label={`${label} ${i + 1}`}
+                  onChange={(e) => set(i, e.target.value.replace(/[\r\n]+/g, ' '))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const next = [...items];
+                      next.splice(i + 1, 0, create(items));
+                      onChange(next);
+                      setFocusIndex(i + 1);
+                    } else if (e.altKey && e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      move(i, i - 1);
+                    } else if (e.altKey && e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      move(i, i + 1);
+                    }
+                  }}
+                />
+                {detail && (
+                  <input
+                    className="list-editor-detail"
+                    value={detail.text(item)}
+                    placeholder={detail.placeholder ?? detail.label}
+                    aria-label={`${detail.label} ${i + 1}`}
+                    onChange={(e) => setDetail(detail, i, e.target.value)}
+                  />
+                )}
+              </div>
               <span className="row-actions">
                 <button
                   type="button"

@@ -144,7 +144,8 @@ function columns(withAcceptance: boolean): Col[] {
   const fixed: Col[] = [
     { key: 'num', label: '#', w: 34 },
     { key: 'check', label: 'Check', w: 0 },
-    ...(withAcceptance ? [{ key: 'acceptance' as const, label: 'Acceptance', w: 148 }] : []),
+    // Wide enough for typical criteria (~25 characters, e.g. "Per project spec / NETA ATS") on one line.
+    ...(withAcceptance ? [{ key: 'acceptance' as const, label: 'Acceptance', w: 190 }] : []),
     { key: 'result', label: 'Result', w: 100 },
     { key: 'notes', label: 'Notes', w: withAcceptance ? 76 : 140 },
     { key: 'init', label: 'Init.', w: 46 },
