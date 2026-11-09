@@ -6,5 +6,5 @@
   "type": "module",
   "exports": { ".": "./src/index.ts" },
   "scripts": { "typecheck": "tsc --noEmit -p ." },
-  "dependencies": { "@cx/core": "workspace:*" }
+  "dependencies": { "@cx/core": "workspace:*", "@cx/templates": "workspace:*" }
 }

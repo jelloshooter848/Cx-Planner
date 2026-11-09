@@ -14,7 +14,7 @@ import { assetsInView } from './asset-filter';
 
 /** Views shown when a project is open (the welcome screen shows when none is). */
 export type ViewId = 'schedule' | 'templates' | 'lookahead';
-export type DialogId = 'new-project' | 'about' | 'add-assets' | 'delete-task' | 'print';
+export type DialogId = 'new-project' | 'about' | 'add-assets' | 'delete-task' | 'print' | 'project-settings';
 /** Time scale of the Schedule view's Gantt. */
 export type ScheduleZoom = 'day' | 'week' | 'month';
 
@@ -77,6 +77,10 @@ export type Action =
   | { type: 'new-project' }
   | { type: 'open-project' }
   | { type: 'open-recent'; path: string }
+  /** Takes a file off the recent list (e.g. one that can no longer be found). */
+  | { type: 'remove-recent'; path: string }
+  /** Writes a copy of the sample project to Documents and opens it. */
+  | { type: 'open-sample' }
   | { type: 'save-as' }
   | { type: 'close-project' }
   | { type: 'choose-workspace' }
@@ -89,6 +93,8 @@ export type Action =
   | { type: 'delete-task' }
   /** Opens the Print dialog (needs an open project), on `kind` or the last kind used. */
   | { type: 'print'; kind?: PrintKind }
+  /** Opens the Project settings dialog (needs an open project). */
+  | { type: 'project-settings' }
   | { type: 'view'; view: ViewId }
   | { type: 'about' };
 
@@ -229,6 +235,7 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
   const offMenu = api.onMenu((cmd) => {
     if (cmd === 'new-project') void store.dispatch({ type: 'new-project' });
     else if (cmd === 'print') void store.dispatch({ type: 'print' });
+    else if (cmd === 'project-settings') void store.dispatch({ type: 'project-settings' });
     // The selection belongs to the Schedule view; elsewhere the item does nothing (as in the in-window menu).
     else if (cmd === 'delete-task') {
       if (snapshot.ui.view === 'schedule') void store.dispatch({ type: 'delete-task' });
@@ -267,6 +274,12 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
         case 'open-recent':
           await store.run(() => api.openRecent(action.path));
           return;
+        case 'remove-recent':
+          await store.run(() => api.removeRecent(action.path));
+          return;
+        case 'open-sample':
+          await store.run(() => api.openSample());
+          return;
         case 'save-as':
           if (snapshot.app?.project) await store.run(() => api.saveAs());
           return;
@@ -295,6 +308,9 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
         }
         case 'print':
           if (snapshot.app?.project) setUi({ dialog: 'print', printKind: action.kind ?? snapshot.ui.printKind });
+          return;
+        case 'project-settings':
+          if (snapshot.app?.project) store.openDialog('project-settings');
           return;
         case 'view':
           return store.setView(action.view);

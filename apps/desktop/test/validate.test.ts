@@ -97,6 +97,23 @@ describe('prefs', () => {
     expect(r.has(join(dir, 'p5.cxp'))).toBe(false);
   });
 
+  it('remembers when each recent file was opened, and reads the older list format', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cx-prefs-'));
+    let now = new Date('2026-11-06T14:00:00.000Z');
+    const r = new RecentFiles(join(dir, 'recent.json'), () => now);
+    r.add(join(dir, 'a.cxp'));
+    now = new Date('2026-11-09T08:30:00.000Z');
+    r.add(join(dir, 'b.cxp'));
+    expect(r.entries()).toEqual([
+      { path: join(dir, 'b.cxp'), openedAt: '2026-11-09T08:30:00.000Z' },
+      { path: join(dir, 'a.cxp'), openedAt: '2026-11-06T14:00:00.000Z' },
+    ]);
+    writeFileSync(join(dir, 'old.json'), JSON.stringify({ paths: ['/x/one.cxp', '', 3, '/x/two.cxp'] }));
+    expect(new RecentFiles(join(dir, 'old.json')).entries()).toEqual([{ path: '/x/one.cxp' }, { path: '/x/two.cxp' }]);
+    writeFileSync(join(dir, 'bad.json'), JSON.stringify({ entries: [{ path: '/x/a.cxp', openedAt: 'soon' }, { nope: 1 }, null] }));
+    expect(new RecentFiles(join(dir, 'bad.json')).entries()).toEqual([{ path: '/x/a.cxp' }]);
+  });
+
   it('survives a damaged settings file', () => {
     const dir = mkdtempSync(join(tmpdir(), 'cx-prefs-'));
     writeFileSync(join(dir, 'settings.json'), '{ not json');

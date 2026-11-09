@@ -47,26 +47,56 @@ export function samePath(a: string, b: string): boolean {
   return process.platform === 'linux' ? ra === rb : ra.toLowerCase() === rb.toLowerCase();
 }
 
-/** The last RECENT_LIMIT project paths opened, most recent first. */
+export interface RecentEntry {
+  path: string;
+  /** When the file was last opened (ISO timestamp); undefined in lists written before this was kept. */
+  openedAt?: string;
+}
+
+/**
+ * The last RECENT_LIMIT projects opened, most recent first, with when each was opened.
+ * Stored as { entries: [{ path, openedAt }] }; the older { paths: [...] } form is still read.
+ */
 export class RecentFiles {
-  constructor(public readonly file: string) {}
+  constructor(
+    public readonly file: string,
+    private readonly now: () => Date = () => new Date(),
+  ) {}
+
+  entries(): RecentEntry[] {
+    const raw = readJson(this.file) as { entries?: unknown; paths?: unknown } | undefined;
+    const out: RecentEntry[] = [];
+    const items: unknown[] = Array.isArray(raw?.entries) ? raw.entries : Array.isArray(raw?.paths) ? raw.paths : [];
+    for (const item of items) {
+      const path = typeof item === 'string' ? item : typeof item === 'object' && item !== null ? (item as { path?: unknown }).path : undefined;
+      if (typeof path !== 'string' || path === '' || out.some((e) => samePath(e.path, path))) continue;
+      const openedAt = typeof item === 'object' && item !== null ? (item as { openedAt?: unknown }).openedAt : undefined;
+      out.push(typeof openedAt === 'string' && !Number.isNaN(Date.parse(openedAt)) ? { path, openedAt } : { path });
+      if (out.length === RECENT_LIMIT) break;
+    }
+    return out;
+  }
 
   list(): string[] {
-    const raw = readJson(this.file);
-    const paths = (raw as { paths?: unknown } | undefined)?.paths;
-    return Array.isArray(paths) ? paths.filter((p): p is string => typeof p === 'string' && p !== '').slice(0, RECENT_LIMIT) : [];
+    return this.entries().map((e) => e.path);
   }
 
   has(path: string): boolean {
     return this.list().some((p) => samePath(p, path));
   }
 
+  /** Puts `path` first, opened now. */
   add(path: string): void {
     const full = resolve(path);
-    writeJson(this.file, { paths: [full, ...this.list().filter((p) => !samePath(p, full))].slice(0, RECENT_LIMIT) });
+    const rest = this.entries().filter((e) => !samePath(e.path, full));
+    this.write([{ path: full, openedAt: this.now().toISOString() }, ...rest]);
   }
 
   remove(path: string): void {
-    writeJson(this.file, { paths: this.list().filter((p) => !samePath(p, path)) });
+    this.write(this.entries().filter((e) => !samePath(e.path, path)));
+  }
+
+  private write(entries: RecentEntry[]): void {
+    writeJson(this.file, { entries: entries.slice(0, RECENT_LIMIT) });
   }
 }

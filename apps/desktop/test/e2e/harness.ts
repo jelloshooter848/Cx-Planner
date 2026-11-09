@@ -26,6 +26,8 @@ export interface LaunchOptions {
   largeAssets?: number;
   /** Window content size. Default 1440×900, like the mockups. */
   size?: { width: number; height: number };
+  /** The recent list to start with; relative paths are in the harness's temp folder. */
+  recent?: Array<{ path: string; openedAt?: string }>;
 }
 
 export interface AppHarness {
@@ -34,6 +36,8 @@ export interface AppHarness {
   /** Temp folder holding everything below; removed by close(). */
   dir: string;
   workspace: string;
+  /** The app's Documents folder (sample project copies go in it). */
+  documents: string;
   /** The fixture project file, when one was created. */
   projectFile: string | null;
   /** The main process's current AppState. */
@@ -46,6 +50,8 @@ export interface AppHarness {
   answerSave(path: string | null): Promise<void>;
   /** The next open dialog answers with `path` (null = cancel). */
   answerOpen(path: string | null): Promise<void>;
+  /** Message boxes answer by pressing button `index` until changed. */
+  answerMessage(index: number): Promise<void>;
   /** Saves a screenshot of the window to spike-output/desktop-e2e/<name>.png (or $CX_E2E_SHOTS). */
   screenshot(name: string): Promise<string>;
   close(): Promise<void>;
@@ -68,7 +74,11 @@ async function start(dir: string, options: LaunchOptions, launched: (app: Electr
   const userData = join(dir, 'user');
   const workspace = join(dir, 'Workspace');
   mkdirSync(userData);
+  const documents = join(dir, 'Documents');
   writeFileSync(join(userData, 'settings.json'), JSON.stringify({ workspacePath: workspace }));
+  if (options.recent) {
+    writeFileSync(join(userData, 'recent.json'), JSON.stringify({ entries: options.recent.map((e) => ({ ...e, path: resolve(dir, e.path) })) }));
+  }
 
   let projectFile: string | null = null;
   if (options.project) {
@@ -83,7 +93,7 @@ async function start(dir: string, options: LaunchOptions, launched: (app: Electr
     executablePath: createRequire(join(desktop, 'package.json'))('electron') as unknown as string,
     args: ['--no-sandbox', '--disable-gpu', '.', ...(projectFile ? [projectFile] : [])],
     cwd: desktop,
-    env: { ...process.env, NODE_OPTIONS: '', CX_USER_DATA: userData },
+    env: { ...process.env, NODE_OPTIONS: '', CX_USER_DATA: userData, CX_DOCUMENTS: documents },
   });
   launched(app);
   const page = await app.firstWindow();
@@ -108,6 +118,7 @@ async function start(dir: string, options: LaunchOptions, launched: (app: Electr
     page,
     dir,
     workspace,
+    documents,
     projectFile,
     state,
     waitState,
@@ -121,6 +132,11 @@ async function start(dir: string, options: LaunchOptions, launched: (app: Electr
       await app.evaluate(({ dialog }, target) => {
         dialog.showOpenDialog = (async () => ({ canceled: !target, filePaths: target ? [target] : [] })) as typeof dialog.showOpenDialog;
       }, path);
+    },
+    async answerMessage(index) {
+      await app.evaluate(({ dialog }, response) => {
+        dialog.showMessageBox = (async () => ({ response, checkboxChecked: false })) as typeof dialog.showMessageBox;
+      }, index);
     },
     async screenshot(name) {
       mkdirSync(shotDir, { recursive: true });

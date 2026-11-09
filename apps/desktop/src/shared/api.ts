@@ -52,6 +52,8 @@ export interface RecentFile {
   name: string;
   /** False when the file is no longer there (moved, deleted, share offline). */
   exists: boolean;
+  /** When it was last opened in Cx Planner (ISO timestamp), or null when not known. */
+  lastOpened: string | null;
 }
 
 /** Everything the renderer draws from. Sent whole on every change (see CxApi.onState). */
@@ -204,12 +206,13 @@ export interface PdfExported extends PrintIssued {
 }
 
 /**
- * Commands main sends the renderer: menu items that need a form ('new-project', 'print'), Edit >
- * Delete Task ('delete-task', which acts on the renderer's selected task after a confirm), and
- * 'confirm-close' when the window is closing while the renderer reported unsaved work (it asks
- * Save / Discard / Cancel, then closes the window itself or stays open).
+ * Commands main sends the renderer: menu items that need a form ('new-project', 'print',
+ * 'project-settings'), Edit > Delete Task ('delete-task', which acts on the renderer's selected
+ * task after a confirm), and 'confirm-close' when the window is closing while the renderer
+ * reported unsaved work (it asks Save / Discard / Cancel, then closes the window itself or
+ * stays open).
  */
-export type MenuCommand = 'new-project' | 'print' | 'delete-task' | 'confirm-close';
+export type MenuCommand = 'new-project' | 'print' | 'project-settings' | 'delete-task' | 'confirm-close';
 
 export interface TemplateApi {
   list(): Promise<ApiResult<TemplateSummary[]>>;
@@ -250,6 +253,13 @@ export interface CxApi {
   openProject(): Promise<ApiResult<{ filePath: string }>>;
   /** Opens a file from AppState.recent (other paths are refused). */
   openRecent(path: string): Promise<ApiResult<{ filePath: string }>>;
+  /** Removes a file from AppState.recent (the file itself is left alone). */
+  removeRecent(path: string): Promise<ApiResult>;
+  /**
+   * Writes a fresh copy of the sample project to Documents/Cx Planner Samples and opens it.
+   * When a copy is already there, asks whether to open it or replace it with a fresh one.
+   */
+  openSample(): Promise<ApiResult<{ filePath: string }>>;
   /** Shows a save dialog, copies the open file there and continues working in the copy. */
   saveAs(): Promise<ApiResult<{ filePath: string }>>;
   closeProject(): Promise<ApiResult>;

@@ -30,6 +30,25 @@ export function todayIso(now = new Date()): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
+/**
+ * When a recent file was last opened, in local time: "Today 2:14 PM", "Yesterday 9:05 AM",
+ * or "Nov 6, 2026". Empty for null or an unreadable timestamp.
+ */
+export function lastOpenedText(
+  iso: string | null,
+  now = new Date(),
+  formatTime: (d: Date) => string = (d) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const day = todayIso(d);
+  if (day === todayIso(now)) return `Today ${formatTime(d)}`;
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  if (day === todayIso(yesterday)) return `Yesterday ${formatTime(d)}`;
+  return longDate(day);
+}
+
 export interface StatusText {
   left: string;
   right: string;
