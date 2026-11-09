@@ -11,14 +11,16 @@
     "dev": "node scripts/build.mjs && electron .",
     "spike:pdf": "node scripts/build.mjs && electron . --spike-pdf",
     "spike:sqlite": "node scripts/build.mjs && electron . --spike-sqlite",
+    "spike:session": "node scripts/build.mjs && electron . --spike-session",
     "package:dir": "node scripts/build.mjs && electron-builder --dir",
-    "smoke": "node scripts/build.mjs && electron . --spike-sqlite --spike-pdf --out ../../spike-output/electron"
+    "smoke": "node scripts/build.mjs && electron . --spike-sqlite --spike-session --spike-pdf --out ../../spike-output/electron"
   },
   "devDependencies": {
     "@cx/core": "workspace:*",
     "@cx/fixtures": "workspace:*",
     "@cx/render": "workspace:*",
     "@cx/storage": "workspace:*",
+    "@cx/templates": "workspace:*",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.3.0",

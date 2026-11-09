@@ -1,60 +1,115 @@
-import { app, BrowserWindow, dialog, ipcMain, session } from 'electron';
-import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { riversideProject } from '@cx/fixtures';
-import type { PaperId } from '@cx/render';
-import { htmlToPdf, lookAheadDocument, setFontDir } from './print.js';
+import { app, BrowserWindow, Menu, session as electronSession } from 'electron';
+import { join, resolve } from 'node:path';
+import type { AppState, MenuCommand } from '../shared/api.js';
+import { CH } from '../shared/channels.js';
+import { electronDialogs } from './electron-dialogs.js';
+import { FileController, projectArg } from './files.js';
+import { registerIpc } from './ipc.js';
+import { buildMenu, menuKey } from './menu.js';
+import { RecentFiles, SettingsFile } from './prefs.js';
+import { setFontDir } from './print.js';
+import { Session, windowTitle } from './session.js';
 import { runSpikes } from './spikes.js';
 
 const dist = join(__dirname, '..');
 setFontDir(join(dist, 'fonts'));
 const args = process.argv.slice(1);
-const headless = args.includes('--spike-pdf') || args.includes('--spike-sqlite');
+const headless = args.some((a) => a.startsWith('--spike-'));
 
-// M0: the demo shows the sample project. Opening real project files arrives in M1.
-const project = riversideProject();
+// Lets tests run against a throwaway profile (settings, recent list).
+if (process.env.CX_USER_DATA) app.setPath('userData', resolve(process.env.CX_USER_DATA));
 
-function createWindow(): void {
-  const win = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    title: 'Cx Planner',
-    webPreferences: { preload: join(dist, 'preload/preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false },
-  });
-  win.removeMenu();
-  void win.loadFile(join(dist, 'renderer/index.html'));
-}
+let win: BrowserWindow | undefined;
+/** A file the OS asked us to open before the window was ready (macOS open-file). */
+let pendingOpen: string | undefined = projectArg(args);
+let ready = false;
 
-ipcMain.handle('print:lookahead-html', (_e, paper: PaperId) => {
-  const { html, layout } = lookAheadDocument(project, { paper, weeks: 3 });
-  return { html, sheets: layout.sheets.length, widthIn: layout.paper.widthIn, heightIn: layout.paper.heightIn };
-});
-
-ipcMain.handle('print:lookahead-pdf', async (e, paper: PaperId) => {
-  const { html, title } = lookAheadDocument(project, { paper, weeks: 3 });
-  const win = BrowserWindow.fromWebContents(e.sender) ?? undefined;
-  const target = await dialog.showSaveDialog(win!, { defaultPath: `${title.replace(/[^\w\- ]+/g, '').trim()}.pdf`, filters: [{ name: 'PDF', extensions: ['pdf'] }] });
-  if (target.canceled || !target.filePath) return { saved: false };
-  writeFileSync(target.filePath, await htmlToPdf(html));
-  return { saved: true, path: target.filePath };
-});
-
-app.whenReady().then(async () => {
-  // Renderer may load only bundled files; no remote content.
-  session.defaultSession.webRequest.onHeadersReceived((details, cb) =>
-    cb({ responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': ["default-src 'self' data:; style-src 'self' 'unsafe-inline' data:; font-src 'self' data:"] } }),
-  );
-  if (headless) {
+if (!headless && !app.requestSingleInstanceLock()) {
+  // Another window is running; it gets our arguments through 'second-instance'.
+  app.quit();
+} else if (headless) {
+  // Offscreen print windows come and go during headless runs; don't quit when they close.
+  app.on('window-all-closed', () => {});
+  app.whenReady().then(async () => {
     const results = await runSpikes(args);
     for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.name}: ${r.detail}`);
     app.exit(results.every((r) => r.ok) ? 0 : 1);
-    return;
-  }
-  createWindow();
-  app.on('activate', () => BrowserWindow.getAllWindows().length === 0 && createWindow());
-});
+  });
+} else {
+  startApp();
+}
 
-app.on('window-all-closed', () => {
-  // Offscreen print windows come and go during headless runs; only quit for the real UI.
-  if (!headless && process.platform !== 'darwin') app.quit();
-});
+function startApp(): void {
+  const userData = app.getPath('userData');
+  const dialogs = electronDialogs(() => win);
+  const recent = new RecentFiles(join(userData, 'recent.json'));
+  const settings = new SettingsFile(join(userData, 'settings.json'));
+  let shownMenu = '';
+  const toRenderer = (cmd: MenuCommand) => win?.webContents.send(CH.menu, cmd);
+  const broadcast = (state: AppState) => {
+    if (!win || win.isDestroyed()) return;
+    win.setTitle(windowTitle(state));
+    win.webContents.send(CH.state, state);
+    const key = menuKey(state);
+    if (key !== shownMenu) {
+      shownMenu = key;
+      Menu.setApplicationMenu(buildMenu({ session, files, dialogs, toRenderer }, state));
+    }
+  };
+  const session = new Session({ broadcast, recent: () => recent.list() });
+  const files = new FileController({ session, dialogs, recent, settings, defaultWorkspace: join(app.getPath('documents'), 'Cx Planner Workspace') });
+  registerIpc({ session, files, dialogs });
+
+  const open = (path: string) => {
+    if (!ready) {
+      pendingOpen = path;
+      return;
+    }
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
+    }
+    void files.openPath(path);
+  };
+
+  app.on('second-instance', (_e, argv, cwd) => {
+    const path = projectArg(argv.slice(1), cwd);
+    if (path) open(path);
+    else win?.focus();
+  });
+  app.on('open-file', (e, path) => {
+    e.preventDefault();
+    open(path);
+  });
+
+  app.whenReady().then(async () => {
+    // Renderer may load only bundled files; no remote content.
+    electronSession.defaultSession.webRequest.onHeadersReceived((details, cb) =>
+      cb({ responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': ["default-src 'self' data:; style-src 'self' 'unsafe-inline' data:; font-src 'self' data:"] } }),
+    );
+    win = new BrowserWindow({
+      width: 1400,
+      height: 900,
+      title: 'Cx Planner',
+      webPreferences: { preload: join(dist, 'preload/preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false },
+    });
+    // The title is ours (it names the open file), not the page's.
+    win.on('page-title-updated', (e) => e.preventDefault());
+    // No navigation away from the bundled page and no new windows.
+    win.webContents.on('will-navigate', (e) => e.preventDefault());
+    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    win.on('closed', () => (win = undefined));
+    session.notify();
+    await win.loadFile(join(dist, 'renderer/index.html'));
+    await files.ensureWorkspace();
+    ready = true;
+    if (pendingOpen) {
+      const path = pendingOpen;
+      pendingOpen = undefined;
+      await files.openPath(path);
+    }
+  });
+
+  app.on('window-all-closed', () => app.quit());
+  app.on('will-quit', () => session.dispose());
+}

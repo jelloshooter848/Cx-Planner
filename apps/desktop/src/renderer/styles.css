@@ -10,3 +10,30 @@ body { margin: 0; background: #f3f4f6; }
 .muted { color: #5b6270; }
 .preview { padding: 0; overflow: auto; height: calc(100vh - 92px); }
 iframe { border: 0; display: block; }
+.app { display: flex; flex-direction: column; height: 100vh; }
+.titlebar { display: flex; align-items: center; gap: 6px; }
+.muted-light { color: #aab0bb; }
+.titlebar-actions { margin-left: auto; display: flex; gap: 6px; }
+.titlebar-actions button { background: transparent; color: #fff; border: 1px solid #4b5160; border-radius: 4px; padding: 4px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+.toolbar button:disabled { color: #9ca3af; cursor: default; }
+.preview { flex: 1; height: auto; min-height: 0; }
+.empty { padding: 32px; color: #5b6270; }
+.statusbar { display: flex; justify-content: space-between; padding: 6px 16px; border-top: 1px solid var(--line); background: #fff; font-size: 13px; color: #5b6270; }
+.start { flex: 1; overflow: auto; display: flex; justify-content: center; padding: 48px 16px; }
+.card { background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 24px 28px; width: 640px; max-width: 100%; align-self: flex-start; }
+.card h1 { margin: 0 0 16px; font-size: 22px; }
+.card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: #5b6270; margin: 24px 0 8px; }
+.card button { padding: 8px 14px; border: 1px solid var(--line); background: #fff; border-radius: 4px; font: inherit; font-size: 14px; cursor: pointer; }
+.card button.primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+.card button.link { border: 0; padding: 0; color: var(--blue); background: none; font-size: 13px; }
+.actions { display: flex; gap: 8px; }
+.new-project { display: grid; gap: 12px; margin-top: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 6px; background: #f9fafb; }
+.new-project label { display: grid; gap: 4px; font-size: 13px; color: #374151; }
+.new-project input { padding: 8px 10px; border: 1px solid var(--line); border-radius: 4px; font: inherit; font-size: 14px; }
+.error { color: #b42318; margin: 0; font-size: 13px; }
+.recent { list-style: none; padding: 0; margin: 0; }
+.recent button { width: 100%; text-align: left; border: 0; border-bottom: 1px solid #eef0f3; border-radius: 0; padding: 8px 4px; display: flex; gap: 8px; align-items: baseline; }
+.recent button:hover:not(:disabled) { background: #f3f6fb; }
+.recent button:disabled { cursor: default; opacity: 0.6; }
+.recent .muted { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.small { font-size: 13px; }

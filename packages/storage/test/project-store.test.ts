@@ -28,6 +28,23 @@ describe('ProjectStore', () => {
     again.close();
   });
 
+  it('copies the whole file for Save As', () => {
+    const s = ProjectStore.open(file, { create: true });
+    const p = riversideProject();
+    s.replaceProject(p, 'test', 'Imported');
+    const copy = join(dir, 'Copy.cxp');
+    s.copyTo(copy);
+    expect(() => s.copyTo(copy)).toThrow(/already exists/);
+    s.close();
+    expect(existsSync(`${copy}.lock`)).toBe(false);
+    const c = ProjectStore.open(copy);
+    expect(c.loadProject()).toEqual(p);
+    expect(c.schemaVersion).toBe(MIGRATIONS.length);
+    expect(c.changesSince().map((e) => e.summary)).toEqual(['Imported']);
+    expect(c.getRevisionState().revision).toBe(1);
+    c.close();
+  });
+
   it('refuses a second writer while the project is open', () => {
     const s = ProjectStore.open(file, { create: true });
     expect(() => ProjectStore.open(file)).toThrow(ProjectLockedError);

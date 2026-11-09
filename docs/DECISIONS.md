@@ -50,3 +50,7 @@ Each entry: the decision, why, and what would make us revisit it.
 ## D12 · Look-ahead window trims edge holidays (2026-11-09)
 - A look-ahead runs from the Monday of the data-date week to the Friday of the last week, but a holiday on either edge is trimmed so the window starts and ends on working days (Labor Day gives a Tuesday start; Thanksgiving Friday gives a Wednesday end when Thursday is also off).
 - The sheet title shows those first and last working days, so it always matches the dates on the grid.
+
+## D13 · Save As makes a new project (2026-11-09)
+- A Save As copy gets a new project id, saved as a logged change in the copy. The original file keeps its id. Two files never share one project identity, so later field sync and packet matching can key on the project id.
+- The copy keeps the original's change log, so its history still shows where it came from.

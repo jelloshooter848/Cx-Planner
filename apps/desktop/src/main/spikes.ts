@@ -1,9 +1,16 @@
-/** Headless M0 spike checks, run with `electron . --spike-pdf --spike-sqlite [--out dir]`. */
+/**
+ * Headless checks, run with `electron . --spike-pdf --spike-sqlite --spike-session [--out dir]`.
+ * The sample-project demo lives here: the app itself only opens real project files.
+ */
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { largeProject, riversideProject } from '@cx/fixtures';
 import { ProjectLockedError, ProjectStore } from '@cx/storage';
+import { FileController } from './files.js';
+import { RecentFiles, SettingsFile } from './prefs.js';
+import { ScriptedDialogs } from './scripted-dialogs.js';
+import { Session } from './session.js';
 import { fullScheduleDocument, htmlToPdf, lookAheadDocument } from './print.js';
 
 type Result = { name: string; ok: boolean; detail: string };
@@ -42,6 +49,47 @@ export async function runSpikes(args: string[]): Promise<Result[]> {
       const n = again.loadProject().tasks.length;
       again.close();
       return `${n} tasks round-tripped; second writer refused; backup written`;
+    });
+  }
+
+  if (args.includes('--spike-session')) {
+    await check('session: new project, edit, undo, redo, save as, reopen', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'cx-session-'));
+      const dialogs = new ScriptedDialogs();
+      let broadcasts = 0;
+      const recent = new RecentFiles(join(dir, 'user', 'recent.json'));
+      const session = new Session({ broadcast: () => broadcasts++, recent: () => recent.list() });
+      const files = new FileController({ session, dialogs, recent, settings: new SettingsFile(join(dir, 'user', 'settings.json')), defaultWorkspace: join(dir, 'Workspace') });
+      try {
+        dialogs.push({ message: 0, expect: 'workspace' });
+        await files.ensureWorkspace();
+        const tpl = session.listTemplates();
+        if (!tpl.ok || tpl.value.length === 0) throw new Error('no starter templates in the new workspace');
+        const template = session.getTemplate(tpl.value[0]!.id);
+        if (!template.ok) throw new Error(template.message);
+        const file = join(dir, 'Workspace', 'Spike.cxp');
+        dialogs.push({ save: file });
+        const created = await files.newProject({ name: 'Spike', startDate: '2026-11-02' });
+        if (!created.ok) throw new Error(created.message);
+        const added = session.apply({ kind: 'addAssetsFromTemplate', template: template.value, assets: [{ tag: 'SWGR-1A', description: 'Switchgear' }] });
+        if (!added.ok) throw new Error(added.message);
+        const n = session.project!.tasks.length;
+        session.undo();
+        if (session.project!.tasks.length !== 0) throw new Error('undo left tasks behind');
+        session.redo();
+        const copy = join(dir, 'Spike copy.cxp');
+        dialogs.push({ save: copy });
+        const saved = await files.saveAs();
+        if (!saved.ok) throw new Error(saved.message);
+        files.close();
+        const reopened = await files.openRecent(copy);
+        if (!reopened.ok) throw new Error(reopened.message);
+        const state = session.getState();
+        if (state.project!.tasks.length !== n || Object.keys(state.schedule).length !== n) throw new Error('reopened copy lost tasks');
+        return `${n} tasks added, undone, redone, copied and reopened; ${broadcasts} state broadcasts; finish ${state.projectFinish}`;
+      } finally {
+        session.dispose();
+      }
     });
   }
 
