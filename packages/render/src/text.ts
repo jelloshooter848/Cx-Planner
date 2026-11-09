@@ -46,3 +46,32 @@ export function longDate(iso: string): string {
 export function weekdayLetter(iso: string): string {
   return WEEKDAY_LETTER[new Date(`${iso}T00:00:00Z`).getUTCDay()]!;
 }
+
+/**
+ * Break text into lines no wider than `maxWidth` px (by `textWidth`), at spaces where
+ * possible; a single word longer than the line is split between characters.
+ * Always returns at least one line.
+ */
+export function wrapText(s: string, maxWidth: number, fontSize: number, bold = false): string[] {
+  const lines: string[] = [];
+  let cur = '';
+  const fits = (t: string) => textWidth(t, fontSize, bold) <= maxWidth;
+  for (const word of s.trim().split(/\s+/).filter(Boolean)) {
+    const next = cur ? `${cur} ${word}` : word;
+    if (fits(next)) {
+      cur = next;
+      continue;
+    }
+    if (cur) lines.push(cur);
+    let rest = word;
+    while (!fits(rest)) {
+      let n = 1;
+      while (n < rest.length && fits(rest.slice(0, n + 1))) n++;
+      lines.push(rest.slice(0, n));
+      rest = rest.slice(n);
+    }
+    cur = rest;
+  }
+  if (cur || lines.length === 0) lines.push(cur);
+  return lines;
+}

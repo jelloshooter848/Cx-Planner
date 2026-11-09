@@ -15,6 +15,7 @@ import type {
 import { TIMES_KEYS } from './model.js';
 import { ScheduleCycleError, topologicalOrder } from './schedule.js';
 import { instantiateTemplate, TemplateInvalidError, type Template } from './template.js';
+import { isEmptyReapplyPlan, reapplyTemplate as reapply, UnknownAssetError } from './reapply.js';
 
 /**
  * Edit commands. Every change the desktop app makes to a project goes through
@@ -37,12 +38,13 @@ import { instantiateTemplate, TemplateInvalidError, type Template } from './temp
  * command (unknown kinds, unknown fields and wrongly typed values are refused with
  * CommandError rather than stored), and checks ids and values for ordinary edits.
  *
- * Undo commands (`restoreAsset`, `restoreTask`, and `updateAsset` / `updateTask` with
+ * Undo commands (`restoreAsset`, `restoreTask`, `restoreAssets`, and `updateAsset` / `updateTask` with
  * `restore: true`) put back data the project held a moment ago, which may predate the
  * value checks (e.g. a file whose percent complete is 150). They still get the shape
  * checks (required keys, field types, task and link types, readiness records) but skip
  * range and business rules. They are meant to come only from the main process's own undo
- * stack; the IPC handler should refuse them from the renderer.
+ * stack; the IPC handler must refuse them from the renderer (`isInternalCommand` says
+ * which commands those are).
  *
  * An edit that would change nothing (an empty patch, no project-info fields, a move to
  * the task's current place) is refused with CommandError('no-change'), so it never makes
@@ -72,6 +74,7 @@ export type CommandErrorCode =
   | 'invalid-index'
   | 'invalid-calendar'
   | 'invalid-template'
+  | 'other-template'
   | 'invalid-field'
   | 'empty-name'
   | 'empty-batch'
@@ -137,6 +140,36 @@ export type Command =
       index: number;
       tasks: Positioned<Task>[];
       dependencies: Positioned<Dependency>[];
+    }
+  /**
+   * Re-applies a template to assets made from it (see reapply.ts for the rules: progress
+   * is never lost, user-added tasks and links to other assets are kept). Undone by
+   * `restoreAssets`.
+   */
+  | {
+      kind: 'reapplyTemplate';
+      assetIds: Id[];
+      template: Template;
+      /**
+       * Required to re-apply to an asset made from a different template (another template
+       * id), which replaces its whole template plan; refused otherwise.
+       */
+      allowOtherTemplate?: true;
+    }
+  /**
+   * Undo of reapplyTemplate: a snapshot of some assets. Each listed asset (which must
+   * exist) is replaced, every task of those assets and every link touching one is taken
+   * out, and the snapshot's tasks and links go back at their recorded positions in
+   * project.tasks and project.dependencies, codes as recorded. Its inverse is a snapshot
+   * of the state it replaced.
+   */
+  | {
+      kind: 'restoreAssets';
+      assets: Asset[];
+      tasks: Positioned<Task>[];
+      dependencies: Positioned<Dependency>[];
+      /** For the undo menu and the change log. */
+      summary?: string;
     }
   | {
       kind: 'updateAsset';
@@ -221,6 +254,8 @@ export function applyCommand(project: Project, cmd: Command): CommandResult {
     case 'addAssetsFromTemplate': return addAssetsFromTemplate(project, cmd);
     case 'removeAsset': return removeAsset(project, cmd.id);
     case 'restoreAsset': return restoreAsset(project, cmd);
+    case 'reapplyTemplate': return reapplyTemplateCommand(project, cmd);
+    case 'restoreAssets': return restoreAssets(project, cmd);
     case 'updateAsset': return updateAsset(project, cmd.id, cmd.patch, cmd.restore === true);
     case 'addTask': return addTask(project, cmd);
     case 'removeTask': return removeTask(project, cmd.id);
@@ -239,6 +274,29 @@ export function applyCommand(project: Project, cmd: Command): CommandResult {
   }
 }
 
+/**
+ * True for commands only the main process may issue: undo commands that put back earlier
+ * data and skip range checks (`restoreAsset`, `restoreTask`, `restoreAssets`, and
+ * `updateAsset` / `updateTask` with `restore: true`), or a batch holding one. The IPC
+ * handler must refuse these from the renderer. Takes unchecked input.
+ */
+export function isInternalCommand(cmd: unknown): boolean {
+  if (!isPlainObject(cmd)) return false;
+  switch (cmd.kind) {
+    case 'restoreAsset':
+    case 'restoreTask':
+    case 'restoreAssets':
+      return true;
+    case 'updateAsset':
+    case 'updateTask':
+      return cmd.restore !== undefined;
+    case 'batch':
+      return Array.isArray(cmd.commands) && cmd.commands.some(isInternalCommand);
+    default:
+      return false;
+  }
+}
+
 // ---------------------------------------------------------------------------------------
 // Assets
 
@@ -246,6 +304,7 @@ function addAssetsFromTemplate(
   project: Project,
   cmd: Extract<Command, { kind: 'addAssetsFromTemplate' }>,
 ): CommandResult {
+  checkTemplateShape(cmd.template);
   if (!Array.isArray(cmd.assets)) throw new CommandError('invalid-field', 'Assets must be a list');
   if (cmd.assets.length === 0) throw new CommandError('empty-batch', 'No assets to add');
   for (const input of cmd.assets) {
@@ -360,6 +419,112 @@ function restoreAsset(project: Project, cmd: Extract<Command, { kind: 'restoreAs
     project: next,
     inverse: { kind: 'removeAsset', id: cmd.asset.id },
     summary: `Restored asset ${cmd.asset.tag}`,
+  };
+}
+
+function reapplyTemplateCommand(project: Project, cmd: Extract<Command, { kind: 'reapplyTemplate' }>): CommandResult {
+  if (!Array.isArray(cmd.assetIds) || cmd.assetIds.some((id) => typeof id !== 'string')) {
+    throw new CommandError('invalid-field', 'Asset ids must be a list of strings');
+  }
+  if (cmd.assetIds.length === 0) throw new CommandError('empty-batch', 'No assets to re-apply the template to');
+  if (new Set(cmd.assetIds).size !== cmd.assetIds.length) {
+    throw new CommandError('invalid-field', 'An asset is listed more than once');
+  }
+  if (cmd.allowOtherTemplate !== undefined && cmd.allowOtherTemplate !== true) {
+    throw new CommandError('invalid-field', 'allowOtherTemplate must be true when set');
+  }
+  checkTemplateShape(cmd.template);
+  let result;
+  try {
+    result = reapply(project, cmd.assetIds, cmd.template);
+  } catch (e) {
+    if (e instanceof TemplateInvalidError) throw new CommandError('invalid-template', e.message);
+    if (e instanceof UnknownAssetError) throw new CommandError('unknown-asset', e.message);
+    throw e;
+  }
+  const { plans } = result;
+  const tags = cmd.assetIds.map((id) => project.assets.find((a) => a.id === id)!.tag).join(', ');
+  const other = plans.filter((p) => p.templateMismatch);
+  if (other.length > 0 && cmd.allowOtherTemplate !== true) {
+    const otherTags = other.map((p) => project.assets.find((a) => a.id === p.assetId)!.tag).join(', ');
+    throw new CommandError('other-template', `${otherTags} ${other.length === 1 ? 'was' : 'were'} made from another template than ${cmd.template.name}`);
+  }
+  if (plans.every(isEmptyReapplyPlan)) {
+    throw new CommandError('no-change', `${tags} already match${cmd.assetIds.length === 1 ? 'es' : ''} ${cmd.template.name}`);
+  }
+  checkNoCycle(result.project.tasks, result.project.dependencies, `Re-applying ${cmd.template.name} would make a loop with links added by hand`);
+  const next = renumber(result.project, cmd.assetIds);
+
+  const count = (f: (p: (typeof plans)[number]) => number) => plans.reduce((n, p) => n + f(p), 0);
+  const parts = [
+    [count((p) => p.added.length), 'added'],
+    [count((p) => p.updated.length), 'updated'],
+    [count((p) => p.removed.length), 'removed'],
+    [count((p) => p.conflicts.length), 'kept with conflicts'],
+  ] as const;
+  const detail = parts.filter(([n]) => n > 0).map(([n, what]) => `${plural(n, 'task')} ${what}`).join(', ');
+  const summary = `Re-applied ${cmd.template.name} v${cmd.template.version} to ${tags}${detail ? `: ${detail}` : ''}`;
+  return { project: next, inverse: { ...snapshotAssets(project, cmd.assetIds), summary: undoSummary(summary) }, summary };
+}
+
+/** The restoreAssets command that puts the listed assets back as they are in `project`. */
+function snapshotAssets(
+  project: Project,
+  assetIds: readonly Id[],
+): Extract<Command, { kind: 'restoreAssets' }> {
+  const ids = new Set(assetIds);
+  const assets = project.assets.filter((a) => ids.has(a.id));
+  const tasks: Positioned<Task>[] = [];
+  project.tasks.forEach((t, i) => ids.has(t.assetId) && tasks.push({ item: t, index: i }));
+  const taskIds = new Set(tasks.map((t) => t.item.id));
+  const dependencies: Positioned<Dependency>[] = [];
+  project.dependencies.forEach(
+    (d, i) => (taskIds.has(d.predecessorId) || taskIds.has(d.successorId)) && dependencies.push({ item: d, index: i }),
+  );
+  return { kind: 'restoreAssets', assets, tasks, dependencies };
+}
+
+function restoreAssets(project: Project, cmd: Extract<Command, { kind: 'restoreAssets' }>): CommandResult {
+  if (!Array.isArray(cmd.assets) || cmd.assets.length === 0) {
+    throw new CommandError('invalid-field', 'Assets must be a non-empty list');
+  }
+  if (cmd.summary !== undefined && typeof (cmd.summary as unknown) !== 'string') {
+    throw new CommandError('invalid-field', 'Summary must be a string');
+  }
+  for (const a of cmd.assets) {
+    checkAssetShape(a);
+    if (!project.assets.some((x) => x.id === a.id)) throw new CommandError('unknown-asset', `No asset with id "${a.id}"`);
+  }
+  const ids = new Set(cmd.assets.map((a) => a.id));
+  if (ids.size !== cmd.assets.length) throw new CommandError('invalid-field', 'An asset is listed more than once');
+  checkPositionedList(cmd.tasks, 'Tasks');
+  checkPositionedList(cmd.dependencies, 'Links');
+  for (const { item } of cmd.tasks) {
+    checkTaskShape(item);
+    if (!ids.has(item.assetId)) throw new CommandError('unknown-asset', `Task "${item.id}" belongs to an asset not in the snapshot`);
+  }
+  for (const { item } of cmd.dependencies) checkDependencyShape(item);
+
+  const before = snapshotAssets(project, [...ids]);
+  const gone = new Set(before.tasks.map((t) => t.item.id));
+  const keptTasks = project.tasks.filter((t) => !ids.has(t.assetId));
+  const used = new Set(keptTasks.map((t) => t.id));
+  for (const { item } of cmd.tasks) {
+    if (used.has(item.id)) throw new CommandError('duplicate-id', `Task id "${item.id}" is already used`);
+    used.add(item.id);
+  }
+  const assets = project.assets.map((a) => (ids.has(a.id) ? cmd.assets.find((x) => x.id === a.id)! : a));
+  const tasks = insertPositioned(keptTasks, cmd.tasks);
+  const dependencies = insertPositioned(
+    project.dependencies.filter((d) => !gone.has(d.predecessorId) && !gone.has(d.successorId)),
+    cmd.dependencies,
+  );
+  checkDependencies(tasks, dependencies);
+  const summary = cmd.summary ?? `Restored ${plural(cmd.assets.length, 'asset')}`;
+  return {
+    project: { ...project, assets, tasks, dependencies },
+    inverse: { ...before, summary: undoSummary(summary) },
+    summary,
   };
 }
 
@@ -975,6 +1140,7 @@ const TASK_FIELDS: Readonly<Record<string, FieldSpec>> = {
   actualFinish: { kind: 'string', optional: true },
   readiness: { kind: 'readiness', optional: true },
   templateKey: { kind: 'string', optional: true },
+  notes: { kind: 'string', optional: true },
 };
 
 const ASSET_FIELDS: Readonly<Record<string, FieldSpec>> = {
@@ -1069,6 +1235,49 @@ function checkDependencyShape(d: unknown): asserts d is Dependency {
     throw new CommandError('invalid-field', 'A link needs a predecessor, a successor and a lag');
   }
   if (!DEP_TYPES.includes(d.type as DependencyType)) throw new CommandError('invalid-type', `Unknown link type "${String(d.type)}"`);
+}
+
+/**
+ * Structural checks for a template arriving in a command: the fields instantiating or
+ * re-applying it reads, with the right types and known task and link types. Value rules
+ * (keys, durations, loops) are left to validateTemplate.
+ */
+function checkTemplateShape(t: unknown): asserts t is Template {
+  const bad = (what: string): never => {
+    throw new CommandError('invalid-template', `The template ${what}`);
+  };
+  if (!isPlainObject(t)) bad('must be an object');
+  const tpl = t as Record<string, unknown>;
+  if (typeof tpl.id !== 'string') bad('needs an id');
+  if (typeof tpl.name !== 'string') bad('needs a name');
+  if (typeof tpl.version !== 'number') bad('needs a version number');
+  if (!Array.isArray(tpl.tasks)) bad('needs a list of tasks');
+  for (const task of tpl.tasks as unknown[]) {
+    if (!isPlainObject(task)) bad('has a task that is not an object');
+    const tt = task as Record<string, unknown>;
+    if (typeof tt.key !== 'string' || typeof tt.name !== 'string' || typeof tt.trade !== 'string') {
+      bad('has a task without a key, name or trade');
+    }
+    const label = `task "${String(tt.key)}"`;
+    if (typeof tt.durationDays !== 'number') bad(`${label} has no duration`);
+    if (!TASK_TYPES.includes(tt.type as TaskType)) bad(`${label} has an unknown type "${String(tt.type)}"`);
+    if (tt.testForm !== undefined && typeof tt.testForm !== 'string') bad(`${label} test form must be text`);
+    if (tt.noticeLeadDays !== undefined && typeof tt.noticeLeadDays !== 'number') bad(`${label} notice lead time must be a number`);
+    if (!Array.isArray(tt.requiredCerts) || tt.requiredCerts.some((c) => typeof c !== 'string')) {
+      bad(`${label} needs a list of certifications`);
+    }
+    if (!Array.isArray(tt.checklist) || tt.checklist.some((c) => !isPlainObject(c) || typeof c.id !== 'string' || typeof c.text !== 'string')) {
+      bad(`${label} needs a checklist of { id, text } items`);
+    }
+    if (!Array.isArray(tt.predecessors)) bad(`${label} needs a list of predecessors`);
+    for (const p of tt.predecessors as unknown[]) {
+      if (!isPlainObject(p) || typeof p.key !== 'string' || typeof p.lagDays !== 'number') {
+        bad(`${label} has a predecessor without a key or lag`);
+      }
+      const pred = p as Record<string, unknown>;
+      if (!DEP_TYPES.includes(pred.type as DependencyType)) bad(`${label} has an unknown link type "${String(pred.type)}"`);
+    }
+  }
 }
 
 function checkPositionedList(list: unknown, what: string): void {
