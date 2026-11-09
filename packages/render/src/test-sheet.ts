@@ -30,7 +30,8 @@ export interface TestSheetOptions {
   instrumentFields?: boolean;
   /**
    * Fewest hand-written comment lines on the last page. Default 1; space left above the
-   * sign-off is filled with more lines, up to 8.
+   * sign-off is filled with more lines, up to 8. Capped so the comments, sign-off and at
+   * least one checklist row still fit on one page.
    */
   commentLines?: number;
   /** Wording of the hold / witness point box. Defaults to a generic release statement. */
@@ -75,6 +76,8 @@ const FOOTER_H = 34; // generated line + page number
 const SIGN_H = 52;
 const COMMENT_LINE = 25;
 const MAX_FILL_COMMENT_LINES = 8;
+/** Lines of item text that a capped comment area always leaves room for. */
+const ROW_BUDGET_LINES = 10;
 
 interface Col {
   key: 'num' | 'check' | 'acceptance' | 'result' | 'notes' | 'init';
@@ -86,19 +89,26 @@ interface Col {
 export function layoutTestSheet(opts: TestSheetOptions): TestSheetLayout {
   const cols = columns(opts.checklist.some((i) => i.acceptance?.trim()));
   const colW = (k: Col['key']) => cols.find((c) => c.key === k)?.w ?? 0;
-  const rows = opts.checklist.map((item, i) => {
-    const check = wrapText(item.text, colW('check') - 16, FONT);
-    const acceptance = item.acceptance ? wrapText(item.acceptance, colW('acceptance') - 14, 12) : [];
-    const lines = Math.max(check.length, acceptance.length);
-    return { item, n: i + 1, check, acceptance, h: Math.max(MIN_ROW_H, lines * LINE_H + ROW_PAD) };
-  });
 
   const header = headerHeight(opts);
   const info = opts.instrumentFields === false ? INFO_ROW_H : 2 * INFO_ROW_H;
   const tableTop = (first: boolean) => MY + header + GAP + (first ? info + GAP : 0) + TABLE_HEAD_H;
   const bottom = PAGE_H - MY - FOOTER_H;
-  const tail = tailHeight(opts);
-  const lastBottom = bottom - SIGN_H - tail;
+  // Comment lines may not squeeze the checklist: keep room for a row of ROW_BUDGET_LINES lines.
+  const commentLines = commentLineCount(opts, bottom - SIGN_H - tableTop(true) - (ROW_BUDGET_LINES * LINE_H + ROW_PAD));
+  const lastBottom = bottom - SIGN_H - tailHeight(opts, commentLines);
+  // A row never grows past what fits on the first page above the sign-off, so any single row
+  // fits on any page and the sign-off page always shows part of the checklist.
+  const maxLines = Math.max(1, Math.floor((lastBottom - tableTop(true) - ROW_PAD) / LINE_H));
+
+  const rows = opts.checklist.map((item, i) => {
+    const check = clampLines(wrapText(item.text, colW('check') - 16, FONT), maxLines, colW('check') - 16, FONT);
+    const acceptance = item.acceptance
+      ? clampLines(wrapText(item.acceptance, colW('acceptance') - 14, 12), maxLines, colW('acceptance') - 14, 12)
+      : [];
+    const lines = Math.max(check.length, acceptance.length);
+    return { item, n: i + 1, check, acceptance, h: Math.max(MIN_ROW_H, lines * LINE_H + ROW_PAD) };
+  });
 
   // Greedy fill, then make sure the hold box, comments and sign-off fit after the last row.
   const pages: Array<typeof rows> = [[]];
@@ -114,17 +124,18 @@ export function layoutTestSheet(opts: TestSheetOptions): TestSheetLayout {
   }
   const used = (p: typeof rows, i: number) => tableTop(i === 0) + p.reduce((s, r) => s + r.h, 0);
   const lastIdx = pages.length - 1;
-  if (used(pages[lastIdx]!, lastIdx) > lastBottom) {
+  const prev = pages[lastIdx]!;
+  if (used(prev, lastIdx) > lastBottom && prev.length > 1) {
     // Carry the last row over so the sign-off page still shows part of the checklist.
-    const prev = pages[lastIdx]!;
-    pages.push(prev.length > 1 ? [prev.pop()!] : []);
+    // (A lone row always fits above the sign-off: rows are capped at maxLines.)
+    pages.push([prev.pop()!]);
   }
 
   const total = pages.length;
   const sheets = pages.map((pageRows, i) => ({
     number: i + 1,
     itemIds: pageRows.map((r) => r.item.id),
-    svg: drawPage({ opts, cols, rows: pageRows, first: i === 0, last: i === total - 1, number: i + 1, total, header, info }),
+    svg: drawPage({ opts, cols, rows: pageRows, first: i === 0, last: i === total - 1, number: i + 1, total, header, info, commentLines }),
   }));
   return { paper: PAGE, sheets, itemCount: opts.checklist.length };
 }
@@ -173,12 +184,30 @@ function holdBoxHeight(opts: TestSheetOptions): number {
   return Math.max(66, 36 + holdNoteLines(opts).length * LINE_H);
 }
 
-function tailHeight(opts: TestSheetOptions): number {
-  let h = 0;
-  if (holdKind(opts.task)) h += GAP + holdBoxHeight(opts);
-  const lines = opts.commentLines ?? 1;
-  if (lines > 0) h += GAP + 22 + lines * COMMENT_LINE;
+function holdHeight(opts: TestSheetOptions): number {
+  return holdKind(opts.task) ? GAP + holdBoxHeight(opts) : 0;
+}
+
+/** Requested comment lines, capped to what fits in `room` px together with the hold box. */
+function commentLineCount(opts: TestSheetOptions, room: number): number {
+  const requested = Math.max(0, Math.floor(opts.commentLines ?? 1));
+  if (requested === 0) return 0;
+  const fits = Math.floor((room - holdHeight(opts) - 2 * GAP - 22) / COMMENT_LINE);
+  return Math.max(0, Math.min(requested, fits));
+}
+
+function tailHeight(opts: TestSheetOptions, commentLines: number): number {
+  let h = holdHeight(opts);
+  if (commentLines > 0) h += GAP + 22 + commentLines * COMMENT_LINE;
   return h + GAP;
+}
+
+/** Keep at most `max` lines; the last kept line ends with an ellipsis when text was cut. */
+function clampLines(lines: string[], max: number, width: number, size: number): string[] {
+  if (lines.length <= max) return lines;
+  const kept = lines.slice(0, max);
+  kept[max - 1] = fit(`${lines.slice(max - 1).join(' ')}…`, width, size);
+  return kept;
 }
 
 interface DrawArgs {
@@ -191,6 +220,7 @@ interface DrawArgs {
   total: number;
   header: number;
   info: number;
+  commentLines: number;
 }
 
 function drawPage(a: DrawArgs): string {
@@ -319,7 +349,7 @@ function drawPage(a: DrawArgs): string {
     }
 
     // ---- Comments
-    const min = opts.commentLines ?? 1;
+    const min = a.commentLines;
     if (min > 0) {
       y += GAP;
       const room = PAGE_H - MY - FOOTER_H - SIGN_H - GAP - (y + 22);

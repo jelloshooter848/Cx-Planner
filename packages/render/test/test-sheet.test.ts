@@ -131,6 +131,55 @@ describe('layoutTestSheet', () => {
     }
   });
 
+  // Lowest baseline / line y of anything drawn above the footer, and the sign-off line y.
+  const geometry = (svg: string) => {
+    const footerY = 1056 - 48 - 6;
+    const ys: number[] = [];
+    for (const m of svg.matchAll(/<text x="[^"]*" y="([\d.]+)"[^>]*>(.*?)<\/text>/g)) {
+      const base = Number(m[1]);
+      const extra = (m[2]!.match(/dy="/g) ?? []).length * 15;
+      ys.push(base + extra);
+    }
+    for (const m of svg.matchAll(/<line [^>]*y1="([\d.]+)" [^>]*y2="([\d.]+)"/g)) ys.push(Number(m[1]), Number(m[2]));
+    const above = ys.filter((y) => Math.abs(y - footerY) > 0.01);
+    return { maxY: Math.max(...above), footerY };
+  };
+
+  it('keeps everything inside the page with a very tall item and many comment lines', () => {
+    const huge = Array.from({ length: 600 }, (_, i) => `word${i}`).join(' ');
+    for (const task of [relayTask, holdTask]) {
+      for (const checklist of [[{ id: 'big', text: huge }], [...items(8), { id: 'big', text: huge }, ...items(3).map((c) => ({ ...c, id: `z${c.id}` }))]]) {
+        const l = sheet({ task, checklist, commentLines: 30 });
+        expect(l.sheets.flatMap((s) => s.itemIds)).toEqual(checklist.map((c) => c.id));
+        for (const s of l.sheets) {
+          expect(s.itemIds.length).toBeGreaterThan(0);
+          const { maxY, footerY } = geometry(s.svg);
+          expect(maxY).toBeLessThanOrEqual(1056 - 48);
+          expect(maxY).toBeLessThan(footerY - 10);
+        }
+        // Comment lines stay above the sign-off line.
+        const last = l.sheets.at(-1)!.svg;
+        const signY = Number(/<line [^>]*y1="([\d.]+)"[^>]*\/><text [^>]*>Performed by/.exec(last)![1]);
+        const commentsAt = last.indexOf('>COMMENTS<');
+        const commentYs = [...last.slice(commentsAt, last.indexOf('Performed by')).matchAll(/<line [^>]*y1="([\d.]+)"/g)].map((m) => Number(m[1]));
+        expect(commentYs.length).toBeGreaterThan(0);
+        for (const y of commentYs.slice(0, -1)) expect(y).toBeLessThan(signY);
+      }
+    }
+    // The over-long item is cut with an ellipsis rather than drawn off the page.
+    expect(allSvg({ checklist: [{ id: 'big', text: huge }] })).toContain('…');
+  });
+
+  it('caps comment lines but honours small requests', () => {
+    const lines = (o: Partial<TestSheetOptions>) => {
+      const svg = sheet(o).sheets.at(-1)!.svg;
+      return count(svg.slice(svg.indexOf('>COMMENTS<'), svg.indexOf('Performed by')), '<line ');
+    };
+    expect(lines({ commentLines: 0 })).toBe(0);
+    expect(lines({ checklist: items(25), commentLines: 3 })).toBeGreaterThanOrEqual(3);
+    expect(lines({ commentLines: 30 })).toBeLessThan(30);
+  });
+
   it('shows a hold point box for holds, a witness box for witness points and none otherwise', () => {
     expect(allSvg({ task: holdTask })).toContain('>HOLD POINT<');
     expect(allSvg({ task: { ...holdTask, type: 'witness' } })).toContain('>WITNESS POINT<');
