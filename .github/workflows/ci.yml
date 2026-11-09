@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, typecheck, test (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - name: Install Chromium for print and PWA checks
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Render sample prints (headless Chromium)
+        run: pnpm print:samples spike-output/chromium
+      - name: Field PWA end-to-end (phone + iPad, offline)
+        run: pnpm --filter @cx/field build && pnpm field:e2e
+      - name: Electron spikes (SQLite + printToPDF)
+        run: |
+          pnpm --filter @cx/desktop run build
+          cd apps/desktop
+          xvfb-run -a pnpm exec electron . --no-sandbox --spike-sqlite --spike-pdf --out ../../spike-output/electron-linux
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prints-linux
+          path: spike-output/
+
+  windows:
+    name: Desktop spikes and packaging (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - name: Electron spikes (SQLite + printToPDF on Windows)
+        shell: bash
+        run: |
+          pnpm --filter @cx/desktop run build
+          cd apps/desktop
+          pnpm exec electron . --spike-sqlite --spike-pdf --out ../../spike-output/electron-windows
+      - name: Package unsigned app folder
+        run: pnpm --filter @cx/desktop run package:dir
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prints-windows
+          path: spike-output/

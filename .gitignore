@@ -1,0 +1,13 @@
+node_modules/
+dist/
+out/
+release/
+coverage/
+*.tsbuildinfo
+.vite/
+spike-output/
+test-results/
+*.cxp
+*.cxp.lock
+*.cxp-journal
+.backups/

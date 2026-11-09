@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "lib": ["ES2023", "DOM", "DOM.Iterable", "WebWorker"],
+    "jsx": "react-jsx",
+    "types": ["vite/client", "vite-plugin-pwa/client"]
+  },
+  "include": ["src", "vite.config.ts"]
+}

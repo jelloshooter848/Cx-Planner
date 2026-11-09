@@ -1,0 +1,41 @@
+{
+  "name": "cx-planner",
+  "private": true,
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "spike:pdf": "pnpm --filter @cx/desktop run spike:pdf",
+    "spike:sqlite": "pnpm --filter @cx/desktop run spike:sqlite",
+    "dev:desktop": "pnpm --filter @cx/desktop run dev",
+    "dev:field": "pnpm --filter @cx/field run dev",
+    "print:samples": "tsx scripts/print-samples.ts",
+    "field:e2e": "tsx scripts/field-e2e.ts",
+    "icons": "tsx scripts/make-icons.ts"
+  },
+  "devDependencies": {
+    "@cx/core": "workspace:*",
+    "@cx/fixtures": "workspace:*",
+    "@cx/packet": "workspace:*",
+    "@cx/render": "workspace:*",
+    "@cx/storage": "workspace:*",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.6",
+    "eslint": "^10.14.0",
+    "globals": "^17.14.0",
+    "playwright": "1.63.0",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.2",
+    "vitest": "^5.1.0"
+  }
+}

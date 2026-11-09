@@ -8,13 +8,15 @@ This plan is built from `docs/design/HANDOFF.md` and the 39 mockups in `docs/des
 
 | Question | Recommendation | Why |
 |---|---|---|
-| SQLite or JSON project file | **SQLite** (`better-sqlite3`), one `.cxp` file per project. Add a JSON export for backup and diffing. | It's one portable file and writes are transactional, so a crash can't half-save the file. It handles thousands of material lines and append-only field records easily, and it can query the rollups. A JSON file would have to be rewritten on every save and is easy to corrupt. |
+| SQLite or JSON project file | **SQLite**, one `.cxp` file per project, through Node's built-in `node:sqlite` (changed from `better-sqlite3` in M0, see `docs/DECISIONS.md` D1). Add a JSON export for backup and diffing. | It's one portable file and writes are transactional, so a crash can't half-save the file. It handles thousands of material lines and append-only field records easily, and it can query the rollups. A JSON file would have to be rewritten on every save and is easy to corrupt. |
 | Photos and binary files | Store photos **inside** the `.cxp` as resized JPEGs plus thumbnails. Keep documents as **links** (as the handoff says). | This keeps the project to one file. Resizing to about 2,000 px keeps a job with thousands of photos to a few GB. |
 | Workspace | A folder holding `workspace.cxw` (SQLite) for the roster, certifications, instruments and template library. Projects refer to people and instruments by stable UUIDs. | The dashboard [38] and staffing across projects need one shared source. |
 | Templates: workspace or project? | The library lives in the workspace. **Applying a template copies a snapshot of it into the project.** | Board [2] says the library is "stored with the project file", while the handoff puts it in the workspace. A snapshot keeps a project file portable and makes "re-apply to existing assets" an explicit action. |
 | Licence | **Apache-2.0** (MIT works just as well). Decide before the first public push. | Apache-2.0 includes an explicit patent grant and costs nothing extra. |
 | Name | Keep "Cx Planner" and the `.cxp` extension as the working name. Choose the final name before the first public release. | Renaming later only touches strings, the installer ID and the file extension. |
 | Samples needed from you | Submittal log export, timesheet CSV, the Excel order form's columns, a GC schedule (MSP XML, P6 XER or CSV), and 2 or 3 real test or checklist forms. | Each of the import formats in milestones M3, M6 and M8 needs a real file to build against. |
+
+> **Status (2026-11-09):** decisions above are confirmed. M0 is done: see `docs/M0-REPORT.md`. The field app now targets **iPad first** (decision D6).
 
 > **Note:** the HTML mockups load `./support.js`, which isn't in the handoff zip, so they may not render fully. The PNGs are the reference.
 
@@ -125,7 +127,10 @@ Also in M0: repo scaffold, CI (lint, typecheck, tests, Windows build), licence, 
 
   The detail page is built with empty sections that later milestones fill: tests, issues and lots.
 - Printed asset status sheet [25].
-- Procurement export [12]: a user-supplied parts catalog (CSV), order rows in your Excel column order, and copy to clipboard or CSV.
+- Procurement export [12]: order rows in the order form's columns (Part #, Description, Quantity, UOM, Commodity Code / PO), copied to the clipboard or saved as CSV for pasting.
+  - **Parts catalog:** read (never written) from the company workbook's *Item Master* sheet, about 11,600 parts with part number, description, category, UOM and UPC. CSV import also works.
+  - **Commodity code** defaults from the part number (`AS-MA-01606` → MA). Custom items without a part number pick a code by hand.
+  - The real workbook holds names and contact details, so it is never committed; tests use a made-up workbook in the same layout.
 - Baselines (snapshot and slip in workdays). They're cheap to add here, and capturing a baseline early on a job is worth a lot later.
 
 **Done when:** the look-ahead shows what is blocking each task, and you can raise orders straight from it.

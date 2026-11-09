@@ -1,0 +1,39 @@
+# Publishes the field PWA to GitHub Pages so it can be installed on an iPad for testing.
+# One-time setup: repo Settings → Pages → Source: "GitHub Actions".
+name: Field app (GitHub Pages)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['apps/field/**', 'packages/packet/**']
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cx/field build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/field/dist
+      - id: deployment
+        uses: actions/deploy-pages@v4

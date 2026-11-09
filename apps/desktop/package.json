@@ -1,0 +1,67 @@
+{
+  "name": "@cx/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Cx Planner desktop app",
+  "main": "dist/main/main.cjs",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs && electron .",
+    "spike:pdf": "node scripts/build.mjs && electron . --spike-pdf",
+    "spike:sqlite": "node scripts/build.mjs && electron . --spike-sqlite",
+    "package:dir": "node scripts/build.mjs && electron-builder --dir",
+    "smoke": "node scripts/build.mjs && electron . --spike-sqlite --spike-pdf --out ../../spike-output/electron"
+  },
+  "devDependencies": {
+    "@cx/core": "workspace:*",
+    "@cx/fixtures": "workspace:*",
+    "@cx/render": "workspace:*",
+    "@cx/storage": "workspace:*",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "vite": "^8.3.7"
+  },
+  "build": {
+    "appId": "org.cxplanner.desktop",
+    "productName": "Cx Planner",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "npmRebuild": false,
+    "fileAssociations": [
+      {
+        "ext": "cxp",
+        "name": "Cx Planner project",
+        "role": "Editor"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "dir"
+      ]
+    },
+    "linux": {
+      "target": [
+        "dir"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dir"
+      ]
+    }
+  }
+}
