@@ -86,6 +86,7 @@ export function printSetup(project: Project, templates: readonly Template[], his
     history: history.map(printRecordSummary).filter((r): r is PrintRecordSummary => r !== null),
     nextRevision: nextRev,
     checklistTasks,
+    untrackedTestSheets: history.some((r) => r.kind === 'test-sheets' && r.taskIds === null),
   };
 }
 

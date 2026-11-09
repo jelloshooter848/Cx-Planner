@@ -8,7 +8,7 @@ import { starterTemplate } from '@cx/templates';
 import { FileController } from '../src/main/files.js';
 import { RecentFiles, SettingsFile } from '../src/main/prefs.js';
 import { PrintController } from '../src/main/print-controller.js';
-import { buildPrint, revisionHistory, sheetRevision } from '../src/main/print-jobs.js';
+import { buildPrint, printSetup, revisionHistory, sheetRevision } from '../src/main/print-jobs.js';
 import { ScriptedDialogs } from '../src/main/scripted-dialogs.js';
 import { Session } from '../src/main/session.js';
 import { checkPrintRequest } from '../src/main/validate.js';
@@ -198,6 +198,11 @@ describe('print jobs', () => {
     expect(sheetRevision([old, listed], 't1')).toBe('B');
     expect(sheetRevision([old, listed], 't2')).toBe('A');
     expect(sheetRevision([{ ...listed, kind: 'lookahead' }], 't1')).toBe('A');
+    const project = riversideProject();
+    const templates = [starterTemplate('starter-lv-switchgear')!];
+    expect(printSetup(project, templates, [old, listed]).untrackedTestSheets).toBe(true);
+    expect(printSetup(project, templates, [listed]).untrackedTestSheets).toBe(false);
+    expect(printSetup(project, templates, [{ ...old, kind: 'lookahead' }]).untrackedTestSheets).toBe(false);
   });
 
   it('prints the template\'s acceptance criteria on the test sheet', () => {
