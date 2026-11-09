@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Field app: packet</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+button,input,select,textarea{font-family:inherit}
+</style>
+</helmet>
+<div style="width:390px;height:844px;box-sizing:border-box;background:#F4F5F7;color:#1B1F24;font-family:Inter,system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden;font-size:15px"><div style="background:#1B1F24;color:#fff;padding:20px 18px 16px">
+<div style="font-size:13px;color:#C9CED6">Cx Field</div>
+<div style="font-size:22px;font-weight:700;margin-top:2px">Packet P-016</div>
+<div style="font-size:14px;color:#E1E5EB;margin-top:4px">Issued Nov 3 · XFMR-1A</div></div>
+<div style="margin:12px 16px 0;padding:10px 12px;border-radius:8px;background:#B3261E;color:#fff;font-size:14px;font-weight:600">Due Nov 5. This packet is 1 day overdue.</div>
+<div style="padding:12px 16px;display:flex;flex-direction:column;gap:10px;flex:1">
+<div style="font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#5B6470">Sheets</div>
+<button type="button" style="display:block;width:100%;text-align:left;background:#fff;border:1px solid #D5D9E0;border-radius:10px;padding:14px;min-height:76px;box-sizing:border-box;color:#1B1F24"><div style="display:flex;justify-content:space-between;gap:8px"><span style="font-size:16px;font-weight:600">Visual & mechanical inspection</span><span style="font-size:13px;color:#5B6470">XFMR-01</span></div><div style="height:8px;background:#E1E5EB;border-radius:4px;margin:10px 0 6px;overflow:hidden"><div style="width:100%;height:100%;background:#1E6B43"></div></div><div style="font-size:13px;color:#5B6470">All 12 done</div></button>
+<button type="button" style="display:block;width:100%;text-align:left;background:#fff;border:1px solid #D5D9E0;border-radius:10px;padding:14px;min-height:76px;box-sizing:border-box;color:#1B1F24"><div style="display:flex;justify-content:space-between;gap:8px"><span style="font-size:16px;font-weight:600">Turns ratio & winding resistance</span><span style="font-size:13px;color:#5B6470">XFMR-02</span></div><div style="height:8px;background:#E1E5EB;border-radius:4px;margin:10px 0 6px;overflow:hidden"><div style="width:56%;height:100%;background:#1E6B43"></div></div><div style="font-size:13px;color:#5B6470">5 of 9 done</div></button>
+<button type="button" style="display:block;width:100%;text-align:left;background:#fff;border:1px solid #D5D9E0;border-radius:10px;padding:14px;min-height:76px;box-sizing:border-box;color:#1B1F24"><div style="display:flex;justify-content:space-between;gap:8px"><span style="font-size:16px;font-weight:600">Insulation resistance & PF</span><span style="font-size:13px;color:#5B6470">XFMR-03</span></div><div style="height:8px;background:#E1E5EB;border-radius:4px;margin:10px 0 6px;overflow:hidden"><div style="width:0%;height:100%;background:#1E6B43"></div></div><div style="font-size:13px;color:#5B6470">Not started</div></button>
+<div style="border:2px solid #B58100;background:#FFF6DD;border-radius:8px;padding:10px 12px;font-size:13.5px;line-height:1.4;margin-top:4px">Your work is saved on this phone only. Export results at the end of each shift so nothing is lost.</div>
+</div>
+<div style="padding:12px 16px 18px;background:#fff;border-top:1px solid #D5D9E0;display:flex;flex-direction:column;gap:8px">
+<button type="button" style="background:#1F5FBF;color:#fff;border:2px solid #1F5FBF;border-radius:8px;min-height:52px;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;box-sizing:border-box">Export results file</button>
+<div style="font-size:12.5px;color:#5B6470;text-align:center">Last export: never</div></div></div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

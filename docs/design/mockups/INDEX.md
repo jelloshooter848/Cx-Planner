@@ -1,0 +1,43 @@
+# Mockup index
+
+Open any file in `html/` in a browser. `screenshots/` has a PNG of each.
+
+- 1 · Schedule (Gantt) view → `html/Main.html`
+- 2 · Template editor → `html/Templates.html`
+- 3 · Printed look-ahead (Tabloid, landscape) → `html/PrintGantt.html`
+- 4 · Printed test sheet (Letter) → `html/TestSheet.html`
+- 5 · Add assets from a template → `html/AddAssets.html`
+- 6 · Field packet register → `html/Register.html`
+- 7 · Create a field packet → `html/CreatePacket.html`
+- 8 · Field app: packet → `html/FieldList.html`
+- 9 · Field app: checklist → `html/FieldCheck.html`
+- 10 · Field app: review & sign → `html/FieldReview.html`
+- 11 · Task readiness: tools, information, materials, expectations, safety → `html/Readiness.html`
+- 12 · Create procurement order → `html/Procurement.html`
+- 13 · Full schedule, large format (ANSI D landscape) → `html/FullSchedule.html`
+- 14 · Hover states: row, letter, blocked, safety → `html/Hover.html`
+- 15 · Team view: people by week → `html/Team.html`
+- 16 · Demand view: people needed per week → `html/Demand.html`
+- 17 · Printed 3-week manpower look-ahead (Tabloid, landscape) → `html/PrintManpower.html`
+- 18 · Order review against submittals → `html/OrderReview.html`
+- 19 · Material register: lots, sub-lots, gates → `html/MaterialRegister.html`
+- 20 · Pre-inspection: lines → `html/PreInspect1.html`
+- 21 · Pre-inspection: sign-off → `html/PreInspect2.html`
+- 22 · Inspector check sheet (Letter, landscape) → `html/CheckSheet.html`
+- 23 · Asset status register (all assets) → `html/AssetRegister.html`
+- 24 · Asset detail: everything for one asset → `html/AssetDetail.html`
+- 25 · Printed asset status sheet (Letter) → `html/AssetSheet.html`
+- 26 · Issues log: NCRs, deficiencies, punch → `html/Issues.html`
+- 27 · Inspection requests: AHJ, third-party, witness → `html/Inspections.html`
+- 28 · Printed punch list (Letter, landscape) → `html/PunchPrint.html`
+- 29 · Baseline vs. current, GC milestones, changes since last print → `html/Baseline.html`
+- 30 · Weekly progress update → `html/WeeklyUpdate.html`
+- 31 · Import GC schedule → `html/ImportGC.html`
+- 32 · Test instruments and calibration → `html/Instruments.html`
+- 33 · Team certifications → `html/Certs.html`
+- 34 · Weekly QA/QC report (Letter) → `html/WeeklyReport.html`
+- 35 · Test status by system → `html/TestMatrix.html`
+- 36 · Manpower vs. plan by cost code → `html/ManpowerPlan.html`
+- 37 · Daily log (Letter) → `html/DailyLog.html`
+- 38 · Workspace dashboard (all projects) → `html/Dashboard.html`
+- 39 · Turnover package builder → `html/Turnover.html`

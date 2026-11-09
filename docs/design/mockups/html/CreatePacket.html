@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Create a field packet</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+button,input,select,textarea{font-family:inherit}
+</style>
+</helmet>
+<div style="width:920px;height:640px;position:relative;background:#7D8696;font-family:Inter,system-ui,sans-serif;color:#1B1F24;overflow:hidden">
+<div style="position:absolute;left:60px;top:24px;width:800px;background:#fff;border-radius:8px;box-shadow:0 12px 40px rgba(0,0,0,.35);overflow:hidden">
+<div style="padding:14px 20px;border-bottom:1px solid #D5D9E0;display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:18px;font-weight:700">Create a field packet</div>
+<div style="font-size:12.5px;color:#5B6470;margin-top:2px">Packs the chosen sheets into one file and adds it to the register.</div></div><div style="font-size:13px;font-weight:700">P-018</div></div>
+<div style="display:flex;gap:20px;padding:14px 20px">
+<div style="flex:1;min-width:0">
+<div style="display:flex;gap:10px"><label style="display:block;font-size:11.5px;color:#5B6470;font-weight:500;margin-bottom:10px">Issue to<input type="text" value="T. Okafor" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;height:32px;border:1px solid #B9C0CB;border-radius:4px;padding:0 8px;font-size:12.5px;color:#1B1F24;background:#fff"></label><label style="display:block;font-size:11.5px;color:#5B6470;font-weight:500;margin-bottom:10px">Company / role<input type="text" value="Electrical – Crew B" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;height:32px;border:1px solid #B9C0CB;border-radius:4px;padding:0 8px;font-size:12.5px;color:#1B1F24;background:#fff"></label></div>
+<label style="display:block;font-size:11.5px;color:#5B6470;font-weight:500;margin-bottom:10px">Email (for reminders)<input type="text" value="tokafor@example.com" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;height:32px;border:1px solid #B9C0CB;border-radius:4px;padding:0 8px;font-size:12.5px;color:#1B1F24;background:#fff"></label>
+<div style="display:flex;gap:10px"><label style="display:block;font-size:11.5px;color:#5B6470;font-weight:500;margin-bottom:10px">Target completion<input type="text" value="Nov 12, 2026" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;height:32px;border:1px solid #B9C0CB;border-radius:4px;padding:0 8px;font-size:12.5px;color:#1B1F24;background:#fff"></label><label style="display:block;font-size:11.5px;color:#5B6470;font-weight:500;margin-bottom:10px">Sending by<input type="text" value="Email" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;height:32px;border:1px solid #B9C0CB;border-radius:4px;padding:0 8px;font-size:12.5px;color:#1B1F24;background:#fff"></label></div>
+<label style="display:flex;gap:8px;align-items:center;font-size:12.5px;margin-bottom:8px"><input type="checkbox" checked style="margin:0;width:15px;height:15px">Also make a printable PDF of these sheets</label>
+<label style="display:flex;gap:8px;align-items:center;font-size:12.5px"><input type="checkbox" checked style="margin:0;width:15px;height:15px">Print a transmittal cover sheet</label>
+</div>
+<div style="width:340px;flex:none"><div style="font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#5B6470;margin-bottom:6px">Sheets to include</div>
+<div style="border:1px solid #D5D9E0;border-radius:6px;max-height:300px;overflow:hidden"><div style="padding:6px 10px;background:#F4F5F7;font-size:11.5px;font-weight:600;color:#5B6470">XFMR-1A</div><label style="display:flex;gap:8px;align-items:flex-start;padding:6px 10px;border-bottom:1px solid #E6E9EE;font-size:12.5px"><input type="checkbox" checked style="margin:2px 0 0;width:15px;height:15px;flex:none"><span style="flex:1">Visual & mechanical inspection<div style="font-size:11.5px;color:#5B6470">Sheet XFMR-01 · Rev A · Nov 3 – Nov 4</div></span></label><label style="display:flex;gap:8px;align-items:flex-start;padding:6px 10px;border-bottom:1px solid #E6E9EE;font-size:12.5px"><input type="checkbox" checked style="margin:2px 0 0;width:15px;height:15px;flex:none"><span style="flex:1">Turns ratio & winding resistance<div style="font-size:11.5px;color:#5B6470">Sheet XFMR-02 · Rev A · Nov 5 – Nov 9</div></span></label><label style="display:flex;gap:8px;align-items:flex-start;padding:6px 10px;border-bottom:1px solid #E6E9EE;font-size:12.5px"><input type="checkbox"  style="margin:2px 0 0;width:15px;height:15px;flex:none"><span style="flex:1">Insulation resistance & power factor<div style="font-size:11.5px;color:#5B6470">Sheet XFMR-03 · Rev A · Nov 10 – Nov 12</div></span></label><div style="padding:6px 10px;background:#F4F5F7;font-size:11.5px;font-weight:600;color:#5B6470">SWGR-1B</div><label style="display:flex;gap:8px;align-items:flex-start;padding:6px 10px;border-bottom:1px solid #E6E9EE;font-size:12.5px"><input type="checkbox"  style="margin:2px 0 0;width:15px;height:15px;flex:none"><span style="flex:1">Visual & mechanical inspection<div style="font-size:11.5px;color:#5B6470">Sheet LVSG-01 · Rev B · Not yet scheduled</div></span></label></div></div></div>
+<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;background:#F4F5F7;border-top:1px solid #D5D9E0;gap:12px;flex-wrap:wrap">
+<span style="font-size:12.5px"><strong>2 sheets</strong> · Rev A · file name: P-018_Okafor.cxpacket</span><div style="display:flex;gap:8px"><button type="button" style="background:#fff;color:#1B1F24;border:1px solid #B9C0CB;border-radius:4px;padding:0 12px;height:34px;font-size:12.5px;font-weight:500;white-space:nowrap;">Cancel</button><button type="button" style="background:#1F5FBF;color:#fff;border:1px solid #1F5FBF;border-radius:4px;padding:0 12px;height:34px;font-size:12.5px;font-weight:500;white-space:nowrap;">Create packet and save file</button></div></div>
+</div></div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":920,"height":640}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
