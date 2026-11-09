@@ -131,6 +131,8 @@ describe('menu row', () => {
     expect(find(f, 'Save As…')?.enabled).toBe(false);
     expect(find(f, 'Close project')?.enabled).toBe(false);
     expect(find(f, 'Print / Export PDF…')?.enabled).toBe(false);
+    expect(find(f, 'Project settings…')?.enabled).toBe(false);
+    expect(find(items(buildMenus(base, 'schedule'), 'file'), 'Project settings…')).toMatchObject({ enabled: true, action: { type: 'project-settings' } });
     expect(find(items(buildMenus(base, 'schedule'), 'file'), 'Print / Export PDF…')).toMatchObject({ enabled: true, shortcut: 'Ctrl+P', action: { type: 'print' } });
     expect(find(f, 'New project…')?.enabled).toBe(true);
     expect(find(f, 'Open recent')).toMatchObject({ kind: 'submenu', enabled: false });

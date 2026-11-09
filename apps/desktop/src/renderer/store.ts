@@ -13,7 +13,7 @@ import type { ApiResult, AppState, CxApi, EditOutcome, PrintKind, TaskScheduleSu
 
 /** Views shown when a project is open (the welcome screen shows when none is). */
 export type ViewId = 'schedule' | 'templates' | 'lookahead';
-export type DialogId = 'new-project' | 'about' | 'add-assets' | 'print';
+export type DialogId = 'new-project' | 'about' | 'add-assets' | 'print' | 'project-settings';
 /** Time scale of the Schedule view's Gantt. */
 export type ScheduleZoom = 'day' | 'week' | 'month';
 
@@ -63,6 +63,8 @@ export type Action =
   | { type: 'add-assets' }
   /** Opens the Print dialog (needs an open project), on `kind` or the last kind used. */
   | { type: 'print'; kind?: PrintKind }
+  /** Opens the Project settings dialog (needs an open project). */
+  | { type: 'project-settings' }
   | { type: 'view'; view: ViewId }
   | { type: 'about' };
 
@@ -139,6 +141,7 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
   const offMenu = api.onMenu((cmd) => {
     if (cmd === 'new-project') void store.dispatch({ type: 'new-project' });
     else if (cmd === 'print') void store.dispatch({ type: 'print' });
+    else if (cmd === 'project-settings') void store.dispatch({ type: 'project-settings' });
   });
   void api.getState().then(receive, () => {});
 
@@ -194,6 +197,9 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
           return;
         case 'print':
           if (snapshot.app?.project) setUi({ dialog: 'print', printKind: action.kind ?? snapshot.ui.printKind });
+          return;
+        case 'project-settings':
+          if (snapshot.app?.project) store.openDialog('project-settings');
           return;
         case 'view':
           return store.setView(action.view);

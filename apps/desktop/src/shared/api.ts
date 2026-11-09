@@ -204,7 +204,7 @@ export interface PdfExported extends PrintIssued {
 }
 
 /** Menu items the renderer handles itself (they need a form). */
-export type MenuCommand = 'new-project' | 'print';
+export type MenuCommand = 'new-project' | 'print' | 'project-settings';
 
 export interface TemplateApi {
   list(): Promise<ApiResult<TemplateSummary[]>>;
