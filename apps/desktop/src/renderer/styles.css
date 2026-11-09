@@ -749,6 +749,10 @@
 .gb-weekend {
   fill: var(--bg-subtle);
 }
+.gb-lookahead {
+  fill: var(--accent);
+  fill-opacity: 0.07;
+}
 .gb-grid {
   stroke: var(--line-soft);
   stroke-width: 1;

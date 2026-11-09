@@ -9,7 +9,8 @@
  */
 import { createContext, createElement, useContext, useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import type { Command, Id, IsoDate, Project, Task } from '@cx/core';
-import type { ApiResult, AppState, CxApi, EditOutcome, PrintKind, TaskScheduleSummary } from '../shared/api';
+import type { ApiResult, AppState, CxApi, EditOutcome, LookAheadWeeks, PrintKind, TaskScheduleSummary } from '../shared/api';
+import { assetsInView } from './asset-filter';
 
 /** Views shown when a project is open (the welcome screen shows when none is). */
 export type ViewId = 'schedule' | 'templates' | 'lookahead';
@@ -39,6 +40,11 @@ export interface UiState {
    * task that no longer exists after an edit; read it through useSelectedTask().
    */
   selectedTaskId: Id | null;
+  /**
+   * Every selected task in the order chosen: the selected task first, then tasks added with
+   * Ctrl+click (Link tasks links the first two). Empty when nothing is selected.
+   */
+  selectedTaskIds: Id[];
   scheduleZoom: ScheduleZoom;
   /** The kind of print the Print dialog opens on (the last one chosen or asked for). */
   printKind: PrintKind;
@@ -47,6 +53,12 @@ export interface UiState {
    * May name assets that no longer exist; read it through useAssetFilter().
    */
   assetFilter: Id[] | null;
+  /** Text typed in the sidebar's "Filter by tag or system" box. Part of the asset filter. */
+  assetQuery: string;
+  /** Assets unticked in the sidebar. Part of the asset filter; assets added later show. */
+  hiddenAssetIds: Id[];
+  /** Weeks of the look-ahead window shaded on the Gantt (and the Print dialog's default). */
+  lookAheadWeeks: LookAheadWeeks;
 }
 
 export interface StatusLine {
@@ -102,11 +114,22 @@ export interface Store {
   dismissNotice(): void;
   /** Replaces the status bar text while a view shows (null puts the project's back). */
   setStatus(status: StatusLine | null): void;
+  /** Selects one task (or none), dropping any Ctrl+click selection. */
   selectTask(id: Id | null): void;
+  /** Ctrl+click: adds the task to the selection, or takes it out if it is already in it. */
+  toggleTaskSelection(id: Id): void;
   setScheduleZoom(zoom: ScheduleZoom): void;
   setPrintKind(kind: PrintKind): void;
-  /** Limits the schedule (and prints that follow it) to these assets; null shows all. */
+  /**
+   * Limits the schedule (and prints that follow it) to these assets; null shows all. Clears
+   * the sidebar's filter text and ticks exactly these assets.
+   */
   setAssetFilter(ids: Id[] | null): void;
+  /** The sidebar's filter text; assets whose tag or system do not match it are hidden. */
+  setAssetQuery(query: string): void;
+  /** Ticks (shown = true) or unticks assets in the sidebar. */
+  setAssetsShown(ids: readonly Id[], shown: boolean): void;
+  setLookAheadWeeks(weeks: LookAheadWeeks): void;
   /** Stops listening to the main process. */
   dispose(): void;
 }
@@ -115,7 +138,24 @@ export interface Store {
 const QUIET_CODES = new Set(['canceled', 'locked', 'file-error', 'nothing-to-undo', 'nothing-to-redo']);
 
 export function createStore(api: CxApi, options: StoreOptions = {}): Store {
-  let snapshot: Snapshot = { app: null, ui: { view: 'schedule', dialog: null, notice: null, closeRequest: 0, status: null, selectedTaskId: null, scheduleZoom: 'week', printKind: 'lookahead', assetFilter: null } };
+  let snapshot: Snapshot = {
+    app: null,
+    ui: {
+      view: 'schedule',
+      dialog: null,
+      notice: null,
+      closeRequest: 0,
+      status: null,
+      selectedTaskId: null,
+      selectedTaskIds: [],
+      scheduleZoom: 'week',
+      printKind: 'lookahead',
+      assetFilter: null,
+      assetQuery: '',
+      hiddenAssetIds: [],
+      lookAheadWeeks: 3,
+    },
+  };
   let noticeId = 0;
   const listeners = new Set<() => void>();
   const emit = () => {
@@ -123,6 +163,30 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
   };
   const setUi = (patch: Partial<UiState>) => {
     snapshot = { ...snapshot, ui: { ...snapshot.ui, ...patch } };
+    emit();
+  };
+  /**
+   * Works out ui.assetFilter from the sidebar's text and ticks for `project`, and drops
+   * selected tasks whose asset is no longer in view. Changes `ui` in place.
+   */
+  const refilter = (ui: UiState, project: Project | null | undefined) => {
+    const next = project ? assetsInView(project.assets, ui.assetQuery, ui.hiddenAssetIds) : null;
+    const same = next === ui.assetFilter || (next && ui.assetFilter && next.length === ui.assetFilter.length && next.every((id, i) => id === ui.assetFilter![i]));
+    if (!same) ui.assetFilter = next;
+    if (next && project && ui.selectedTaskIds.length) {
+      const shown = new Set(next);
+      const assetOf = new Map(project.tasks.map((t) => [t.id, t.assetId]));
+      const kept = ui.selectedTaskIds.filter((id) => shown.has(assetOf.get(id) ?? ''));
+      if (kept.length !== ui.selectedTaskIds.length) {
+        ui.selectedTaskIds = kept;
+        ui.selectedTaskId = kept[0] ?? null;
+      }
+    }
+  };
+  const setFilterUi = (patch: Pick<Partial<UiState>, 'assetQuery' | 'hiddenAssetIds'>) => {
+    const ui = { ...snapshot.ui, ...patch };
+    refilter(ui, snapshot.app?.project);
+    snapshot = { ...snapshot, ui };
     emit();
   };
   const receive = (state: AppState) => {
@@ -141,12 +205,22 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
     }
     // Task ids belong to one project: a different project (or none) clears the selection, and
     // so does an edit that removed the selected task. Save As keeps the project and its ids.
-    if (ui.selectedTaskId) {
-      const id = ui.selectedTaskId;
-      if (prev?.project?.id !== state.project?.id || !state.project?.tasks.some((t) => t.id === id)) ui.selectedTaskId = null;
+    if (ui.selectedTaskIds.length) {
+      const sameProject = prev?.project?.id === state.project?.id;
+      const ids = new Set(sameProject ? state.project?.tasks.map((t) => t.id) : []);
+      const kept = ui.selectedTaskIds.filter((id) => ids.has(id));
+      if (kept.length !== ui.selectedTaskIds.length) {
+        ui.selectedTaskIds = kept;
+        ui.selectedTaskId = kept[0] ?? null;
+      }
     }
-    // The asset filter, like the selection, belongs to one project.
-    if (ui.assetFilter && prev?.project?.id !== state.project?.id) ui.assetFilter = null;
+    // The asset filter, like the selection, belongs to one project. Within a project it is
+    // worked out again, so assets added later show unless the filter text hides them.
+    if (prev?.project?.id !== state.project?.id) {
+      ui.assetQuery = '';
+      ui.hiddenAssetIds = [];
+    }
+    refilter(ui, state.project);
     snapshot = { app: state, ui };
     emit();
   };
@@ -237,7 +311,14 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
       setUi({ status });
     },
     selectTask: (selectedTaskId) => {
-      if (snapshot.ui.selectedTaskId !== selectedTaskId) setUi({ selectedTaskId });
+      const { ui } = snapshot;
+      if (ui.selectedTaskId === selectedTaskId && ui.selectedTaskIds.length === (selectedTaskId ? 1 : 0)) return;
+      setUi({ selectedTaskId, selectedTaskIds: selectedTaskId ? [selectedTaskId] : [] });
+    },
+    toggleTaskSelection: (id) => {
+      const cur = snapshot.ui.selectedTaskIds;
+      const selectedTaskIds = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+      setUi({ selectedTaskIds, selectedTaskId: selectedTaskIds[0] ?? null });
     },
     setScheduleZoom: (scheduleZoom) => {
       if (snapshot.ui.scheduleZoom !== scheduleZoom) setUi({ scheduleZoom });
@@ -245,7 +326,25 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
     setPrintKind: (printKind) => {
       if (snapshot.ui.printKind !== printKind) setUi({ printKind });
     },
-    setAssetFilter: (assetFilter) => setUi({ assetFilter }),
+    setAssetFilter: (ids) => {
+      const keep = ids ? new Set(ids) : null;
+      const assets = snapshot.app?.project?.assets ?? [];
+      setFilterUi({ assetQuery: '', hiddenAssetIds: keep ? assets.filter((a) => !keep.has(a.id)).map((a) => a.id) : [] });
+    },
+    setAssetQuery: (assetQuery) => {
+      if (snapshot.ui.assetQuery !== assetQuery) setFilterUi({ assetQuery });
+    },
+    setAssetsShown: (ids, shown) => {
+      const hidden = new Set(snapshot.ui.hiddenAssetIds);
+      for (const id of ids) {
+        if (shown) hidden.delete(id);
+        else hidden.add(id);
+      }
+      setFilterUi({ hiddenAssetIds: [...hidden] });
+    },
+    setLookAheadWeeks: (lookAheadWeeks) => {
+      if (snapshot.ui.lookAheadWeeks !== lookAheadWeeks) setUi({ lookAheadWeeks });
+    },
     dispose() {
       offState();
       offMenu();
