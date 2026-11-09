@@ -71,4 +71,28 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE asset ADD COLUMN template_version INTEGER;
   ALTER TABLE task ADD COLUMN template_key TEXT;
   `,
+  // 2 -> 3: task notes, and the template snapshots copied into the project (decision D4).
+  // Revision state lives in meta under the keys in REVISION_META_KEYS; no table needed.
+  `
+  ALTER TABLE task ADD COLUMN notes TEXT;
+  -- Events written by one save share its revision number and summary (undo, history).
+  ALTER TABLE change_event ADD COLUMN revision INTEGER;
+  ALTER TABLE change_event ADD COLUMN summary TEXT;
+  CREATE TABLE project_template (
+    id TEXT PRIMARY KEY,
+    version INTEGER NOT NULL,
+    json TEXT NOT NULL
+  );
+  `,
 ];
+
+/** Meta keys that hold the project's own fields (written by replaceProject/saveProject). */
+export const PROJECT_META_KEYS = ['id', 'name', 'subtitle', 'start_date', 'data_date', 'work_weekdays'] as const;
+
+/** Meta keys that track saved revisions of the file (never part of the Project value). */
+export const REVISION_META_KEYS = {
+  /** Integer bumped by every write that changes the project. */
+  revision: 'revision',
+  /** ISO timestamp of the last write that changed the project. */
+  savedAt: 'saved_at',
+} as const;
