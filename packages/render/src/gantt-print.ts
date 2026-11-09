@@ -314,30 +314,38 @@ function drawSheet(a: DrawArgs): string {
     if (dayW >= inch(0.16)) out.push(text(dayX(i) + dayW / 2, hy1 + 19, label, { size: dayW >= inch(0.3) ? 11 : 9, fill: MUTED, anchor: 'middle' }));
   }
 
-  // ---- Body
+  // ---- Body, painted in layers so nothing important is drawn over:
+  // row shading → grid lines → row content (text, bars, diamonds) → data date → frame → marker labels.
   const bodyBottom = bodyY + rows.length * ROW_H;
+  const shading: string[] = [];
+  const grid: string[] = [];
+  const content: string[] = [];
+  const labels: string[] = [];
   rows.forEach((row, r) => {
     const y = bodyY + r * ROW_H;
     const mid = y + ROW_H / 2;
     if (row.kind === 'group') {
-      out.push(`<rect x="${x0}" y="${y}" width="${right - x0}" height="${ROW_H}" fill="${SHADE}"/>`);
+      shading.push(`<rect x="${x0}" y="${y}" width="${right - x0}" height="${ROW_H}" fill="${SHADE}"/>`);
       const tag = row.asset.tag + (row.continued ? ' (cont.)' : '');
       const detail = [row.asset.description, row.asset.location].filter(Boolean).join(' · ');
-      out.push(
+      content.push(
         `<text x="${x0 + 8}" y="${mid + 4.5}" font-size="${FONT + 1}" font-weight="700" fill="${INK}">${esc(tag)}` +
           `<tspan font-weight="400" font-size="${FONT}" fill="${MUTED}" dx="6">${esc(fit(detail, tableW - 120, FONT))}</tspan></text>`,
       );
     } else {
-      out.push(...drawTaskRow(row.task, y, mid, x0, columns, opts, dayX, band, dayW));
+      const drawn = drawTaskRow(row.task, y, mid, x0, columns, opts, dayX, band, dayW);
+      content.push(...drawn.content);
+      labels.push(...drawn.labels);
     }
-    out.push(hline(x0, right, y + ROW_H, GRID_LIGHT));
+    grid.push(hline(x0, right, y + ROW_H, GRID_LIGHT));
   });
 
   // Day grid lines and week dividers over the body.
   for (let i = band[0] + 1; i <= band[1]; i++) {
     const strong = isNewWeek(cal.dateAt(i - 1), cal.dateAt(i));
-    if (strong || dayW >= inch(0.16)) out.push(vline(dayX(i), strong ? gy + TIME_HEAD_H : hy1, bodyBottom, strong ? GRID : GRID_LIGHT));
+    if (strong || dayW >= inch(0.16)) grid.push(vline(dayX(i), strong ? gy + TIME_HEAD_H : hy1, bodyBottom, strong ? GRID : GRID_LIGHT));
   }
+  out.push(...shading, ...grid, ...content);
   // Data date line.
   const dd = schedule.dataDateIndex;
   if (dd >= band[0] && dd <= band[1] + 1) {
@@ -346,6 +354,8 @@ function drawSheet(a: DrawArgs): string {
   // Frame.
   out.push(`<rect x="${x0}" y="${gy}" width="${right - x0}" height="${bodyBottom - gy}" fill="none" stroke="${INK}" stroke-width="1"/>`);
   out.push(vline(tlX, gy, bodyBottom, INK), hline(x0, right, hy1 + TIME_HEAD_H, GRID), hline(tlX, right, hy1, GRID));
+  // Marker labels last, so no line of any kind runs through them.
+  out.push(...labels);
 
   // ---- Footer: legend, field notes, revisions, sign-off
   out.push(a.footer.draw(x0, pageH - MARGIN - a.footer.height));
@@ -370,9 +380,10 @@ function drawTaskRow(
   dayX: (i: number) => number,
   band: [number, number],
   dayW: number,
-): string[] {
+): { content: string[]; labels: string[] } {
   const s = opts.schedule.tasks.get(t.id)!;
   const out: string[] = [];
+  const labels: string[] = [];
   let cx = x0;
   for (const c of columns) {
     const w = inch(c.widthIn);
@@ -428,13 +439,27 @@ function drawTaskRow(
   if (t.type !== 'task' && markerInBand) {
     const mx = t.durationDays > 0 ? dayX(markerAt) : dayX(markerAt) + Math.min(dayW / 2, 12);
     const filled = t.type !== 'witness';
-    out.push(diamond(mx, mid, 8.5, filled));
+    out.push(diamond(mx, mid, MARKER_R, filled));
     const label = t.type === 'hold' ? 'HOLD' : t.type === 'witness' ? 'WITNESS' : t.name;
     const rightEdge = dayX(band[1] + 1);
-    const fitsRight = mx + 12 + textWidth(label, 11, true) <= rightEdge;
-    out.push(text(fitsRight ? mx + 12 : mx - 12, mid + 4.5, label, { size: 11, weight: 700, halo: true, anchor: fitsRight ? 'start' : 'end' }));
+    const fitsRight = mx + LABEL_OFFSET + textWidth(label, 11, true) <= rightEdge;
+    labels.push(markerLabel(fitsRight ? mx + LABEL_OFFSET : mx - LABEL_OFFSET, mid + 4.5, label, fitsRight ? 'start' : 'end'));
   }
-  return out;
+  return { content: out, labels };
+}
+
+/** Half-width of a hold / witness / milestone diamond on the Gantt. */
+const MARKER_R = 8.5;
+/** White halo drawn around label glyphs; it paints over grid, bar edges and the data date line. */
+const LABEL_HALO = 4;
+/** Clear space kept between a diamond's tip and the outer edge of its label's halo. */
+const LABEL_CLEARANCE = 4;
+/** Distance from the diamond centre to the label's anchor point, on either side. */
+const LABEL_OFFSET = MARKER_R + LABEL_CLEARANCE + LABEL_HALO / 2;
+
+/** A marker label in its own group, drawn in the sheet's top layer. */
+function markerLabel(x: number, y: number, s: string, anchor: 'start' | 'end'): string {
+  return `<g class="marker-label">${text(x, y, s, { size: 11, weight: 700, halo: true, anchor })}</g>`;
 }
 
 interface FooterLayout {
@@ -562,7 +587,7 @@ function text(x: number, y: number, s: string, o: TextOpts): string {
     `fill="${o.fill ?? INK}"`,
     o.anchor && o.anchor !== 'start' ? `text-anchor="${o.anchor}"` : '',
     o.ls ? `letter-spacing="${o.ls}"` : '',
-    o.halo ? 'stroke="#fff" stroke-width="3.5" stroke-linejoin="round" paint-order="stroke"' : '',
+    o.halo ? `stroke="#fff" stroke-width="${LABEL_HALO}" stroke-linejoin="round" paint-order="stroke"` : '',
   ].filter(Boolean);
   return `<text ${attrs.join(' ')}>${esc(s)}</text>`;
 }

@@ -74,6 +74,58 @@ describe('layoutSchedulePrint', () => {
   });
 });
 
+describe('marker labels', () => {
+  const labelsOf = (svg: string) => [...svg.matchAll(/<g class="marker-label">(<text [^>]*>([^<]*)<\/text>)<\/g>/g)];
+
+  it('draws every marker label after all grid, bar and data date lines', () => {
+    const large = largeProject();
+    const layouts = [
+      layoutSchedulePrint({ ...base, paper: 'tabloid' }),
+      layoutSchedulePrint({ ...base, paper: 'letter' }),
+      layoutSchedulePrint({
+        project: large, schedule: computeSchedule(large), paper: 'ansi-d', title: 'Full schedule',
+        dayWidthIn: 0.42, revision: { rev: 'A', issued: '2026-11-02' },
+      }),
+    ];
+    let seen = 0;
+    for (const sheet of layouts.flatMap((l) => l.sheets)) {
+      const labels = labelsOf(sheet.svg);
+      if (labels.length === 0) continue;
+      seen += labels.length;
+      // Legend and sign-off lines live in the footer after the labels; the body's lines all come before.
+      const footerAt = sheet.svg.indexOf('>Complete<');
+      const bodyLines = [...sheet.svg.slice(0, footerAt).matchAll(/<line /g)].map((m) => m.index);
+      const firstLabel = labels[0]!.index;
+      expect(Math.max(...bodyLines)).toBeLessThan(firstLabel);
+      for (const l of labels) {
+        expect(l[1]).toContain('stroke="#fff"');
+        expect(l[1]).toContain('paint-order="stroke"');
+      }
+    }
+    expect(seen).toBeGreaterThan(0);
+    const tabloid = labelsOf(layouts[0]!.sheets[0]!.svg).map((m) => m[2]);
+    expect(tabloid).toEqual(expect.arrayContaining(['HOLD', 'Energization']));
+  });
+
+  it('keeps at least 4 px between a diamond and a label pushed to its left', () => {
+    // End the window on the energization day so its label cannot fit right of the diamond.
+    const svg = layoutSchedulePrint({ ...base, paper: 'tabloid', window: { start: '2026-11-02', end: '2026-11-18' } }).sheets[0]!.svg;
+    const left = labelsOf(svg).filter((m) => m[1]!.includes('text-anchor="end"'));
+    expect(left.map((m) => m[2])).toContain('Energization');
+    const diamonds = [...svg.matchAll(/<path d="M([\d.]+) ([\d.]+) L([\d.]+) [\d.]+ L[\d.]+ [\d.]+ L([\d.]+) /g)].map((m) => ({
+      left: Number(m[4]), mid: Number(m[2]) + (Number(m[1]) - Number(m[4])),
+    }));
+    for (const m of left) {
+      const x = Number(/ x="([\d.]+)"/.exec(m[1]!)![1]);
+      const baseline = Number(/ y="([\d.]+)"/.exec(m[1]!)![1]);
+      const halo = Number(/stroke-width="([\d.]+)"/.exec(m[1]!)![1]);
+      // The label's own diamond: same row, nearest to the right of the label's end.
+      const own = diamonds.filter((d) => Math.abs(d.mid - (baseline - 4.5)) < 1 && d.left > x).sort((a, b) => a.left - b.left)[0]!;
+      expect(own.left - (x + halo / 2)).toBeGreaterThanOrEqual(4);
+    }
+  });
+});
+
 describe('packWeeks', () => {
   const cal = new WorkCalendar('2026-11-02');
   const at = (i: number) => cal.dateAt(i);
