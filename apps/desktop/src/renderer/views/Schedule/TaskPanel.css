@@ -105,6 +105,8 @@
 }
 .task-panel-actions {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: flex-end;
   padding-top: 4px;
 }

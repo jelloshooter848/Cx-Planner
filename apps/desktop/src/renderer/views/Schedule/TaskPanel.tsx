@@ -193,6 +193,16 @@ function TaskPanelBody({ task, project }: { task: Task; project: Project }) {
       <Field label="Notes" value={task.notes ?? ''} commit={text('notes', false)} name="notes" multiline />
       {progress.prompt}
       <div className="task-panel-actions">
+        {asset && (
+          <button
+            type="button"
+            className="btn"
+            onClick={() => store.selectAsset(asset.id)}
+            title={`Edit ${asset.tag}'s tag, description, location and system`}
+          >
+            Edit asset {asset.tag}
+          </button>
+        )}
         <button type="button" className="btn" onClick={() => void store.dispatch({ type: 'delete-task' })}>
           Delete task…
         </button>

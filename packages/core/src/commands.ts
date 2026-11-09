@@ -556,10 +556,8 @@ function updateAsset(project: Project, id: Id, patch: AssetPatch, restore: boole
   if (keys.length === 0) throw new CommandError('no-change', `Nothing to change on asset ${asset.tag}`);
   if (restore) checkAssetShape(value);
   else if (keys.includes('tag')) {
-    if (value.tag.trim() === '') throw new CommandError('empty-name', 'An asset needs a tag');
-    if (project.assets.some((a) => a.id !== id && tagKey(a.tag) === tagKey(value.tag))) {
-      throw new CommandError('duplicate-tag', `Tag "${value.tag.trim()}" is already used`);
-    }
+    const problem = assetTagProblem(project, id, value.tag);
+    if (problem) throw new CommandError(tagKey(value.tag) === '' ? 'empty-name' : 'duplicate-tag', problem);
   }
   const assets = [...project.assets];
   assets[index] = value;
@@ -1393,6 +1391,19 @@ function plural(n: number, word: string): string {
  */
 export function tagKey(tag: string): string {
   return tag.trim().toUpperCase();
+}
+
+/**
+ * The problem with renaming asset `assetId` to `tag`, or null when the tag can be used:
+ * empty, or already used by another asset (trimmed, case-insensitive, see `tagKey`).
+ * Changing only the case or spacing of the asset's own tag is fine. updateAsset refuses
+ * with the same message, so the form and core word it alike.
+ */
+export function assetTagProblem(project: Pick<Project, 'assets'>, assetId: string, tag: string): string | null {
+  const key = tagKey(tag);
+  if (key === '') return 'An asset needs a tag';
+  const other = project.assets.some((a) => a.id !== assetId && tagKey(a.tag) === key);
+  return other ? `Tag "${tag.trim()}" is already used` : null;
 }
 
 function slug(tag: string): string {

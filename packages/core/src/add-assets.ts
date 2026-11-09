@@ -125,18 +125,6 @@ export function findTagProblems(project: Pick<Project, 'assets'>, tags: string[]
   return problems;
 }
 
-/**
- * The problem with renaming asset `assetId` to `tag`, or null when the tag can be used:
- * empty, or already used by another asset (trimmed, case-insensitive, see `tagKey`).
- * Changing only the case or spacing of the asset's own tag is fine.
- */
-export function assetTagProblem(project: Pick<Project, 'assets'>, assetId: string, tag: string): string | null {
-  const key = tagKey(tag);
-  if (key === '') return 'An asset needs a tag';
-  const other = project.assets.find((a) => a.id !== assetId && tagKey(a.tag) === key);
-  return other ? `${tag.trim()} is already used by another asset` : null;
-}
-
 /** How the new assets are placed in time relative to each other. */
 export type AssetSequence =
   /** All start as soon as allowed (at the start-no-earlier-than date). */

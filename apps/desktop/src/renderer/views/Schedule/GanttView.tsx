@@ -9,7 +9,8 @@
  * Selection: clicking a task row (or its bar) selects it; Up/Down, Page Up/Down, Home and
  * End move the selection while the grid has focus; Escape clears it. Clicking an asset's
  * group row selects the asset instead (ui.selectedAssetId): the panel then edits the asset,
- * and Delete asks to delete it. The selected task id
+ * and Delete asks to delete it (the task panel's Edit asset button gets there from the
+ * keyboard). The selected task id
  * lives in the renderer store (ui.selectedTaskId) for the edit panel and other views.
  * Ctrl+click (Cmd+click on macOS) adds a task to the selection, or takes it out
  * (ui.selectedTaskIds; the toolbar's Link tasks links the first two). Alt+Up / Alt+Down move

@@ -105,7 +105,7 @@ describe('assetTagProblem', () => {
   const two = { assets: [{ id: 'a1', tag: 'SWGR-1A', description: '' }, { id: 'a2', tag: 'XFMR-1A', description: '' }] };
   it('refuses an empty tag and one another asset uses (trimmed, any case)', () => {
     expect(assetTagProblem(two, 'a1', '  ')).toBe('An asset needs a tag');
-    expect(assetTagProblem(two, 'a1', ' xfmr-1a ')).toBe('xfmr-1a is already used by another asset');
+    expect(assetTagProblem(two, 'a1', ' xfmr-1a ')).toBe('Tag "xfmr-1a" is already used');
   });
   it('accepts a new tag and a case change of the asset own tag', () => {
     expect(assetTagProblem(two, 'a1', 'SWGR-1C')).toBeNull();

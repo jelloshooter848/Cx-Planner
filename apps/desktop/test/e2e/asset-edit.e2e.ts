@@ -34,12 +34,38 @@ describe('asset edit and delete', () => {
     expect(await field(page, 'System').inputValue()).toBe('Normal power');
     await h.screenshot('asset-panel');
 
+    // From the keyboard: Delete on the grid asks to delete the selected asset (cancel it),
+    // and Escape clears the asset selection.
+    const grid = page.getByRole('grid', { name: 'Tasks' });
+    await grid.focus();
+    await page.keyboard.press('Delete');
+    const askSwgr = page.getByRole('dialog', { name: 'Delete asset SWGR-1A?' });
+    await askSwgr.waitFor();
+    await askSwgr.getByRole('button', { name: 'Cancel' }).click();
+    await expect.poll(() => page.getByRole('dialog').count()).toBe(0);
+    expect((await h.state()).project!.assets[0]!.id).toBe('swgr-1a');
+    await grid.focus();
+    await page.keyboard.press('Escape');
+    await expect.poll(() => groupRow(page, 'swgr-1a').getAttribute('aria-selected')).toBe('false');
+    expect(await panel(page).count()).toBe(0);
+
+    // A keyboard user reaches the asset form from a task: Down selects the first task, then
+    // the task panel's Edit asset button selects its asset.
+    await grid.focus();
+    await page.keyboard.press('ArrowDown');
+    const editAsset = page.getByRole('complementary', { name: 'Task details' }).getByRole('button', { name: 'Edit asset SWGR-1A' });
+    await editAsset.focus();
+    await h.screenshot('task-panel-edit-asset');
+    await page.keyboard.press('Enter');
+    await expect.poll(() => groupRow(page, 'swgr-1a').getAttribute('aria-selected')).toBe('true');
+    expect(await field(page, 'Tag').inputValue()).toBe('SWGR-1A');
+
     // A tag another asset uses (any case) is refused in the form, and nothing is sent.
     const tag = field(page, 'Tag');
     await tag.fill(' xfmr-1a ');
     await tag.press('Enter');
     const err = panel(page).locator('[data-field="asset-tag"] .field-error');
-    await expect(err.textContent()).resolves.toBe('xfmr-1a is already used by another asset');
+    await expect(err.textContent()).resolves.toBe('Tag "xfmr-1a" is already used');
     expect(await tag.getAttribute('aria-invalid')).toBe('true');
     expect((await h.state()).revision).toBe(before.revision);
     await h.screenshot('asset-panel-tag-error');
