@@ -3,14 +3,17 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { computeSchedule, type Project } from '@cx/core';
-import { layoutSchedulePrint, printDocumentHtml, type PaperId, type PrintLayout } from '@cx/render';
+import { layoutSchedulePrint, lookAheadTitle, lookAheadWindow, printDocumentHtml, type PaperId, type PrintLayout } from '@cx/render';
 import { interFontCss } from '@cx/render/fonts-node';
 
 export interface LookAheadRequest {
   paper: PaperId;
   weeks: number;
-  /** First Monday of the look-ahead. */
-  start: string;
+  /** Data date the look-ahead starts from (its Monday). Defaults to the project's data date. */
+  dataDate?: string;
+  assetIds?: string[];
+  showCriticalPath?: boolean;
+  showTimes?: boolean;
 }
 
 let fontCss: string | undefined;
@@ -18,17 +21,13 @@ export function setFontDir(dir: string): void {
   fontCss = interFontCss(dir);
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const fmt = (iso: string) => `${MONTHS[Number(iso.slice(5, 7)) - 1]} ${Number(iso.slice(8))}`;
-
 export function lookAheadDocument(project: Project, req: LookAheadRequest): { html: string; layout: PrintLayout; title: string } {
   const schedule = computeSchedule(project);
-  const endDate = new Date(`${req.start}T00:00:00Z`);
-  endDate.setUTCDate(endDate.getUTCDate() + req.weeks * 7 - 3); // Friday of the last week
-  const end = endDate.toISOString().slice(0, 10);
-  const title = `${req.weeks}-Week Look-Ahead: ${fmt(req.start)} – ${fmt(end)}, ${end.slice(0, 4)}`;
+  const window = lookAheadWindow(req.dataDate ?? project.dataDate, req.weeks, schedule.calendar);
+  const title = lookAheadTitle(window, req.weeks);
   const layout = layoutSchedulePrint({
-    project, schedule, paper: req.paper, title, window: { start: req.start, end },
+    project, schedule, paper: req.paper, title, window,
+    assetIds: req.assetIds, showCriticalPath: req.showCriticalPath, showTimes: req.showTimes,
     revision: { rev: 'B', issued: project.dataDate, baseline: 'Rev A' },
     revisions: [
       { rev: 'A', date: '2026-11-02', note: 'Issued for coordination' },

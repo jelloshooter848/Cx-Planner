@@ -26,12 +26,12 @@ function createWindow(): void {
 }
 
 ipcMain.handle('print:lookahead-html', (_e, paper: PaperId) => {
-  const { html, layout } = lookAheadDocument(project, { paper, weeks: 3, start: '2026-11-02' });
+  const { html, layout } = lookAheadDocument(project, { paper, weeks: 3 });
   return { html, sheets: layout.sheets.length, widthIn: layout.paper.widthIn, heightIn: layout.paper.heightIn };
 });
 
 ipcMain.handle('print:lookahead-pdf', async (e, paper: PaperId) => {
-  const { html, title } = lookAheadDocument(project, { paper, weeks: 3, start: '2026-11-02' });
+  const { html, title } = lookAheadDocument(project, { paper, weeks: 3 });
   const win = BrowserWindow.fromWebContents(e.sender) ?? undefined;
   const target = await dialog.showSaveDialog(win!, { defaultPath: `${title.replace(/[^\w\- ]+/g, '').trim()}.pdf`, filters: [{ name: 'PDF', extensions: ['pdf'] }] });
   if (target.canceled || !target.filePath) return { saved: false };
