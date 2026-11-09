@@ -12,7 +12,7 @@ describe('add assets from a template', () => {
   it('adds 3 panelboards from a tag pattern as 12 tasks, flags duplicate tags, and undoes in one step', async () => {
     h = await launchApp({ project: 'riverside' });
     const { page } = h;
-    await page.getByRole('table', { name: 'Tasks' }).waitFor();
+    await page.getByRole('grid', { name: 'Tasks' }).waitFor();
     const before = await h.state();
     const assetsBefore = before.project!.assets.length;
     const tasksBefore = before.project!.tasks.length;
@@ -70,9 +70,12 @@ describe('add assets from a template', () => {
       ['PNL-E2E-2', 'Elec Rm 204'],
       ['PNL-E2E-3', 'Elec Rm 204'],
     ]);
-    const table = page.getByRole('table', { name: 'Tasks' });
-    await table.getByText('PNL-E2E-3', { exact: true }).waitFor();
-    expect(await table.getByText('Circuit directory & labelling').count()).toBeGreaterThanOrEqual(3);
+    // The Gantt only renders rows in view; End brings the new (last) rows in.
+    const grid = page.getByRole('grid', { name: 'Tasks' });
+    await grid.focus();
+    await page.keyboard.press('End');
+    await grid.getByText('PNL-E2E-3', { exact: true }).waitFor();
+    expect(await grid.getByText('Circuit directory & labelling').count()).toBeGreaterThanOrEqual(3);
     await h.screenshot('add-assets-done');
 
     // One undo takes the whole add back.
