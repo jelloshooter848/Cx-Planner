@@ -42,6 +42,7 @@ function fakeApi(initial: AppState) {
     saveAs: vi.fn(okVoid),
     closeProject: vi.fn(async () => ({ ok: true as const, value: undefined })),
     chooseWorkspace: vi.fn(),
+    setUnsavedWork: vi.fn(async () => ({ ok: true as const, value: undefined })),
     templates: {},
     print: {},
   } as unknown as CxApi;
@@ -118,6 +119,17 @@ describe('renderer store', () => {
     expect(store.getSnapshot().ui.dialog).toBe('new-project');
     f.push(appState({ seq: 2, project: riversideProject(), filePath: '/r.cxp', fileName: 'r.cxp' }));
     expect(store.getSnapshot().ui.dialog).toBeNull();
+  });
+
+  it('shows the Templates view and bumps closeRequest when main asks to confirm a close', async () => {
+    const f = fakeApi(appState());
+    const store = createStore(f.api);
+    await tick();
+    store.openDialog('about');
+    f.menu('confirm-close');
+    expect(store.getSnapshot().ui).toMatchObject({ view: 'templates', dialog: null, closeRequest: 1 });
+    f.menu('confirm-close');
+    expect(store.getSnapshot().ui.closeRequest).toBe(2);
   });
 
   it('opens the add-assets dialog only with a project open', async () => {

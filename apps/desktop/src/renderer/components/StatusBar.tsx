@@ -1,16 +1,17 @@
 import { statusText } from '../format';
-import { useAppState, useStore } from '../store';
+import { useAppState, useStore, useUi } from '../store';
 
 /**
  * Bottom line: the project name (opens Project settings), counts on the left, data date and
- * save state on the right.
+ * save state on the right; or the current view's own line, without the project name.
  */
 export function StatusBar() {
   const app = useAppState();
   const store = useStore();
+  const { status } = useUi();
   if (!app) return <footer className="statusbar" />;
-  const t = statusText(app);
-  const project = app.project;
+  const t = status ? { ...status, savedDetail: '' } : statusText(app);
+  const project = status ? null : app.project;
   return (
     <footer className="statusbar" data-testid="statusbar">
       <span className="statusbar-left">

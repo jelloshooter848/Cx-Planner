@@ -108,6 +108,13 @@ function startApp(): void {
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     // Windows/Linux: the in-window menu row replaces the native menu bar.
     if (process.platform !== 'darwin') win.setMenuBarVisibility(false);
+    // The renderer holds an unsaved template draft: let it ask Save / Discard / Cancel. It
+    // closes the window itself once the draft is saved or discarded (unsavedWork is then null).
+    win.on('close', (e) => {
+      if (!session.unsavedWork || win?.webContents.isCrashed()) return;
+      e.preventDefault();
+      toRenderer('confirm-close');
+    });
     win.on('closed', () => (win = undefined));
     session.notify();
     await win.loadFile(join(dist, 'renderer/index.html'));
