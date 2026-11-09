@@ -96,6 +96,11 @@
 .pd-quick .btn-link:disabled {
   color: var(--ink-muted);
   cursor: default;
+  opacity: 0.6;
+}
+.pd-quick-why {
+  color: var(--ink-muted);
+  font-style: italic;
 }
 .pd-tasks,
 .pd-tasks ul {

@@ -460,17 +460,21 @@ function TestSheetChoice({ tasks, assets, schedule, context, chosen, onChange }:
         <span className="field-label">Select</span>
         {TEST_SHEET_QUICK_SELECTS.map(([rule, label]) => {
           const off = (rule === 'filter' && !context.filter) || (rule === 'window' && !context.window);
+          // A disabled link also says why in words, not just by its muted look.
+          const why = off ? (rule === 'filter' ? 'no filter set' : 'no window') : null;
           return (
-            <button
-              key={rule}
-              type="button"
-              className="btn-link"
-              disabled={off}
-              title={off ? (rule === 'filter' ? 'No asset filter is set on the Schedule' : 'No look-ahead window') : undefined}
-              onClick={() => onChange(selectTestSheetTasks(rule, ids, context))}
-            >
-              {label}
-            </button>
+            <span key={rule} className="pd-quick-item">
+              <button
+                type="button"
+                className="btn-link"
+                disabled={off}
+                title={off ? (rule === 'filter' ? 'No asset filter is set on the Schedule' : 'No look-ahead window') : undefined}
+                onClick={() => onChange(selectTestSheetTasks(rule, ids, context))}
+              >
+                {label}
+              </button>
+              {why && <span className="pd-quick-why"> ({why})</span>}
+            </span>
           );
         })}
       </div>

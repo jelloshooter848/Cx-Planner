@@ -87,8 +87,12 @@ describe('test-sheet selection', () => {
   });
 
   it('never picks a milestone without a checklist', () => {
-    // The milestone is incomplete and starts in the window, but has no test sheet to print.
+    // The milestone is incomplete and starts in the window, but has no test sheet to print. Milestones
+    // are left out because the main process omits them from setup.checklistTasks (they have no checklist);
+    // the checklist id list passed in is the only gate.
     for (const rule of ['window', 'open', 'all'] as const) expect(selectTestSheetTasks(rule, checklist, ctx)).not.toContain('ms');
+    // Were it in the list, the same incomplete, in-window milestone would be picked.
+    expect(selectTestSheetTasks('window', [...checklist, 'ms'], ctx)).toContain('ms');
   });
 
   it('picks nothing in window when there is no window', () => {
