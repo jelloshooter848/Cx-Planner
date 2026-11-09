@@ -1,5 +1,6 @@
 import { useProject, useSchedule, useSelect, useStore, type ScheduleZoom } from '../../store';
 import { GanttView } from './GanttView';
+import { TaskPanel } from './TaskPanel';
 
 const ZOOMS: ReadonlyArray<readonly [ScheduleZoom, string]> = [
   ['day', 'Day'],
@@ -7,7 +8,7 @@ const ZOOMS: ReadonlyArray<readonly [ScheduleZoom, string]> = [
   ['month', 'Month'],
 ];
 
-/** The schedule view: toolbar and the Gantt of every asset's tasks. */
+/** The schedule view: toolbar, the Gantt of every asset's tasks and the selected task's panel. */
 export function ScheduleView() {
   const store = useStore();
   const info = useProject();
@@ -48,7 +49,10 @@ export function ScheduleView() {
           <p>{addAssets}</p>
         </div>
       ) : (
-        <GanttView key={`${info.filePath}#${project.id}`} project={project} schedule={schedule.tasks} />
+        <div className="schedule-body">
+          <GanttView key={`${info.filePath}#${project.id}`} project={project} schedule={schedule.tasks} />
+          <TaskPanel />
+        </div>
       )}
     </main>
   );

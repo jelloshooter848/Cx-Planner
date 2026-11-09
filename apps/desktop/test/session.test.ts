@@ -207,6 +207,22 @@ describe('Session', () => {
       .toMatchObject({ ok: false, code: 'duplicate-tag' });
   });
 
+  it('reads the project snapshot of a template, falling back to the workspace copy', () => {
+    expect(session.getProjectTemplate('starter-panelboard')).toMatchObject({ ok: false, code: 'no-project' });
+    session.setWorkspace(WorkspaceStore.open(join(dir, 'ws'), { create: true }));
+    openProject();
+    const tpl = session.getTemplate('starter-panelboard');
+    if (!tpl.ok) throw new Error(tpl.message);
+    // Not used by the project yet: the workspace copy.
+    expect(session.getProjectTemplate('starter-panelboard')).toEqual(tpl);
+    session.apply({ kind: 'addAssetsFromTemplate', template: tpl.value, assets: [{ tag: 'PNL-T-1', description: 'Panelboard' }] });
+    // The workspace copy changes later; the project keeps the snapshot it was made from.
+    const edited = session.saveTemplate({ ...tpl.value, assetDescription: 'Edited' });
+    expect(edited).toMatchObject({ ok: true, value: { version: tpl.value.version + 1 } });
+    expect(session.getProjectTemplate('starter-panelboard')).toEqual(tpl);
+    expect(session.getProjectTemplate('no-such-template')).toMatchObject({ ok: false, code: 'unknown-template' });
+  });
+
   describe('templates', () => {
     it('needs a workspace', () => {
       expect(session.listTemplates()).toMatchObject({ ok: false, code: 'no-workspace' });

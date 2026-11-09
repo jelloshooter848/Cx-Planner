@@ -296,6 +296,21 @@ export class Session {
     });
   }
 
+  /** The open project's snapshot of a template, else the workspace copy (see TemplateApi.inProject). */
+  getProjectTemplate(id: Id): ApiResult<Template> {
+    const doc = this.doc;
+    if (!doc) return { ok: false, code: 'no-project', message: 'No project is open' };
+    try {
+      const snap = doc.store.getTemplateSnapshots().find((t) => t.id === id);
+      if (snap) return ok(snap);
+      const t = this.ws?.getTemplate(id);
+      if (!t) throw new TemplateNotFoundError(id);
+      return ok(t);
+    } catch (e) {
+      return failure(e);
+    }
+  }
+
   saveTemplate(t: Template): ApiResult<Template> {
     return this.withWorkspace((ws) => ws.saveTemplate(t, 'user'));
   }

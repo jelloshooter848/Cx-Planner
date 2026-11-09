@@ -77,6 +77,10 @@ export function buildMenu(ctx: MenuContext, s: AppState): Menu {
         // the renderer handles the key first (and prevents default), so these do not fire.
         ...(isMac ? [{ type: 'separator' as const }, { role: 'undo' as const, label: 'Undo Typing' }, { role: 'redo' as const, label: 'Redo Typing' }] : []),
         { type: 'separator' },
+        // No accelerator: the Delete key belongs to text fields; the Schedule grid handles it itself.
+        // The renderer knows the selected task, so it checks there is one and asks to confirm.
+        { label: 'Delete Task…', enabled: open, click: () => ctx.toRenderer('delete-task') },
+        { type: 'separator' },
         { role: 'cut' },
         { role: 'copy' },
         { role: 'paste' },

@@ -19,7 +19,8 @@ export function App() {
   const store = useStore();
   const snap = useSnapshot();
   const view = effectiveView(snap);
-  const menus = useMemo(() => buildMenus(snap.app, view, isMac), [snap.app, view]);
+  const taskSelected = snap.ui.selectedTaskId !== null;
+  const menus = useMemo(() => buildMenus(snap.app, view, isMac, taskSelected), [snap.app, view, taskSelected]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

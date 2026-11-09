@@ -3,6 +3,7 @@ import { applyCommand } from '@cx/core';
 import { riversideProject } from '@cx/fixtures';
 import {
   addHolidays,
+  draftChanged,
   draftFrom,
   draftProblem,
   holidayRows,
@@ -24,17 +25,26 @@ describe('project settings draft', () => {
     expect(settingsCommand(shuffled, draftFrom(shuffled))).toBeNull();
     // Whitespace around the name is not a change either.
     expect(settingsCommand(project, { ...draftFrom(project), name: ` ${project.name} ` })).toBeNull();
+    // Nor around a stored subtitle.
+    const spaced = { ...project, subtitle: 'Electrical commissioning ' };
+    expect(settingsCommand(spaced, draftFrom(spaced))).toBeNull();
   });
 
   it('sends updateProjectInfo for info changes only', () => {
     const d = { ...draftFrom(project), name: 'New name', subtitle: '  ' };
     expect(settingsCommand(project, d)).toEqual({ kind: 'updateProjectInfo', name: 'New name', subtitle: null });
-    expect(settingsCommand(project, { ...draftFrom(project), startDate: '2026-11-09' })).toEqual({ kind: 'updateProjectInfo', startDate: '2026-11-09' });
+    expect(settingsCommand(project, { ...draftFrom(project), startDate: '2026-11-09' })).toEqual({
+      kind: 'updateProjectInfo',
+      startDate: '2026-11-09',
+    });
   });
 
   it('sends setCalendar for calendar changes only', () => {
     const d = addHolidays(draftFrom(project), ['2026-11-11']);
-    expect(settingsCommand(project, d)).toEqual({ kind: 'setCalendar', calendar: { workWeekdays: [1, 2, 3, 4, 5], holidays: ['2026-11-11', '2026-11-26', '2026-12-25'] } });
+    expect(settingsCommand(project, d)).toEqual({
+      kind: 'setCalendar',
+      calendar: { workWeekdays: [1, 2, 3, 4, 5], holidays: ['2026-11-11', '2026-11-26', '2026-12-25'] },
+    });
   });
 
   it('batches both into one undo step that applies and reverses', () => {
@@ -60,8 +70,38 @@ describe('project settings draft', () => {
     d = toggleWeekday(toggleWeekday(d, 5, false), 0, true);
     expect(d.workWeekdays).toEqual([0, 1, 2, 3, 4]);
     const fri = holidayRows(d).find((r) => r.date === '2026-12-25')!;
-    expect(fri).toEqual({ date: '2026-12-25', name: 'Christmas Day', offDay: true });
-    expect(holidayRows(d).find((r) => r.date === '2026-11-26')).toEqual({ date: '2026-11-26', name: 'Thanksgiving Day', offDay: false });
+    expect(fri).toEqual({ date: '2026-12-25', name: 'Christmas Day', offDay: true, invalid: false });
+    expect(holidayRows(d).find((r) => r.date === '2026-11-26')).toEqual({
+      date: '2026-11-26',
+      name: 'Thanksgiving Day',
+      offDay: false,
+      invalid: false,
+    });
+  });
+
+  it('shows a malformed stored holiday as an invalid row that can be removed', () => {
+    const damaged = { ...project, calendar: { ...project.calendar, holidays: ['2026-11-26', 'not-a-date', '2026-02-30'] } };
+    const d = draftFrom(damaged);
+    expect(
+      holidayRows(d)
+        .filter((r) => r.invalid)
+        .map((r) => r.date),
+    ).toEqual(['2026-02-30', 'not-a-date']);
+    expect(holidayRows(d).find((r) => r.date === 'not-a-date')).toEqual({ date: 'not-a-date', name: null, offDay: false, invalid: true });
+    const cleaned = removeHoliday(removeHoliday(d, 'not-a-date'), '2026-02-30');
+    expect(settingsCommand(damaged, cleaned)).toEqual({
+      kind: 'setCalendar',
+      calendar: { workWeekdays: [1, 2, 3, 4, 5], holidays: ['2026-11-26'] },
+    });
+  });
+
+  it('knows when there is unsaved work, savable or not', () => {
+    expect(draftChanged(project, draftFrom(project))).toBe(false);
+    expect(draftChanged(project, { ...draftFrom(project), name: `${project.name} ` })).toBe(false);
+    expect(draftChanged(project, { ...draftFrom(project), name: '' })).toBe(true);
+    expect(draftChanged(project, { ...draftFrom(project), startDate: '' })).toBe(true);
+    expect(draftChanged(project, { ...draftFrom(project), workWeekdays: [] })).toBe(true);
+    expect(draftChanged(project, addHolidays(draftFrom(project), ['2027-01-01']))).toBe(true);
   });
 
   it('reports what blocks saving', () => {

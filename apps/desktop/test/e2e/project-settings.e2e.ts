@@ -92,4 +92,35 @@ describe('project settings', () => {
     expect(undone.project!.calendar.holidays).toEqual(['2026-11-26', '2026-12-25']);
     expect(undone.project!.calendar.workWeekdays).toEqual([1, 2, 3, 4, 5]);
   });
+
+  it('asks before Cancel or Escape throws away unsaved edits', async () => {
+    h = await launchApp({ project: 'riverside' });
+    const { page } = h;
+    await page.getByRole('grid', { name: 'Tasks' }).waitFor();
+    const name = (await h.state()).project!.name;
+    await page.getByRole('button', { name: /^Project settings: / }).click();
+    const dialog = page.getByRole('dialog', { name: 'Project settings' });
+    await dialog.waitFor();
+    // Unchanged: Cancel just closes.
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await dialog.waitFor({ state: 'detached' });
+
+    await page.getByRole('button', { name: /^Project settings: / }).click();
+    await dialog.waitFor();
+    await dialog.getByRole('checkbox', { name: 'Saturday' }).check();
+    await page.keyboard.press('Escape');
+    const ask = page.getByRole('dialog', { name: 'Unsaved changes' });
+    await ask.waitFor();
+    await ask.getByRole('button', { name: 'Keep editing' }).click();
+    await ask.waitFor({ state: 'detached' });
+    expect(await dialog.getByRole('checkbox', { name: 'Saturday' }).isChecked()).toBe(true);
+
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await h.screenshot('project-settings-discard');
+    await ask.getByRole('button', { name: 'Discard changes' }).click();
+    await dialog.waitFor({ state: 'detached' });
+    const s = await h.state();
+    expect(s.project!.name).toBe(name);
+    expect(s.project!.calendar.workWeekdays).toEqual([1, 2, 3, 4, 5]);
+  });
 });
