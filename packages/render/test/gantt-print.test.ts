@@ -94,7 +94,11 @@ describe('full schedule', () => {
     expect(svg).toContain('>4 d<');
     const milestone = riverside.tasks.find((t) => t.durationDays === 0)!;
     expect(milestone).toBeDefined();
-    expect(svg).toContain('>0 d<');
+    // Cells in one row share a baseline: find the milestone's code, then its Dur cell on that line.
+    const esc = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const y = new RegExp(`<text[^>]* y="([\\d.]+)"[^>]*>${esc(milestone.code)}</text>`).exec(svg)?.[1];
+    expect(y).toBeDefined();
+    expect(svg).toMatch(new RegExp(`<text[^>]* y="${esc(y!)}"[^>]*>0 d</text>`));
   });
 
   it('fits the whole job on the width of one ANSI D sheet by default', () => {
@@ -114,7 +118,8 @@ describe('full schedule', () => {
     // Tabloid: fitting 26 working days leaves about 0.27 in a day with every column.
     const roomy = layoutSchedulePrint({ ...full, paper: 'tabloid' }).sheets[0]!.svg;
     expect(roomy).toContain('>Dur<');
-    // Asking for wider days than fit: Dur goes, which is enough, so Responsible stays.
+    // No dialog setting passes minDayWidthIn yet; 0.28 in stands in for a job a few days longer than
+    // riverside, just past what fits with every column. Dur goes, which is enough, so Responsible stays.
     const narrow = layoutSchedulePrint({ ...full, paper: 'tabloid', minDayWidthIn: 0.28 }).sheets[0]!.svg;
     expect(narrow).not.toContain('>Dur<');
     expect(narrow).toContain('>Responsible<');

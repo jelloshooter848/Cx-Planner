@@ -134,7 +134,9 @@ export function layoutSchedulePrint(opts: SchedulePrintOptions): PrintLayout {
   const minDay = inch(opts.minDayWidthIn ?? 0.2);
   const narrow = (cols: Column[]) => {
     const tl = contentW - tableWidth(cols);
-    return tl < inch(5) || (opts.dayWidthIn === undefined && tl / dayCount < minDay);
+    // Fit-to-width full schedules also keep each day at least minDay wide; look-aheads (a window)
+    // and fixed day widths only need the 5 in timeline floor.
+    return tl < inch(5) || (!opts.window && opts.dayWidthIn === undefined && tl / dayCount < minDay);
   };
   const dropOrder = columns.filter((c) => c.dropOrder !== undefined).sort((a, b) => a.dropOrder! - b.dropOrder!);
   for (const c of dropOrder) {
