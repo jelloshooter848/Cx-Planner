@@ -555,8 +555,11 @@ function updateAsset(project: Project, id: Id, patch: AssetPatch, restore: boole
   const { value, undo, keys } = applyPatch(asset, patch, ASSET_FIELDS);
   if (keys.length === 0) throw new CommandError('no-change', `Nothing to change on asset ${asset.tag}`);
   if (restore) checkAssetShape(value);
-  else if (keys.includes('tag') && value.tag.trim() === '') {
-    throw new CommandError('empty-name', 'An asset needs a tag');
+  else if (keys.includes('tag')) {
+    if (value.tag.trim() === '') throw new CommandError('empty-name', 'An asset needs a tag');
+    if (project.assets.some((a) => a.id !== id && tagKey(a.tag) === tagKey(value.tag))) {
+      throw new CommandError('duplicate-tag', `Tag "${value.tag.trim()}" is already used`);
+    }
   }
   const assets = [...project.assets];
   assets[index] = value;

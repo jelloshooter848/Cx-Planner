@@ -82,6 +82,8 @@ export function buildMenu(ctx: MenuContext, s: AppState): Menu {
         // No accelerator: the Delete key belongs to text fields; the Schedule grid handles it itself.
         // The renderer knows the selected task, so it checks there is one and asks to confirm.
         { label: 'Delete Task…', enabled: open, click: () => ctx.toRenderer('delete-task') },
+        // Likewise for the selected asset (or the selected task's asset).
+        { label: 'Delete Asset…', enabled: open, click: () => ctx.toRenderer('delete-asset') },
         { type: 'separator' },
         { role: 'cut' },
         { role: 'copy' },

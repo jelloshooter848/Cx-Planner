@@ -7,7 +7,9 @@
  * the visible window, so projects with thousands of tasks scroll smoothly.
  *
  * Selection: clicking a task row (or its bar) selects it; Up/Down, Page Up/Down, Home and
- * End move the selection while the grid has focus; Escape clears it. The selected task id
+ * End move the selection while the grid has focus; Escape clears it. Clicking an asset's
+ * group row selects the asset instead (ui.selectedAssetId): the panel then edits the asset,
+ * and Delete asks to delete it. The selected task id
  * lives in the renderer store (ui.selectedTaskId) for the edit panel and other views.
  * Ctrl+click (Cmd+click on macOS) adds a task to the selection, or takes it out
  * (ui.selectedTaskIds; the toolbar's Link tasks links the first two). Alt+Up / Alt+Down move
@@ -96,6 +98,7 @@ export function GanttView({ project, schedule, assetIds = null, lookAhead = null
   const zoom = useSelect((s) => s.ui.scheduleZoom);
   const selectedId = useSelect((s) => s.ui.selectedTaskId);
   const selectedIdList = useSelect((s) => s.ui.selectedTaskIds);
+  const selectedAssetId = useSelect((s) => s.ui.selectedAssetId);
   const selectedIds = useMemo(() => new Set(selectedIdList), [selectedIdList]);
   const progressMode = useSelect((s) => s.ui.progressMode);
   const columns = progressMode ? PROGRESS_COLUMNS : PLAN_COLUMNS;
@@ -330,6 +333,12 @@ export function GanttView({ project, schedule, assetIds = null, lookAhead = null
       setEditing({ id: activeId, field: 'pct' });
       return;
     }
+    if (selectedAssetId && !selectedId && (e.key === 'Delete' || e.key === 'Escape')) {
+      e.preventDefault();
+      if (e.key === 'Delete') void store.dispatch({ type: 'delete-asset' });
+      else store.selectAsset(null);
+      return;
+    }
     if (selectedId && (e.key === 'Delete' || e.key === 'F2')) {
       e.preventDefault();
       if (e.key === 'Delete') void store.dispatch({ type: 'delete-task' });
@@ -355,7 +364,14 @@ export function GanttView({ project, schedule, assetIds = null, lookAhead = null
   const onClick = (e: MouseEvent<HTMLDivElement>) => {
     const target = e.target as Element;
     const id = target.closest('[data-task-id]')?.getAttribute('data-task-id');
-    if (!id) return;
+    if (!id) {
+      const assetId = target.closest('.gantt-row.is-group[data-asset-id]')?.getAttribute('data-asset-id');
+      if (assetId) {
+        setCursorId(null);
+        store.selectAsset(assetId);
+      }
+      return;
+    }
     if (e.ctrlKey || e.metaKey) {
       setCursorId(id);
       store.toggleTaskSelection(id);
@@ -424,7 +440,7 @@ export function GanttView({ project, schedule, assetIds = null, lookAhead = null
                 progressMode={progressMode}
                 summary={row.kind === 'task' ? schedule[row.task.id] : undefined}
                 pred={row.kind === 'task' ? (preds.get(row.task.id) ?? '') : ''}
-                selected={row.kind === 'task' && selectedIds.has(row.task.id)}
+                selected={row.kind === 'task' ? selectedIds.has(row.task.id) : row.asset.id === selectedAssetId}
                 cursor={row.kind === 'task' && cursorId !== null && row.task.id === cursorId}
                 editing={row.kind === 'task' && editing?.id === row.task.id ? editing.field : null}
                 onEditDone={finishEdit}
@@ -483,7 +499,15 @@ const Row = memo(function Row({ row, index, width, columns, tableWidth, progress
     const a = row.asset;
     const detail = [a.description, a.location].filter(Boolean).join(' · ');
     return (
-      <div className="gantt-row is-group" role="row" aria-rowindex={index + 2} style={style} data-asset-id={a.id}>
+      <div
+        className={`gantt-row is-group${selected ? ' is-selected' : ''}`}
+        role="row"
+        aria-rowindex={index + 2}
+        aria-selected={selected}
+        style={style}
+        data-asset-id={a.id}
+        title="Click to edit this asset"
+      >
         <div className="gantt-cells">
           <span role="gridcell" className="gc gc-id" style={{ width: W.id }}>
             {row.number}

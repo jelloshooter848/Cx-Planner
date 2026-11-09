@@ -2,6 +2,7 @@ import { useUi } from '../store';
 import { AboutDialog } from './AboutDialog';
 import { DataDateDialog } from './DataDateDialog';
 import { AddAssetsDialog } from './AddAssets/AddAssetsDialog';
+import { DeleteAssetDialog } from './DeleteAssetDialog';
 import { DeleteTaskDialog } from './DeleteTaskDialog';
 import { NewProjectDialog } from './NewProjectDialog';
 import { PrintDialog } from './Print/PrintDialog';
@@ -14,6 +15,7 @@ export function Dialogs() {
   if (dialog === 'about') return <AboutDialog />;
   if (dialog === 'add-assets') return <AddAssetsDialog />;
   if (dialog === 'delete-task') return <DeleteTaskDialog />;
+  if (dialog === 'delete-asset') return <DeleteAssetDialog />;
   if (dialog === 'print') return <PrintDialog />;
   if (dialog === 'project-settings') return <ProjectSettingsDialog />;
   if (dialog === 'data-date') return <DataDateDialog />;

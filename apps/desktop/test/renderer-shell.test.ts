@@ -129,6 +129,13 @@ describe('menu row', () => {
     expect(find(items(buildMenus(base, 'templates', false, true), 'edit'), label)).toMatchObject({ enabled: false });
   });
 
+  it('offers Delete asset only on the schedule with an asset (or a task of one) selected', () => {
+    const label = 'Delete asset…';
+    expect(find(items(buildMenus(base, 'schedule', false, false, true), 'edit'), label)).toMatchObject({ enabled: true, action: { type: 'delete-asset' } });
+    expect(find(items(buildMenus(base, 'schedule'), 'edit'), label)).toMatchObject({ enabled: false });
+    expect(find(items(buildMenus(base, 'templates', false, false, true), 'edit'), label)).toMatchObject({ enabled: false });
+  });
+
   it('lists recent files and disables project items with no project', () => {
     const file = items(buildMenus(base, 'schedule'), 'file');
     const recent = file.find((i) => i.kind === 'submenu');
