@@ -19,7 +19,14 @@ export interface SchedulePrintOptions {
   /** Optional date window (inclusive). Tasks outside it are left off. Omit for the full schedule. */
   window?: { start: IsoDate; end: IsoDate };
   revision: { rev: string; issued: IsoDate; baseline?: string };
+  /** Revision history. The footer lists the newest three, oldest first. */
   revisions?: RevisionEntry[];
+  /** Only print these asset groups (by asset id). Omit to print every asset. */
+  assetIds?: string[];
+  /** Draw critical tasks with a heavy outline and list it in the legend. Default true. */
+  showCriticalPath?: boolean;
+  /** Print the T I M E S readiness columns and their legend line. Default true. */
+  showTimes?: boolean;
   /**
    * Width of one working day in inches. Omit to fit the whole window on one sheet's width
    * (never narrower than `minDayWidthIn`, after which the time axis splits across sheets).
@@ -100,13 +107,17 @@ export function layoutSchedulePrint(opts: SchedulePrintOptions): PrintLayout {
     const last = Math.max(s.es, s.ef - 1);
     return s.es <= b && last >= a;
   };
-  const tasks = project.tasks.filter(inWindow);
+  const assetFilter = opts.assetIds ? new Set(opts.assetIds) : undefined;
+  const tasks = project.tasks.filter((t) => (!assetFilter || assetFilter.has(t.assetId)) && inWindow(t));
   let first: number;
   let last: number; // inclusive working-day indexes
   if (opts.window) {
     first = cal.indexOf(opts.window.start);
     last = cal.indexOf(opts.window.end);
     if (!cal.isWorkday(opts.window.end)) last -= 1;
+  } else if (tasks.length === 0) {
+    first = schedule.dataDateIndex;
+    last = first;
   } else {
     first = Math.min(...tasks.map((t) => schedule.tasks.get(t.id)!.es));
     last = Math.max(...tasks.map((t) => schedule.tasks.get(t.id)!.ef)) + 1;
@@ -114,7 +125,7 @@ export function layoutSchedulePrint(opts: SchedulePrintOptions): PrintLayout {
   const dayCount = Math.max(1, last - first + 1);
 
   // Columns: drop optional ones on small sheets so the timeline keeps a usable width.
-  let columns = BASE_COLUMNS;
+  let columns = opts.showTimes === false ? BASE_COLUMNS.filter((c) => !c.key.startsWith('times-')) : BASE_COLUMNS;
   const tableWidth = (cols: Column[]) => cols.reduce((n, c) => n + inch(c.widthIn), 0);
   if (contentW - tableWidth(columns) < inch(5)) columns = columns.filter((c) => !c.optional);
   const tableW = tableWidth(columns);
@@ -388,7 +399,7 @@ function drawTaskRow(
   const barH = inch(0.13);
   const top = mid - barH / 2;
   const done = t.percentComplete >= 100 || !!t.actualFinish;
-  const heavy = s.critical ? 2.6 : 1.2;
+  const heavy = s.critical && opts.showCriticalPath !== false ? 2.6 : 1.2;
   const visibleStart = Math.max(s.es, band[0]);
   const visibleEnd = Math.min(s.ef, band[1] + 1);
   if (t.durationDays > 0 && visibleEnd > visibleStart) {
@@ -453,20 +464,22 @@ function layoutFooter(opts: SchedulePrintOptions, w: number, dataDate: IsoDate):
       swatch(bar(INK), 'Complete'),
       swatch((x, y) => `<rect x="${x}" y="${y - 5}" width="28" height="11" fill="url(#hatch)" stroke="${INK}"/><rect x="${x}" y="${y - 5}" width="12" height="11" fill="${INK}"/>`, 'In progress (filled = % done)'),
       swatch(bar('#fff'), 'Not started'),
-      swatch(bar('#fff', 2.6), 'Critical path (heavy outline)'),
+      ...(opts.showCriticalPath !== false ? [swatch(bar('#fff', 2.6), 'Critical path (heavy outline)')] : []),
       swatch((x, y) => diamond(x + 14, y, 7.5, true), 'HOLD: no work past this point until released'),
       swatch((x, y) => diamond(x + 14, y, 7.5, false), 'WITNESS'),
       swatch((x, y) => `<line x1="${x + 14}" y1="${y - 8}" x2="${x + 14}" y2="${y + 8}" stroke="${INK}" stroke-width="1.6" stroke-dasharray="4 2"/>`, `Data date (${shortDate(dataDate)})`),
     ],
-    [
+  ];
+  if (opts.showTimes !== false) {
+    lines.push([
       label('T Tools · I Information · M Materials · E Expectations · S Safety', true),
       sym('ready', 'Ready / on site / complete'),
       sym('progress', 'In progress / on order'),
       sym('needed', 'Needed, not started'),
       sym('na', 'Not applicable'),
       sym('blocked', 'Blocked or late'),
-    ],
-  ];
+    ]);
+  }
   const GAP = 24;
   const LINE = 20;
   // Flow each group onto lines that fit the width.
@@ -487,7 +500,7 @@ function layoutFooter(opts: SchedulePrintOptions, w: number, dataDate: IsoDate):
   }
   const legendH = placed.length * LINE + 8;
   const signH = inch(1.0);
-  const revs = (opts.revisions ?? []).slice(-3);
+  const revs = newestRevisions(opts.revisions ?? [], 3);
   return {
     height: legendH + signH,
     draw: (x, y) => {
@@ -515,6 +528,15 @@ function layoutFooter(opts: SchedulePrintOptions, w: number, dataDate: IsoDate):
       return out.join('');
     },
   };
+}
+
+/** The newest `n` revisions (by date; ties keep list order), oldest first. */
+export function newestRevisions(revisions: RevisionEntry[], n: number): RevisionEntry[] {
+  return revisions
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => (a.r.date < b.r.date ? -1 : a.r.date > b.r.date ? 1 : a.i - b.i))
+    .slice(-n)
+    .map(({ r }) => r);
 }
 
 function titleSize(pageW: number): number {

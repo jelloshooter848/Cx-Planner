@@ -48,8 +48,8 @@ export async function runSpikes(args: string[]): Promise<Result[]> {
   if (args.includes('--spike-pdf')) {
     const riverside = riversideProject();
     const jobs: Array<[string, { html: string; layout: { sheets: unknown[] } }]> = [
-      ['lookahead-tabloid', lookAheadDocument(riverside, { paper: 'tabloid', weeks: 3, start: '2026-11-02' })],
-      ['lookahead-letter', lookAheadDocument(riverside, { paper: 'letter', weeks: 3, start: '2026-11-02' })],
+      ['lookahead-tabloid', lookAheadDocument(riverside, { paper: 'tabloid', weeks: 3 })],
+      ['lookahead-letter', lookAheadDocument(riverside, { paper: 'letter', weeks: 3 })],
       ['full-schedule-ansi-d', fullScheduleDocument(largeProject(), 'ansi-d')],
       ['full-schedule-arch-d', fullScheduleDocument(largeProject(), 'arch-d')],
     ];
