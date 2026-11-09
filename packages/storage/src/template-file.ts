@@ -116,7 +116,8 @@ function readTemplate(v: unknown, problems: string[]): Template | undefined {
     id: str(v, 'id', where, problems),
     name: str(v, 'name', where, problems),
     version: num(v, 'version', where, problems),
-    kind: oneOf(v, 'kind', ['starter', 'custom'], where, problems),
+    // Imports are always stored as custom, so a file without a kind is fine.
+    kind: v.kind === undefined ? 'custom' : oneOf(v, 'kind', ['starter', 'custom'], where, problems),
     assetDescription: str(v, 'assetDescription', where, problems),
     stages: strList(v, 'stages', where, problems),
     tasks: list(v, 'tasks', where, problems).flatMap((task, i) => {
@@ -127,6 +128,7 @@ function readTemplate(v: unknown, problems: string[]): Template | undefined {
   };
   if (t.id.trim() === '' && typeof v.id === 'string') problems.push('Template: id must not be empty');
   if (t.name.trim() === '' && typeof v.name === 'string') problems.push('Template: name must not be empty');
+  t.name = t.name.trim();
   return t;
 }
 

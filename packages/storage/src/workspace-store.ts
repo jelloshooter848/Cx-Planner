@@ -90,7 +90,13 @@ export class WorkspaceStore {
       const blank = appId === 0 && version === 0 && isEmpty(db);
       if (exists && !(appId === WORKSPACE_APPLICATION_ID || blank)) throw new NotAWorkspaceFileError(path);
       if (exists) {
-        const check = (db.prepare('PRAGMA quick_check').all() as Array<{ quick_check: string }>).map((r) => r.quick_check);
+        let check: string[];
+        try {
+          check = (db.prepare('PRAGMA quick_check').all() as Array<{ quick_check: string }>).map((r) => r.quick_check);
+        } catch (e) {
+          // Heavy damage makes the check itself fail (SQLITE_CORRUPT) instead of listing problems.
+          throw new ProjectFileCorruptError(path, (e as Error).message);
+        }
         if (check.join() !== 'ok') throw new ProjectFileCorruptError(path, check.slice(0, 3).join('; '));
       }
       if (version > WORKSPACE_MIGRATIONS.length) {
@@ -98,7 +104,10 @@ export class WorkspaceStore {
       }
       migrate(db);
       const store = new WorkspaceStore(folder, path, db, lock, backupPath);
-      if (blank) store.seedStarters();
+      // Seeding is recorded in meta, so a file left migrated but unseeded (a crash between
+      // the two commits) is seeded on its next open; deleting every starter later does not
+      // bring them back.
+      store.seedStartersOnce();
       return store;
     } catch (e) {
       db?.close();
@@ -116,7 +125,10 @@ export class WorkspaceStore {
     return userVersion(this.db);
   }
 
-  /** The library in display order (starters first, in shipped order, then the rest as added). */
+  /**
+   * The library in display order: starters first, in shipped order (even one added later by
+   * restoreStarters), then the rest as added.
+   */
   listTemplates(): TemplateSummary[] {
     const rows = this.db
       .prepare(
@@ -124,6 +136,8 @@ export class WorkspaceStore {
          FROM template WHERE deleted_at IS NULL ORDER BY sort, name`,
       )
       .all() as Array<{ id: string; name: string; kind: Template['kind']; version: number; task_count: number; updated_at: string }>;
+    // Array.prototype.sort is stable, so rows of equal rank keep their sort order.
+    rows.sort((a, b) => starterRank(a) - starterRank(b));
     return rows.map((r) => ({ id: r.id, name: r.name, kind: r.kind, version: Number(r.version), taskCount: Number(r.task_count), updatedAt: r.updated_at }));
   }
 
@@ -137,12 +151,15 @@ export class WorkspaceStore {
    * Saves a template and returns it as stored. A template whose id is not in the library is
    * added as a custom template at version 1. For an existing one the version goes up by one
    * when anything but the version changed, and stays put otherwise; the kind is kept, so an
-   * edited starter is still listed as a starter. Throws TemplateInvalidError when the
+   * edited starter is still listed as a starter. The name is stored trimmed. Saving the id
+   * of a deleted template brings it back (logged as a 'deleted' true -> false change), which
+   * is how an undo of a delete is written. Throws TemplateInvalidError when the
    * template breaks the rules in validateTemplate, and Error when it has no id or name.
    */
-  saveTemplate(t: Template, source = 'user'): Template {
-    if (t.id.trim() === '') throw new Error('Template has no id');
-    if (t.name.trim() === '') throw new Error('Template needs a name');
+  saveTemplate(input: Template, source = 'user'): Template {
+    if (input.id.trim() === '') throw new Error('Template has no id');
+    if (input.name.trim() === '') throw new Error('Template needs a name');
+    const t: Template = { ...input, name: input.name.trim() };
     const problems = validateTemplate({ ...t, version: 1 });
     if (problems.length > 0) throw new TemplateInvalidError(problems);
     let saved!: Template;
@@ -260,9 +277,13 @@ export class WorkspaceStore {
     this.db.exec(sql);
   }
 
-  private seedStarters(): void {
+  private seedStartersOnce(): void {
+    if (this.db.prepare("SELECT 1 FROM meta WHERE key = 'starters_seeded'").get()) return;
     this.tx(() => {
-      for (const s of STARTER_TEMPLATES) this.insert(structuredClone(s) as Template, 'seed');
+      for (const s of STARTER_TEMPLATES) {
+        if (!this.row(s.id)) this.insert(structuredClone(s) as Template, 'seed');
+      }
+      this.db.prepare("INSERT INTO meta (key, value) VALUES ('starters_seeded', ?)").run(new Date().toISOString());
     });
   }
 
@@ -310,6 +331,13 @@ export class WorkspaceStore {
       throw e;
     }
   }
+}
+
+const STARTER_ORDER = new Map(STARTER_TEMPLATES.map((s, i) => [s.id, i]));
+
+/** Starters rank by shipped index; everything else (and a starter no longer shipped) after them. */
+function starterRank(r: { id: string; kind: Template['kind'] }): number {
+  return r.kind === 'starter' ? (STARTER_ORDER.get(r.id) ?? STARTER_ORDER.size) : STARTER_ORDER.size + 1;
 }
 
 /** A fresh library id for a custom template. */

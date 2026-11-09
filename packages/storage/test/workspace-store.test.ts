@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, statSync, writeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -9,6 +9,7 @@ import { STARTER_TEMPLATES } from '@cx/templates';
 import {
   BACKUP_DIR,
   NotAWorkspaceFileError,
+  ProjectFileCorruptError,
   ProjectLockedError,
   TEMPLATE_FILE_FORMAT,
   TemplateImportError,
@@ -72,6 +73,36 @@ describe('WorkspaceStore: file', () => {
     const again = WorkspaceStore.open(folder);
     expect(again.listTemplates()).toHaveLength(STARTER_TEMPLATES.length - 1);
     again.close();
+  });
+
+  it('seeds a file that was migrated but never seeded, once', () => {
+    mkdirSync(folder, { recursive: true });
+    const raw = new DatabaseSync(join(folder, WORKSPACE_FILE_NAME));
+    raw.exec(WORKSPACE_MIGRATIONS[0]!);
+    raw.exec(`PRAGMA user_version = 1; PRAGMA application_id = ${WORKSPACE_APPLICATION_ID};`);
+    raw.close();
+    const ws = WorkspaceStore.open(folder);
+    expect(ws.listTemplates().map((t) => t.id)).toEqual(STARTER_TEMPLATES.map((t) => t.id));
+    for (const t of STARTER_TEMPLATES) ws.deleteTemplate(t.id);
+    ws.close();
+    const again = WorkspaceStore.open(folder);
+    expect(again.listTemplates()).toEqual([]);
+    again.close();
+  });
+
+  it('refuses a damaged file and releases the lock', () => {
+    WorkspaceStore.open(folder, { create: true }).close();
+    const path = join(folder, WORKSPACE_FILE_NAME);
+    const raw = new DatabaseSync(path);
+    const pageSize = (raw.prepare('PRAGMA page_size').get() as { page_size: number }).page_size;
+    raw.close();
+    // Scribble over every page after the first, keeping the header readable.
+    const pages = statSync(path).size / pageSize;
+    const fd = openSync(path, 'r+');
+    for (let p = 1; p < pages; p++) writeSync(fd, Buffer.alloc(pageSize, 0x5a), 0, pageSize, p * pageSize + 8);
+    closeSync(fd);
+    expect(() => WorkspaceStore.open(folder, { backup: false })).toThrow(ProjectFileCorruptError);
+    expect(existsSync(`${path}.lock`)).toBe(false);
   });
 
   it('refuses to open a missing workspace without create', () => {
@@ -157,6 +188,32 @@ describe('WorkspaceStore: templates', () => {
     const reversed = (o: object): object => Object.fromEntries(Object.entries(o).reverse());
     const shuffled = { ...(reversed(current) as Template), tasks: current.tasks.map((x) => reversed(x) as typeof x) };
     expect(ws.saveTemplate(shuffled).version).toBe(3);
+  });
+
+  it('brings a deleted template back when it is saved again', () => {
+    ws.saveTemplate(custom());
+    ws.deleteTemplate('tpl-meter');
+    const seq = ws.changesSince().at(-1)!.seq;
+    const back = ws.saveTemplate(custom());
+    expect(back).toMatchObject({ id: 'tpl-meter', version: 1 });
+    expect(ws.getTemplate('tpl-meter')).toEqual(back);
+    expect(ws.changesSince(seq)).toEqual([expect.objectContaining({ field: 'deleted', oldValue: true, newValue: false })]);
+  });
+
+  it('trims names on save and import', () => {
+    expect(ws.saveTemplate({ ...custom(), name: '  padded  ' }).name).toBe('padded');
+    const t = { ...custom('tpl-pad'), name: '  imported  ' };
+    expect(ws.importTemplate(JSON.stringify({ format: 'cx-template', version: 1, template: t })).template.name).toBe('imported');
+  });
+
+  it('lists a starter added later before custom templates, in shipped order', () => {
+    ws.saveTemplate(custom());
+    // Simulate a starter shipped after this workspace was made.
+    const late = STARTER_TEMPLATES[1]!.id;
+    ws.exec(`DELETE FROM template WHERE id = '${late}'`);
+    expect(ws.restoreStarters()).toEqual([late]);
+    const ids = ws.listTemplates().map((t) => t.id);
+    expect(ids).toEqual([...STARTER_TEMPLATES.map((t) => t.id), 'tpl-meter']);
   });
 
   it('adds a new template as custom version 1 and lists it last', () => {
@@ -281,6 +338,31 @@ describe('WorkspaceStore: templates', () => {
     expect(problems(JSON.stringify({ format: 'cx-template', version: 1, template: loop }))[0]).toMatch(/loop/);
 
     expect(ws.listTemplates()).toHaveLength(STARTER_TEMPLATES.length);
+  });
+
+  it('keeps optional task fields on import', () => {
+    const t = custom('tpl-opt');
+    t.tasks[1]!.testForm = 'TF-12';
+    ws.saveTemplate(t);
+    const other = WorkspaceStore.open(join(folder, '..', 'Other2'), { create: true });
+    const res = other.importTemplate(ws.exportTemplate('tpl-opt'));
+    expect(res.template.tasks[1]).toMatchObject({ testForm: 'TF-12', noticeLeadDays: 2 });
+    expect(res.template).toEqual(t);
+    other.close();
+  });
+
+  it('imports a file without a kind as custom', () => {
+    const { kind: _kind, ...noKind } = custom('tpl-nokind');
+    const res = ws.importTemplate(JSON.stringify({ format: 'cx-template', version: 1, template: noKind }));
+    expect(res.template.kind).toBe('custom');
+  });
+
+  it('rejects a bad template version with an import error', () => {
+    for (const version of [0, 1.5]) {
+      const json = JSON.stringify({ format: 'cx-template', version: 1, template: { ...custom('tpl-v'), version } });
+      expect(() => ws.importTemplate(json)).toThrow(TemplateImportError);
+    }
+    expect(ws.getTemplate('tpl-v')).toBeUndefined();
   });
 
   it('drops unknown fields on import', () => {
