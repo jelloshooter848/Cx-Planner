@@ -58,6 +58,8 @@ export interface Task {
   readiness?: Readiness;
   /** Key of the template task this task was created from (stable within the template). */
   templateKey?: string;
+  /** Free-text notes for the planner and the field. */
+  notes?: string;
 }
 
 export interface CalendarDef {
