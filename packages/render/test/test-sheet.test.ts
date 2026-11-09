@@ -111,6 +111,12 @@ describe('layoutTestSheet', () => {
     expect(row('marks')).not.toContain('Per mfr.');
   });
 
+  it('keeps typical acceptance criteria of about 25 characters on one line', () => {
+    const criteria = ['Per project spec / NETA ATS', '≥ 100 MΩ at 1000 V DC', '≥ [value] at [test V]'];
+    const svg = allSvg({ checklist: criteria.map((acceptance, i) => ({ id: `a${i}`, text: 'Insulation resistance', acceptance })) });
+    for (const c of criteria) expect(svg).toContain(`>${c}<`);
+  });
+
   it('fits the twelve-item mockup checklist with a hold point on one page', () => {
     const l = sheet({ task: holdTask, checklist: items(12, (i) => `Pre-energization check ${i}`) });
     expect(l.sheets).toHaveLength(1);

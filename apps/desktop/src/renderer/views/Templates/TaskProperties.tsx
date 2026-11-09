@@ -188,7 +188,7 @@ export function TaskProperties({
           label: 'Acceptance',
           placeholder: 'Acceptance (optional)',
           text: (c) => c.acceptance ?? '',
-          withText: ({ acceptance: _old, ...c }, acceptance) => (acceptance === '' ? c : { ...c, acceptance }),
+          withText: ({ acceptance: _old, ...c }, acceptance) => (acceptance.trim() === '' ? c : { ...c, acceptance }),
         }}
       />
 

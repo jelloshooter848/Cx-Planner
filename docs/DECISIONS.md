@@ -59,3 +59,7 @@ Each entry: the decision, why, and what would make us revisit it.
 - Actual start and finish dates typed after the data date are accepted. Weekly entry is often done a day or two before the data date is moved forward, and refusing those dates would force the data date to be changed first. The data date is the reviewer's check, not a hard limit.
 - The defaults the app fills in never land after the data date: a missing actual start defaults to the computed start, but no later than the data date (progress is reported as of that date, so the work had started by then), and a 100% finish defaults to the data date. This is a deliberate narrowing of "defaulting to the computed start".
 - Setting a milestone to 0% clears both actual dates, so a milestone is either not reached (no actuals) or reached (start = finish).
+
+## D15 · Starter templates are frozen per version from the first release (2026-11-09)
+- Before the first release, starter template content may change without a version bump (for example, adding acceptance criteria to checklist items). No released workspace or project holds an older copy yet.
+- From the first release onward, any change to a starter's content bumps its version. Workspaces seed starters only once, and a project that stores a snapshot of a starter version would otherwise conflict with different content under the same version number.
