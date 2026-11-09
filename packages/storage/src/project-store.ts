@@ -45,6 +45,32 @@ export interface ChangeEvent {
 }
 
 /** Where the file stands: bumped by every write that changes the project. */
+/** A print to record with ProjectStore.recordPrint. */
+export interface NewPrintRecord {
+  /** Print kind, e.g. "lookahead", "full-schedule", "test-sheets". Revisions count per kind. */
+  kind: string;
+  /** Revision letter printed on the sheets, e.g. "B". */
+  rev: string;
+  /** Issued date printed on the sheets (YYYY-MM-DD). */
+  issued: string;
+  paper: string;
+  sheets: number;
+  dataDate: string;
+  /** What this revision is for, e.g. "Progress update". */
+  note?: string;
+  /** Sheet title, e.g. "3-Week Look-Ahead: Nov 2 – Nov 20, 2026". */
+  title?: string;
+}
+
+/** One issued print (a row of print_record). */
+export interface PrintRecord extends Required<NewPrintRecord> {
+  id: number;
+  /** ISO timestamp of when it was printed. */
+  printedAt: string;
+  /** Last change_event seq included in the print. */
+  lastChangeSeq: number;
+}
+
 export interface RevisionState {
   /** 0 for a new file; +1 per write that changed anything. */
   revision: number;
@@ -458,13 +484,38 @@ export class ProjectStore {
     }));
   }
 
-  /** Record that a print was issued; "changed since last print" reads from here. */
-  recordPrint(p: { kind: string; rev: string; issued: string; paper: string; sheets: number; dataDate: string }): number {
+  /**
+   * Record that a print was issued; "changed since last print" and the revision history on
+   * later sheets read from here. Returns the record id.
+   */
+  recordPrint(p: NewPrintRecord): number {
     const last = this.db.prepare('SELECT COALESCE(MAX(seq), 0) AS s FROM change_event').get() as { s: number };
     const r = this.db
-      .prepare('INSERT INTO print_record (kind, rev, issued, printed_at, paper, sheets, data_date, last_change_seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(p.kind, p.rev, p.issued, new Date().toISOString(), p.paper, p.sheets, p.dataDate, last.s);
+      .prepare('INSERT INTO print_record (kind, rev, issued, printed_at, paper, sheets, data_date, last_change_seq, note, title) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(p.kind, p.rev, p.issued, new Date().toISOString(), p.paper, p.sheets, p.dataDate, last.s, p.note ?? '', p.title ?? '');
     return Number(r.lastInsertRowid);
+  }
+
+  /** Issued prints, oldest first; only those of `kind` when given. */
+  listPrints(kind?: string): PrintRecord[] {
+    const rows = (
+      kind === undefined
+        ? this.db.prepare('SELECT * FROM print_record ORDER BY id').all()
+        : this.db.prepare('SELECT * FROM print_record WHERE kind = ? ORDER BY id').all(kind)
+    ) as Row[];
+    return rows.map((r) => ({
+      id: Number(r.id),
+      kind: String(r.kind),
+      rev: String(r.rev),
+      issued: String(r.issued),
+      printedAt: String(r.printed_at),
+      paper: String(r.paper),
+      sheets: Number(r.sheets),
+      dataDate: String(r.data_date),
+      lastChangeSeq: Number(r.last_change_seq),
+      note: String(r.note ?? ''),
+      title: String(r.title ?? ''),
+    }));
   }
 
   changesSinceLastPrint(kind: string): ChangeEvent[] {

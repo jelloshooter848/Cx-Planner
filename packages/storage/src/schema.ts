@@ -88,6 +88,11 @@ export const MIGRATIONS: string[] = [
     json TEXT NOT NULL
   );
   `,
+  // 3 -> 4: what each issued print said about itself, for the revision history on later sheets.
+  `
+  ALTER TABLE print_record ADD COLUMN note TEXT NOT NULL DEFAULT '';
+  ALTER TABLE print_record ADD COLUMN title TEXT NOT NULL DEFAULT '';
+  `,
 ];
 
 /** Meta keys that hold the project's own fields (written by replaceProject/saveProject). */
