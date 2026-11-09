@@ -6,3 +6,4 @@ export * from './commands.js';
 export * from './reapply.js';
 export * from './add-assets.js';
 export * from './checklists.js';
+export * from './holidays.js';
