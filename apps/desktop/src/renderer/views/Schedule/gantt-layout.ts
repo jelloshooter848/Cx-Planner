@@ -321,7 +321,7 @@ export const GRID_MIN_W = 320;
 export const TIMELINE_MIN_W = 240;
 /** Left / Right arrow on the focused splitter moves it this far (px). */
 export const SPLIT_STEP = 16;
-/** The Task column shrinks to fit a narrower table, but not below this (px); past it the right-hand columns are cut off. */
+/** The Task column shrinks to fit a narrower table, but not below this (px); past it whole right-hand columns are hidden. */
 export const TASK_COL_MIN_W = 120;
 
 /** The widest the task table may be when the Gantt's scroll area is `available` px wide. */
@@ -346,6 +346,32 @@ export function clampGridWidth(wanted: number, available: number): number {
  */
 export function taskColumnWidth(gridWidth: number, otherColumns: number): number {
   return Math.max(TASK_COL_MIN_W, Math.round(gridWidth - otherColumns));
+}
+
+export interface FittedColumns<C> {
+  /** The columns that fit, left to right, with the Task column's width set to take up the slack. */
+  columns: C[];
+  /** How many right-hand columns were left out because they did not fit. */
+  hidden: number;
+}
+
+/**
+ * The table's columns for a table `gridWidth` px wide. The Task column (`flexKey`) takes up
+ * the slack, down to TASK_COL_MIN_W; when even that does not fit, whole columns are dropped
+ * from the right (never one left of the Task column, nor the Task column itself), so no
+ * column is cut off partway through its text. The Task column then widens to fill the table.
+ */
+export function visibleColumns<C extends { key: string; width: number }>(gridWidth: number, columns: readonly C[], flexKey = 'task'): FittedColumns<C> {
+  const flexAt = columns.findIndex((c) => c.key === flexKey);
+  if (flexAt < 0) return { columns: [...columns], hidden: 0 };
+  let keep = columns.length;
+  const others = (n: number) => columns.slice(0, n).reduce((sum, c, i) => (i === flexAt ? sum : sum + c.width), 0);
+  while (keep > flexAt + 1 && others(keep) + TASK_COL_MIN_W > gridWidth) keep--;
+  const flexW = taskColumnWidth(gridWidth, others(keep));
+  return {
+    columns: columns.slice(0, keep).map((c, i) => (i === flexAt ? { ...c, width: flexW } : c)),
+    hidden: columns.length - keep,
+  };
 }
 
 /**

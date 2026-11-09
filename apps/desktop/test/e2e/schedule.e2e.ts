@@ -179,7 +179,23 @@ describe('schedule Gantt', () => {
     await page.keyboard.press('Home');
     await expect.poll(gridWidth).toBe(320);
     expect(await cellsWidth()).toBeCloseTo(320, 0);
+    // Columns that do not fit are hidden whole, and the header says how many.
+    await expect(page.getByTestId('gantt-cols-hidden').textContent()).resolves.toBe('+3');
+    expect(await page.locator('.gantt-colheads [role="columnheader"]').allTextContents()).toEqual(['ID', 'Task', 'Dur', 'Start', 'Timeline']);
     await h.screenshot('schedule-1366-narrow-table');
+
+    // The layout comes back after a reload: the same table width, both panels still folded.
+    await page.reload();
+    await page.getByRole('grid', { name: 'Tasks' }).waitFor();
+    await expect.poll(gridWidth).toBe(320);
+    await showAssets.waitFor();
+    await page.getByRole('button', { name: 'Show details panel' }).waitFor();
+    expect(await assets.count()).toBe(0);
+    expect(await details.count()).toBe(0);
+    await expect.poll(paneWidth).toBeGreaterThanOrEqual(600);
+    // The selection is not part of the layout; pick the task again (the panel stays folded).
+    await page.locator('#gantt-row-t2\\.2 .gc-task').click();
+    expect(await details.count()).toBe(0);
     await splitter.dblclick();
     await expect.poll(gridWidth).toBe(before.grid);
 

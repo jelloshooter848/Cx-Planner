@@ -241,10 +241,37 @@
   display: flex;
   flex-direction: column;
 }
-/* A narrow table cuts off its right-hand columns instead of spilling over the timeline. */
+/* Columns that do not fit are hidden whole (visibleColumns); this only trims the 1px border. */
 .gantt-head-cells,
 .gantt-cells {
   overflow: hidden;
+}
+/* "+N" in the header's upper band and a fade at the table's right edge mark hidden columns. */
+.gantt-cols-hidden {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  padding: 0 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg-header);
+  color: var(--ink-muted);
+  font-size: var(--fs-xs);
+  line-height: 16px;
+  cursor: help;
+}
+.gantt.has-hidden-cols .gantt-cells::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  background: linear-gradient(to right, transparent, var(--bg-panel));
+  pointer-events: none;
+}
+.gantt.has-hidden-cols .gantt-row.is-group .gantt-cells::after {
+  display: none;
 }
 .gantt-timeline-pane {
   position: absolute;
@@ -252,13 +279,15 @@
   bottom: 0;
   pointer-events: none;
 }
+/* The hit area sits mostly over the table so bars at the timeline's left edge stay clickable;
+   its bottom is set inline to leave the horizontal scrollbar clear. */
 .gantt-splitter {
   position: absolute;
   top: 0;
   bottom: 0;
   z-index: 5;
-  width: 9px;
-  margin-left: -5px;
+  width: 8px;
+  margin-left: -6px;
   cursor: col-resize;
   touch-action: none;
   outline: none;
@@ -268,10 +297,24 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 3px;
+  left: 4px;
   width: 3px;
   background: transparent;
   transition: background-color 0.1s;
+}
+/* Resting grip in the header band: two short rules show the border can be dragged. */
+.gantt-splitter::before {
+  content: '';
+  position: absolute;
+  top: 31px;
+  left: 4px;
+  box-sizing: content-box;
+  width: 3px;
+  height: 16px;
+  border-left: 1px solid var(--line-strong);
+  border-right: 1px solid var(--line-strong);
+  background: var(--bg-header);
+  z-index: 1;
 }
 .gantt-splitter:hover::after,
 .gantt-splitter:focus-visible::after,

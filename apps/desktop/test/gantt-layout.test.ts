@@ -22,6 +22,7 @@ import {
   splitterKeyWidth,
   TASK_COL_MIN_W,
   taskColumnWidth,
+  visibleColumns,
   TIMELINE_MIN_W,
   visibleRows,
   visibleSpan,
@@ -242,6 +243,43 @@ describe('table / timeline splitter', () => {
     expect(taskColumnWidth(614, 392)).toBe(222);
     expect(taskColumnWidth(700, 392)).toBe(308);
     expect(taskColumnWidth(320, 392)).toBe(TASK_COL_MIN_W);
+  });
+
+  it('hides whole right-hand columns that do not fit instead of cutting them off', () => {
+    const cols = [
+      { key: 'id', width: 58 },
+      { key: 'task', width: 222 },
+      { key: 'dur', width: 44 },
+      { key: 'start', width: 60 },
+      { key: 'pct', width: 52 },
+      { key: 'pred', width: 66 },
+      { key: 'times', width: 112 },
+    ];
+    const keys = (r: ReturnType<typeof visibleColumns<(typeof cols)[number]>>) => r.columns.map((c) => c.key);
+    const sum = (r: ReturnType<typeof visibleColumns<(typeof cols)[number]>>) => r.columns.reduce((n, c) => n + c.width, 0);
+    // Room for all: the Task column takes the slack.
+    const wide = visibleColumns(700, cols);
+    expect(wide.hidden).toBe(0);
+    expect(wide.columns.find((c) => c.key === 'task')?.width).toBe(308);
+    // Exactly the Task column's minimum left over: still all.
+    expect(visibleColumns(512, cols).hidden).toBe(0);
+    // One pixel less: TIMES goes whole, and the Task column widens to fill the table.
+    const less = visibleColumns(511, cols);
+    expect(keys(less)).toEqual(['id', 'task', 'dur', 'start', 'pct', 'pred']);
+    expect(less.hidden).toBe(1);
+    expect(sum(less)).toBe(511);
+    // The narrowest table keeps ID, Task, Dur and Start.
+    const narrow = visibleColumns(320, cols);
+    expect(keys(narrow)).toEqual(['id', 'task', 'dur', 'start']);
+    expect(narrow.hidden).toBe(3);
+    expect(sum(narrow)).toBe(320);
+    expect(narrow.columns[1]!.width).toBeGreaterThanOrEqual(TASK_COL_MIN_W);
+    // Never drops the Task column or one to its left, even when nothing else fits.
+    expect(keys(visibleColumns(50, cols))).toEqual(['id', 'task']);
+    // The input is left alone.
+    expect(cols[1]!.width).toBe(222);
+    // No flexible column: everything as given.
+    expect(visibleColumns(100, [{ key: 'a', width: 300 }]).columns).toEqual([{ key: 'a', width: 300 }]);
   });
 
   it('moves with the arrow keys, Home and End', () => {

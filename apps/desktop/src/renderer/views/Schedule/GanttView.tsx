@@ -20,7 +20,9 @@
  *
  * Splitter: the line between the table and the timeline can be dragged (or moved with Left /
  * Right while focused; Home / End for the narrowest / widest table) and double-clicked to
- * reset. The Task column takes up the slack; the width is kept in ui.scheduleLayout.gridWidth.
+ * reset. The Task column takes up the slack; when the table is too narrow for every column the
+ * right-hand ones are hidden whole (a "+N" mark in the header says so). The width is kept in
+ * ui.scheduleLayout.gridWidth.
  *
  * Editing: double-click a task's name or duration (or press F2 for the name) to edit it in
  * place; Enter or leaving the cell saves (one undo step), Escape cancels. Delete asks to
@@ -56,7 +58,7 @@ import {
   rowIndexOfTask,
   scrollToRow,
   splitterKeyWidth,
-  taskColumnWidth,
+  visibleColumns,
   visibleRows,
   visibleSpan,
   weekendDays,
@@ -103,6 +105,8 @@ interface Viewport {
   left: number;
   width: number;
   height: number;
+  /** Height of the horizontal scrollbar along the bottom (0 when there is none). */
+  scrollbarH: number;
   /** False until the scroll area has been read once; the default size is only a guess. */
   measured: boolean;
 }
@@ -126,14 +130,16 @@ export function GanttView({ project, schedule, assetIds = null, lookAhead = null
   const progressMode = useSelect((s) => s.ui.progressMode);
   const naturalColumns = progressMode ? PROGRESS_COLUMNS : PLAN_COLUMNS;
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [vp, setVp] = useState<Viewport>({ top: 0, left: 0, width: 1200, height: 800, measured: false });
+  const [vp, setVp] = useState<Viewport>({ top: 0, left: 0, width: 1200, height: 800, scrollbarH: 0, measured: false });
   // The table's width: the splitter's (while dragging, or as remembered) or the columns' own,
   // kept between the table's and the timeline's minimum widths. The Task column takes the slack.
   const savedGridW = useSelect((s) => s.ui.scheduleLayout.gridWidth);
   const [dragW, setDragW] = useState<number | null>(null);
   const tableW = clampGridWidth(dragW ?? savedGridW ?? tableWidth(naturalColumns), vp.width);
-  const taskW = taskColumnWidth(tableW, tableWidth(naturalColumns) - W.task);
-  const columns = useMemo(() => naturalColumns.map((c) => (c.key === 'task' ? { ...c, width: taskW } : c)), [naturalColumns, taskW]);
+  // Right-hand columns that do not fit are left out whole rather than cut off mid-text.
+  const fitted = useMemo(() => visibleColumns(tableW, naturalColumns), [tableW, naturalColumns]);
+  const columns = fitted.columns;
+  const taskW = columns.find((c) => c.key === 'task')?.width ?? W.task;
   const [editing, setEditing] = useState<{ id: Id; field: EditField } | null>(null);
   // Keyboard multi-select: Ctrl+Up/Down moves this row cursor without changing the selection,
   // Ctrl+Space adds or removes the cursor's task (as Ctrl+click does). Null follows the selection.
@@ -161,10 +167,11 @@ export function GanttView({ project, schedule, assetIds = null, lookAhead = null
     let frame = 0;
     const read = () => {
       frame = 0;
+      const scrollbarH = Math.max(0, el.offsetHeight - el.clientHeight);
       setVp((p) =>
-        p.measured && p.top === el.scrollTop && p.left === el.scrollLeft && p.width === el.clientWidth && p.height === el.clientHeight
+        p.measured && p.top === el.scrollTop && p.left === el.scrollLeft && p.width === el.clientWidth && p.height === el.clientHeight && p.scrollbarH === scrollbarH
           ? p
-          : { top: el.scrollTop, left: el.scrollLeft, width: el.clientWidth, height: el.clientHeight, measured: true },
+          : { top: el.scrollTop, left: el.scrollLeft, width: el.clientWidth, height: el.clientHeight, scrollbarH, measured: true },
       );
     };
     const onScroll = () => {
@@ -404,15 +411,21 @@ export function GanttView({ project, schedule, assetIds = null, lookAhead = null
     const d = drag.current;
     if (d) setDragW(clampGridWidth(d.w + e.clientX - d.x, vp.width));
   };
-  const onSplitUp = (e: PointerEvent<HTMLDivElement>) => {
+  /** End a drag, keeping width `w` (null keeps the last width drawn while dragging). */
+  const endDrag = (w: number | null) => {
     const d = drag.current;
     if (!d) return;
     drag.current = null;
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
-    const w = clampGridWidth(d.w + e.clientX - d.x, vp.width);
+    const final = w ?? dragW;
     // A click without a move leaves the remembered width alone (it may be the default).
-    if (w !== d.w) store.setScheduleLayout({ gridWidth: w });
+    if (final !== null && final !== d.w) store.setScheduleLayout({ gridWidth: final });
     setDragW(null);
+  };
+  const onSplitUp = (e: PointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    if (!d) return;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    endDrag(clampGridWidth(d.w + e.clientX - d.x, vp.width));
   };
   const onSplitKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
@@ -454,7 +467,7 @@ export function GanttView({ project, schedule, assetIds = null, lookAhead = null
   };
 
   return (
-    <div className={`gantt${progressMode ? ' is-progress-mode' : ''}${dragW !== null ? ' is-resizing' : ''}`} style={{ '--gantt-table-w': `${tableW}px` } as CSSProperties}>
+    <div className={`gantt${progressMode ? ' is-progress-mode' : ''}${dragW !== null ? ' is-resizing' : ''}${fitted.hidden > 0 ? ' has-hidden-cols' : ''}`} style={{ '--gantt-table-w': `${tableW}px` } as CSSProperties}>
       <div className="gantt-main">
         <div
           ref={scrollRef}
@@ -485,6 +498,18 @@ export function GanttView({ project, schedule, assetIds = null, lookAhead = null
                     Timeline
                   </span>
                 </div>
+                {fitted.hidden > 0 && (
+                  <span
+                    className="gantt-cols-hidden"
+                    data-testid="gantt-cols-hidden"
+                    title={`${fitted.hidden} column${fitted.hidden === 1 ? '' : 's'} hidden (${naturalColumns
+                      .slice(columns.length)
+                      .map((c) => c.aria ?? c.label)
+                      .join(', ')}): widen the table to show ${fitted.hidden === 1 ? 'it' : 'them'}`}
+                  >
+                    +{fitted.hidden}
+                  </span>
+                )}
               </div>
               <div className="gantt-head-timeline" style={{ left: tableW, width: scale.width }}>
                 <GanttHeaderTime scale={scale} ticks={ticks} x0={x0} x1={x1} scrolled={vp.left} />
@@ -543,7 +568,7 @@ export function GanttView({ project, schedule, assetIds = null, lookAhead = null
           aria-valuemax={maxGridWidth(vp.width)}
           tabIndex={0}
           title="Drag to resize the task table · double-click to reset"
-          style={{ left: tableW }}
+          style={{ left: tableW, bottom: vp.scrollbarH }}
           onPointerDown={onSplitDown}
           onPointerMove={onSplitMove}
           onPointerUp={onSplitUp}
@@ -551,6 +576,8 @@ export function GanttView({ project, schedule, assetIds = null, lookAhead = null
             drag.current = null;
             setDragW(null);
           }}
+          // Capture lost some other way (window blur, the element replaced): keep what was dragged.
+          onLostPointerCapture={() => endDrag(null)}
           onKeyDown={onSplitKey}
           onDoubleClick={() => store.setScheduleLayout({ gridWidth: null })}
         />
