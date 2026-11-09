@@ -14,6 +14,11 @@ describe('planProgress', () => {
     expect(plan(task(), { percentComplete: 40 })).toEqual({ kind: 'patch', patch: { percentComplete: 40, actualStart: '2026-11-04' } });
     // An existing actual start is kept.
     expect(plan(task({ actualStart: '2026-11-03' }), { percentComplete: 40 })).toEqual({ kind: 'patch', patch: { percentComplete: 40 } });
+    // A computed start after the data date: the data date (progress is as of that date).
+    expect(plan(task(), { percentComplete: 40 }, { dataDate: '2026-11-06', computedStart: '2026-11-10' })).toEqual({
+      kind: 'patch',
+      patch: { percentComplete: 40, actualStart: '2026-11-06' },
+    });
     // No computed schedule: the data date.
     expect(plan(task(), { percentComplete: 10 }, { dataDate: '2026-11-06', computedStart: null })).toEqual({
       kind: 'patch',

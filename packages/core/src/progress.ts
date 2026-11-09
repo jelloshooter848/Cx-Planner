@@ -13,8 +13,9 @@ import type { Id, IsoDate, Task } from './model.js';
  *   `needs-finish` with a default (the data date) for the UI to ask about.
  * - Setting an actual finish sets 100%.
  * - Any progress (% > 0 or an actual finish) needs an actual start. When there is none it
- *   defaults to the computed start (no later than the actual finish), or the data date when
- *   the task has no computed schedule. A milestone's start defaults to its finish.
+ *   defaults to the computed start, no later than the data date or the actual finish (the
+ *   data date when the task has no computed schedule). A milestone's start defaults to its
+ *   finish.
  * - An actual finish before the actual start is refused.
  * - Lowering % below 100 reopens a finished task: its actual finish is cleared.
  * - Clearing the actual start resets the task to not started: % goes to 0 and the actual
@@ -73,7 +74,9 @@ const minDate = (a: IsoDate, b: IsoDate): IsoDate => (a < b ? a : b);
 /** The actual start to fill in for a task that has progress but no actual start. */
 export function defaultActualStart(task: Pick<Task, 'type'>, ctx: ProgressContext, finish: IsoDate | null): IsoDate {
   if (finish && task.type === 'milestone') return finish;
-  const start = ctx.computedStart ?? ctx.dataDate;
+  // Progress is reported as of the data date, so the work started no later than that,
+  // even when the schedule has the task starting after it.
+  const start = minDate(ctx.computedStart ?? ctx.dataDate, ctx.dataDate);
   return finish ? minDate(start, finish) : start;
 }
 

@@ -40,18 +40,18 @@ describe('progress entry', () => {
     expect(await field(page, 'Actual start').inputValue()).toBe('');
     expect(await field(page, 'Actual finish').inputValue()).toBe('');
 
-    // % above 0 fills in the actual start from the computed start (Nov 10).
+    // % above 0 fills in the actual start: the computed start (Nov 10), no later than the data date (Nov 6).
     const pct = field(page, '% complete');
     await pct.fill('30');
     await pct.press('Enter');
     let s = await h.waitState((x) => taskOf(x, 't1.4').percentComplete === 30, 'the percent');
-    expect(taskOf(s, 't1.4').actualStart).toBe('2026-11-10');
-    await expect.poll(() => field(page, 'Actual start').inputValue()).toBe('Nov 10');
+    expect(taskOf(s, 't1.4').actualStart).toBe('2026-11-06');
+    await expect.poll(() => field(page, 'Actual start').inputValue()).toBe('Nov 6');
     expect(s.undoLabel).toBe('Updated 1.4: % complete, actual start');
 
     // A finish before the start is refused under the field.
     const finish = field(page, 'Actual finish');
-    await finish.fill('Nov 9');
+    await finish.fill('Nov 5');
     await finish.press('Enter');
     await expect(panel(page).locator('[data-field="actual-finish"] .field-error').textContent()).resolves.toContain('cannot be before the actual start');
     // An actual finish sets 100%.
@@ -93,14 +93,14 @@ describe('progress entry', () => {
     await h.waitState((x) => taskOf(x, 't1.5').percentComplete === 100, 'the undo');
     await h.screenshot('progress-panel');
 
-    expect(changeLog(h.projectFile!)).toEqual(
-      expect.arrayContaining([
-        'Updated 1.4: % complete, actual start',
-        'Updated 1.4: % complete, actual finish',
-        'Updated 1.5: % complete, actual start, actual finish',
-        'Updated 1.5: % complete, actual start, actual finish',
-      ]),
-    );
+    // Each edit is one change-log entry, in order (the undo is logged too).
+    expect(changeLog(h.projectFile!).slice(-5)).toEqual([
+      'Updated 1.4: % complete, actual start',
+      'Updated 1.4: % complete, actual finish',
+      'Updated 1.5: % complete, actual start, actual finish',
+      'Updated 1.5: % complete, actual start, actual finish',
+      'Undo: Updated 1.5: % complete, actual start, actual finish',
+    ]);
   });
 
   it('edits % and actual dates in place in progress mode', async () => {
@@ -133,6 +133,28 @@ describe('progress entry', () => {
     await expect(row(page, 't2.4').locator('.gc-astart').textContent()).resolves.toBe('Nov 5');
     expect(taskOf(await h.state(), 't2.4').percentComplete).toBe(0);
 
+    // % on an unstarted task, then Tab past the actual start and finish without typing: the
+    // filled-in start shows in the start cell and nothing is cleared.
+    await row(page, 't3.2').locator('.gc-pct').click();
+    await page.getByRole('textbox', { name: '% complete of task 3.2' }).fill('40');
+    await page.keyboard.press('Tab');
+    const startCell = page.getByRole('textbox', { name: 'Actual start of task 3.2' });
+    await expect.poll(() => startCell.inputValue()).toBe('Nov 6');
+    await page.keyboard.press('Tab');
+    await page.getByRole('textbox', { name: 'Actual finish of task 3.2' }).waitFor();
+    await page.keyboard.press('Tab');
+    await page.getByRole('textbox', { name: '% complete of task 3.3' }).waitFor();
+    await page.keyboard.press('Escape');
+    let g = await h.state();
+    expect(taskOf(g, 't3.2')).toMatchObject({ percentComplete: 40, actualStart: '2026-11-06' });
+    expect(g.undoLabel).toBe('Updated 3.2: % complete, actual start');
+    expect(changeLog(h.projectFile!).at(-1)).toBe('Updated 3.2: % complete, actual start');
+    // A grid edit is one undo step.
+    await page.keyboard.press('Control+z');
+    g = await h.waitState((x) => taskOf(x, 't3.2').percentComplete === 0, 'the grid undo');
+    expect(taskOf(g, 't3.2').actualStart).toBeUndefined();
+    await expect(row(page, 't3.2').locator('.gc-astart').textContent()).resolves.toBe('—');
+
     // 100% in the grid asks for the finish too; 1.3 already has its start.
     await row(page, 't1.3').locator('.gc-pct').click();
     await page.getByRole('textbox', { name: '% complete of task 1.3' }).fill('100');
@@ -143,6 +165,18 @@ describe('progress entry', () => {
     await prompt.getByRole('button', { name: 'Mark complete' }).click();
     await h.waitState((x) => taskOf(x, 't1.3').actualFinish === '2026-11-06' && taskOf(x, 't1.3').percentComplete === 100, 'the grid completion');
     await expect(row(page, 't1.3').locator('.gc-afinish').textContent()).resolves.toBe('Nov 6');
+    // Entry carries on in the grid: the next % cell down is open.
+    const nextPct = page.getByRole('textbox', { name: '% complete of task 1.4' });
+    await expect.poll(() => nextPct.evaluate((el) => el === document.activeElement)).toBe(true);
+    await page.keyboard.press('Escape');
+    // Cancelling the prompt gives focus back to the grid.
+    await row(page, 't1.4').locator('.gc-pct').click();
+    await page.getByRole('textbox', { name: '% complete of task 1.4' }).fill('100');
+    await page.keyboard.press('Enter');
+    await page.getByRole('dialog', { name: 'Mark 1.4 complete' }).getByRole('button', { name: 'Cancel' }).click();
+    const grid = page.getByRole('grid', { name: 'Tasks' });
+    await expect.poll(() => grid.evaluate((el) => el === document.activeElement)).toBe(true);
+    expect(taskOf(await h.state(), 't1.4').percentComplete).toBe(0);
 
     // A bad value is refused with a notice and the cell stays as it was.
     await row(page, 't2.5').locator('.gc-pct').click();

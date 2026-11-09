@@ -92,9 +92,19 @@ export function GanttView({ project, schedule, assetIds = null }: GanttViewProps
   const scrollRef = useRef<HTMLDivElement>(null);
   const [vp, setVp] = useState<Viewport>({ top: 0, left: 0, width: 1200, height: 800, measured: false });
   const [editing, setEditing] = useState<{ id: Id; field: EditField } | null>(null);
+  const progressModeRef = useRef(progressMode);
+  progressModeRef.current = progressMode;
   const projectRef = useRef(project);
   projectRef.current = project;
-  const progress = useProgressEditor(project, schedule);
+  // When the grid's "Mark complete" prompt closes, keyboard entry carries on in the grid:
+  // after a save the next % cell down opens, as after Enter.
+  const progress = useProgressEditor(project, schedule, (task, saved) => {
+    const cell = saved ? nextProgressCell(rowsRef.current, { id: task.id, field: 'pct' }, 'down') : null;
+    if (cell && progressModeRef.current) {
+      selectRef.current(cell.id, true);
+      setEditing(cell);
+    } else scrollRef.current?.focus({ preventScroll: true });
+  });
   const progressRef = useRef(progress);
   progressRef.current = progress;
 
@@ -190,11 +200,13 @@ export function GanttView({ project, schedule, assetIds = null }: GanttViewProps
    * if the edit ended by key. A progress cell ended by Enter or Tab opens the next cell instead.
    */
   const finishEdit = useCallback(
-    (id: Id, field: EditField, text: string | null, end: EditEnd) => {
+    (id: Id, field: EditField, text: string | null, end: EditEnd, changed: boolean) => {
       setEditing(null);
       const task = projectRef.current.tasks.find((t) => t.id === id);
       if (isProgressField(field)) {
-        const ok = text === null || !task || saveProgressCellRef.current(task, field, text);
+        // An untouched cell saves nothing: its text may predate an edit still being saved
+        // (Tab off a % entry opens the actual start before the start it fills in arrives).
+        const ok = text === null || !changed || !task || saveProgressCellRef.current(task, field, text);
         const next = ok && text !== null ? MOVES[end] : undefined;
         const cell = next ? nextProgressCell(rowsRef.current, { id, field }, next) : null;
         if (cell) {
@@ -391,7 +403,7 @@ interface RowProps {
   selected: boolean;
   /** The cell being edited in place, if any. */
   editing: EditField | null;
-  onEditDone: (id: Id, field: EditField, text: string | null, end: EditEnd) => void;
+  onEditDone: (id: Id, field: EditField, text: string | null, end: EditEnd, changed: boolean) => void;
 }
 
 /** One table row; memoised so rows already in view are not redrawn on every scroll step. */
@@ -416,7 +428,7 @@ const Row = memo(function Row({ row, index, width, columns, tableWidth, progress
   }
   const t = row.task;
   const ready = t.readiness;
-  const done = (field: EditField) => (v: string | null, end: EditEnd) => onEditDone(t.id, field, v, end);
+  const done = (field: EditField) => (v: string | null, end: EditEnd, changed: boolean) => onEditDone(t.id, field, v, end, changed);
   /** A progress cell: editable on one click in progress mode. */
   const progressCell = (field: ProgressField, text: string, edit: string, label: string, className: string) => (
     <span
@@ -497,21 +509,35 @@ interface InlineEditProps {
   numeric?: boolean;
   /** Tab and Shift+Tab end the edit (to move to the next cell) instead of leaving the grid. */
   tabbable?: boolean;
-  /** Called once: the text to save (null = cancelled), and how the edit ended. */
-  onDone: (text: string | null, end: EditEnd) => void;
+  /**
+   * Called once: the text to save (null = cancelled), how the edit ended, and whether the
+   * text was changed from `initial` (an untouched cell is not a change).
+   */
+  onDone: (text: string | null, end: EditEnd, changed: boolean) => void;
 }
 
-/** The in-place editor of a grid cell. Enter or blur saves, Escape cancels. */
+/**
+ * The in-place editor of a grid cell. Enter or blur saves, Escape cancels. While the text is
+ * untouched it follows `initial`, so a value filled in by an edit still being saved (say the
+ * actual start a % entry sets) shows up in the cell opened next.
+ */
 function InlineEdit({ initial, label, numeric, tabbable, onDone }: InlineEditProps) {
   const [text, setText] = useState(initial);
+  const touched = useRef(false);
   const done = useRef(false);
   const input = useRef<HTMLInputElement>(null);
-  const latest = useRef({ text, onDone });
-  latest.current = { text, onDone };
+  const latest = useRef({ text, onDone, initial });
+  latest.current = { text, onDone, initial };
+  useEffect(() => {
+    if (touched.current || done.current) return;
+    setText(initial);
+    if (document.activeElement === input.current) input.current?.select();
+  }, [initial]);
+  const changed = (value: string | null) => touched.current && value !== null && value !== latest.current.initial;
   const finish = (value: string | null, end: EditEnd) => {
     if (done.current) return;
     done.current = true;
-    onDone(value, end);
+    onDone(value, end, changed(value));
   };
   // Only rows in view are drawn: scrolling the row away removes the editor without a blur.
   // Save what was typed then, and give focus back to the grid rather than the page.
@@ -523,7 +549,7 @@ function InlineEdit({ initial, label, numeric, tabbable, onDone }: InlineEditPro
       queueMicrotask(() => {
         if (done.current || el?.isConnected) return;
         done.current = true;
-        latest.current.onDone(latest.current.text, 'gone');
+        latest.current.onDone(latest.current.text, 'gone', changed(latest.current.text));
       });
     };
   }, []);
@@ -538,7 +564,10 @@ function InlineEdit({ initial, label, numeric, tabbable, onDone }: InlineEditPro
       autoComplete="off"
       spellCheck={false}
       onFocus={(e) => e.currentTarget.select()}
-      onChange={(e) => setText(e.target.value)}
+      onChange={(e) => {
+        touched.current = true;
+        setText(e.target.value);
+      }}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
           e.preventDefault();

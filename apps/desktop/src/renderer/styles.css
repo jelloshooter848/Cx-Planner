@@ -201,6 +201,8 @@
 .statusbar-right {
   overflow: hidden;
   text-overflow: ellipsis;
+  /* Room inside the clip for the links' underline and focus ring. */
+  padding: 4px 3px;
 }
 .statusbar-link {
   padding: 0;
@@ -216,13 +218,20 @@
 }
 /* Dotted underline: the data date reads as something to click, in black and white too. */
 .statusbar-data-date {
+  color: var(--ink);
   text-decoration: underline dotted;
+  text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
 .statusbar-link:hover,
 .statusbar-link:focus-visible {
   color: var(--accent);
   text-decoration: underline;
+}
+.statusbar-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 2px;
 }
 
 /* ---- Controls ------------------------------------------------------------------------ */

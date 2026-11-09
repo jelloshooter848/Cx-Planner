@@ -5,7 +5,7 @@
  * change-log entry. Setting 100% without an actual finish opens the "Mark complete" prompt,
  * which asks for the finish (default: the data date) and, if missing, the actual start.
  */
-import { useId, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { planProgress, progressCommand, type ProgressChange, type ProgressOutcome, type Project, type Task } from '@cx/core';
 import type { TaskScheduleSummary } from '../../../shared/api';
 import { Modal } from '../../components/Modal';
@@ -45,7 +45,15 @@ interface Ask {
   start: string | null;
 }
 
-export function useProgressEditor(project: Project, schedule: Record<string, TaskScheduleSummary>): ProgressEditor {
+/**
+ * `onPromptClosed` runs after the "Mark complete" prompt closes (`saved`: it was saved, not
+ * cancelled), once the prompt has given focus back, so the caller can carry on from there.
+ */
+export function useProgressEditor(
+  project: Project,
+  schedule: Record<string, TaskScheduleSummary>,
+  onPromptClosed?: (task: Task, saved: boolean) => void,
+): ProgressEditor {
   const store = useStore();
   const [ask, setAsk] = useState<Ask | null>(null);
   const ctxFor = (task: Task) => ({ dataDate: project.dataDate, computedStart: schedule[task.id]?.start ?? null });
@@ -56,15 +64,30 @@ export function useProgressEditor(project: Project, schedule: Record<string, Tas
     return { outcome, saved: applyPatch(store, task, outcome) };
   };
 
+  // The prompt that just closed, reported from an effect so it runs after the Modal's own
+  // focus restore (unmount effects run before this one).
+  const [closed, setClosed] = useState<{ task: Task; saved: boolean } | null>(null);
+  const onClosedRef = useRef(onPromptClosed);
+  onClosedRef.current = onPromptClosed;
+  useEffect(() => {
+    if (!closed) return;
+    setClosed(null);
+    onClosedRef.current?.(closed.task, closed.saved);
+  }, [closed]);
+  const close = (saved: boolean) => {
+    if (!ask) return;
+    setAsk(null);
+    setClosed({ task: ask.task, saved });
+  };
   const prompt = ask && (
     <FinishPrompt
       ask={ask}
-      onClose={() => setAsk(null)}
+      onClose={() => close(false)}
       onSave={async (finish, start) => {
         const outcome = planProgress(ask.task, { ...ask.change, percentComplete: 100, actualFinish: finish, ...(start ? { actualStart: start } : {}) }, ctxFor(ask.task));
         if (outcome.kind === 'needs-finish') return 'Choose the actual finish';
         const problem = await applyPatch(store, ask.task, outcome);
-        if (!problem) setAsk(null);
+        if (!problem) close(true);
         return problem;
       }}
     />
