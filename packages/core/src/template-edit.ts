@@ -26,20 +26,35 @@ export function moveItem<T>(items: readonly T[], from: number, to: number): T[] 
   return out;
 }
 
-/** A key not used by any task of the template: "task-1", "task-2" ... */
-export function newTemplateTaskKey(template: Pick<Template, 'tasks'>): string {
-  const used = new Set(template.tasks.map((t) => t.key));
-  let n = template.tasks.length + 1;
-  while (used.has(`task-${n}`)) n++;
-  return `task-${n}`;
+/** Eight random hex characters. */
+function randomSuffix(): string {
+  return globalThis.crypto.randomUUID().slice(0, 8);
 }
 
-/** A checklist item id not used in the list: "<prefix>-1", "<prefix>-2" ... */
-export function newChecklistItemId(items: readonly ChecklistItem[], prefix: string): string {
+/**
+ * A new task key, "task-<random>", not used by any task of the template. Keys are random so
+ * a deleted task's key is never handed out again: re-apply matches project tasks to template
+ * tasks by key, so a reused key would turn an asset's old task into the new, unrelated step.
+ * `suffix` is for tests.
+ */
+export function newTemplateTaskKey(template: Pick<Template, 'tasks'>, suffix: () => string = randomSuffix): string {
+  const used = new Set(template.tasks.map((t) => t.key));
+  let key: string;
+  do key = `task-${suffix()}`;
+  while (used.has(key));
+  return key;
+}
+
+/**
+ * A new checklist item id, "<prefix>-<random>", not used in the list. Random for the same
+ * reason as task keys: results recorded against a deleted item must not attach to a new one.
+ */
+export function newChecklistItemId(items: readonly ChecklistItem[], prefix: string, suffix: () => string = randomSuffix): string {
   const used = new Set(items.map((i) => i.id));
-  let n = items.length + 1;
-  while (used.has(`${prefix}-${n}`)) n++;
-  return `${prefix}-${n}`;
+  let id: string;
+  do id = `${prefix}-${suffix()}`;
+  while (used.has(id));
+  return id;
 }
 
 /** An empty custom template with no tasks. */
@@ -190,12 +205,22 @@ export type TemplatePreview =
 /**
  * The schedule a template generates on its own ("Preview of the schedule it generates"):
  * instantiated as one asset and scheduled on a plain Monday-Friday calendar. Rows are in
- * template order, positioned in working days from the earliest start. Never throws.
+ * template order, positioned in working days from the earliest start. Never throws: a
+ * template that cannot be laid out comes back as problems.
  */
 export function previewTemplate(template: Template): TemplatePreview {
   const problems = validateTemplate(template);
   if (problems.length > 0) return { ok: false, problems };
   if (template.tasks.length === 0) return { ok: true, rows: [], spanDays: 0 };
+  try {
+    return layoutPreview(template);
+  } catch (e) {
+    const message = `The schedule could not be worked out: ${e instanceof Error ? e.message : String(e)}`;
+    return { ok: false, problems: [{ code: 'unschedulable', message }] };
+  }
+}
+
+function layoutPreview(template: Template): TemplatePreview {
   const origin = '2001-01-01'; // A Monday; any date works with a plain Monday-Friday calendar.
   const { asset, tasks, dependencies } = instantiateTemplate(
     template,
@@ -212,7 +237,11 @@ export function previewTemplate(template: Template): TemplatePreview {
     tasks,
     dependencies,
   });
-  const scheduled = template.tasks.map((t) => ({ t, s: r.tasks.get(t.key)! }));
+  const scheduled = template.tasks.map((t) => {
+    const s = r.tasks.get(t.key);
+    if (!s) throw new Error(`task "${t.name}" was not scheduled`);
+    return { t, s };
+  });
   const first = Math.min(...scheduled.map(({ s }) => s.es));
   const rows = scheduled.map(({ t, s }) => ({
     key: t.key,

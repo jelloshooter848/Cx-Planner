@@ -72,7 +72,7 @@ describe('template editor', () => {
 
     // Leaving the view and coming back keeps the template open with its preview.
     await page.getByRole('menubar').getByRole('menuitem', { name: 'Schedule', exact: true }).click();
-    await page.getByRole('table', { name: 'Tasks' }).waitFor();
+    await page.getByRole('grid', { name: 'Tasks' }).waitFor();
     await page.getByRole('menubar').getByRole('menuitem', { name: 'Templates', exact: true }).click();
     await expect.poll(() => page.getByLabel('Template name').inputValue()).toBe('Low-voltage switchgear (copy)');
     expect((await previewBars(page)).relay).toEqual([6, 12]);
@@ -113,6 +113,11 @@ describe('template editor', () => {
     const problems = page.getByRole('alert', { name: 'Problems to fix before saving' });
     await problems.getByText(/Predecessor loop/).waitFor();
     await h.screenshot('templates-problems');
+    // Duplicate would save the draft into the copy, so it stops at the same problems.
+    await props.getByLabel('Task name').focus();
+    await editor.getByRole('button', { name: 'Duplicate' }).click();
+    await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('aria-label'))).toBe('Problems to fix before saving');
+    expect(await page.getByLabel('Template name').inputValue()).toBe('Feeder cable test');
     await props.getByLabel('Predecessor').fill('');
     await props.getByLabel('Predecessor').press('Enter');
     await problems.waitFor({ state: 'detached' });
@@ -295,7 +300,7 @@ describe('template editor', () => {
 
     // From another view too: the editor comes back to ask. Discard closes the window.
     await page.getByRole('menubar').getByRole('menuitem', { name: 'Schedule', exact: true }).click();
-    await page.getByRole('table', { name: 'Tasks' }).waitFor();
+    await page.getByRole('grid', { name: 'Tasks' }).waitFor();
     await closeWindow();
     await ask.waitFor();
     expect(await page.getByLabel('Template name').inputValue()).toBe('Low-voltage switchgear');

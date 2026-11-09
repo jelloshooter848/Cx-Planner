@@ -63,10 +63,24 @@ describe('moveItem', () => {
 
 describe('keys and ids', () => {
   it('finds unused task keys and checklist ids', () => {
-    expect(newTemplateTaskKey({ tasks: [tt('task-2', 1)] })).toBe('task-3');
-    expect(newTemplateTaskKey({ tasks: [tt('task-2', 1), tt('task-3', 1)] })).toBe('task-4');
-    expect(newChecklistItemId([{ id: 'x-2', text: '' }], 'x')).toBe('x-3');
-    expect(newChecklistItemId([], 'x')).toBe('x-1');
+    const seq = (...xs: string[]) => () => xs.shift() ?? 'zz';
+    expect(newTemplateTaskKey({ tasks: [tt('task-a', 1)] }, seq('a', 'b'))).toBe('task-b');
+    expect(newChecklistItemId([{ id: 'x-a', text: '' }], 'x', seq('a', 'a', 'c'))).toBe('x-c');
+    expect(newTemplateTaskKey({ tasks: [] })).toMatch(/^task-[0-9a-f]{8}$/);
+    expect(newChecklistItemId([], 'x')).toMatch(/^x-[0-9a-f]{8}$/);
+  });
+
+  it('never hands a removed task key or checklist id out again', () => {
+    const base: Template = { ...blankTemplate('b', 'B'), tasks: [tt('task-1', 1), tt('task-2', 1, ['task-1']), tt('task-3', 1, ['task-2'])] };
+    const removed = removeTemplateTask(base, 'task-3');
+    const { key } = addTemplateTask(removed);
+    expect(key).not.toBe('task-3');
+    expect(base.tasks.map((t) => t.key)).not.toContain(key);
+    const items = [
+      { id: 'k-1', text: 'a' },
+      { id: 'k-2', text: 'b' },
+    ];
+    expect(newChecklistItemId(items.slice(0, 1), 'k')).not.toBe('k-2');
   });
 
   it('makes a blank custom template', () => {

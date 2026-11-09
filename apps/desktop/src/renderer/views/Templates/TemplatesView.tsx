@@ -178,13 +178,16 @@ export function TemplatesView() {
   const problemKeys = useMemo(() => new Set(problems.flatMap((p) => (p.taskKey ? [p.taskKey] : []))), [problems]);
   const preview = useMemo(() => (doc ? previewTemplate(cleanTemplate(doc.draft)) : null), [doc]);
 
+  /** Shows the problems box (and returns true) when the draft has problems that block saving. */
+  const blockedByProblems = (): boolean => {
+    if (problems.length === 0) return false;
+    setShowProblems(true);
+    requestAnimationFrame(() => problemsRef.current?.focus());
+    return true;
+  };
+
   const save = async (): Promise<boolean> => {
-    if (!doc) return false;
-    if (problems.length > 0) {
-      setShowProblems(true);
-      requestAnimationFrame(() => problemsRef.current?.focus());
-      return false;
-    }
+    if (!doc || blockedByProblems()) return false;
     setBusy(true);
     const r = await store.run(() => api.save(cleanTemplate(doc.draft)));
     setBusy(false);
@@ -201,6 +204,8 @@ export function TemplatesView() {
 
   const duplicate = async () => {
     if (!doc) return;
+    // Unsaved edits are saved into the copy, so they must pass the same checks as Save.
+    if (dirty && blockedByProblems()) return;
     const name = uniqueName(`${doc.draft.name.trim() || 'Template'} (copy)`, names);
     // A clean template is copied in the workspace (logged as a duplicate); unsaved edits are saved into the copy.
     const r = dirty
