@@ -27,6 +27,7 @@
     "@cx/packet": "workspace:*",
     "@cx/render": "workspace:*",
     "@cx/storage": "workspace:*",
+    "@cx/templates": "workspace:*",
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.6.6",
     "eslint": "^10.14.0",
