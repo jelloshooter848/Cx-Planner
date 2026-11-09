@@ -111,6 +111,11 @@ export class Session {
   private ws: WorkspaceStore | null = null;
   private seq = 0;
   private readonly undoLimit: number;
+  /**
+   * What the renderer holds unsaved (e.g. 'Template "LV switchgear"'), or null. Project edits
+   * are saved at once; only the template editor keeps a draft. Main asks before dropping it.
+   */
+  unsavedWork: string | null = null;
 
   constructor(private readonly opts: SessionOptions) {
     this.undoLimit = opts.undoLimit ?? UNDO_LIMIT;
@@ -191,14 +196,10 @@ export class Session {
       if (e instanceof CommandError && e.code === 'no-change') return ok({ changed: false, summary: null });
       return failure(e);
     }
-    // Decision D4: the project keeps a snapshot of every template it applies, so checklists
-    // and the like can be read back by key without the workspace.
-    try {
-      for (const t of templatesIn(cmd)) doc.store.saveTemplateSnapshot(t, 'user', result.summary);
-    } catch (e) {
-      return failure(e, 'file-error');
-    }
-    const saved = this.save(doc, result.project, result.summary);
+    // Decision D4: the project keeps a snapshot of every template version it applies, so
+    // checklists and the like can be read back by (id, version) without the workspace.
+    // Older versions are kept, so undo and partial re-apply need no snapshot bookkeeping.
+    const saved = this.save(doc, result.project, result.summary, templatesIn(cmd));
     if (!saved.ok) return saved;
     doc.undo.push({ command: result.inverse, label: result.summary });
     if (doc.undo.length > this.undoLimit) doc.undo.shift();
@@ -241,9 +242,9 @@ export class Session {
     return ok({ changed: true, summary });
   }
 
-  private save(doc: OpenProject, next: Project, summary: string): ApiResult<void> {
+  private save(doc: OpenProject, next: Project, summary: string, templates: readonly Template[] = []): ApiResult<void> {
     try {
-      const r = doc.store.saveProject(next, 'user', summary);
+      const r = doc.store.saveProject(next, 'user', summary, templates);
       doc.revision = r.revision;
       doc.lastSavedAt = doc.store.getRevisionState().savedAt ?? new Date().toISOString();
     } catch (e) {

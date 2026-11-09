@@ -373,18 +373,23 @@
 }
 
 /* ---- Right panel --------------------------------------------------------------------- */
+/* The properties scroll; the "Changes apply to new assets only" note stays pinned below them. */
 .tpl-side {
   width: 330px;
   flex: none;
-  overflow: hidden auto;
-  padding: 4px 14px 16px;
+  overflow: hidden;
   background: var(--bg-panel);
   border-left: 1px solid var(--line);
   display: flex;
   flex-direction: column;
-  gap: 10px;
 }
-.tpl-side > .hint {
+.tpl-side-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden auto;
+  padding: 4px 14px 12px;
+}
+.tpl-side-scroll > .hint {
   margin-top: 20px;
 }
 .tpl-props {
@@ -416,7 +421,8 @@
   color: var(--ink-muted);
 }
 .tpl-reapply {
-  margin-top: 8px;
+  flex: none;
+  margin: 0 14px 14px;
   padding: 10px 12px 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);

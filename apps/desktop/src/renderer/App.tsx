@@ -33,6 +33,8 @@ export function App() {
       }
       const action = shortcutAction(e, isTextField(e.target), isMac);
       if (!action) return;
+      // The Templates view undoes its own draft edits with these keys (it listens itself).
+      if ((action.type === 'undo' || action.type === 'redo') && effectiveView(store.getSnapshot()) === 'templates') return;
       e.preventDefault();
       void store.dispatch(action);
     };

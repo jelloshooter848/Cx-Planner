@@ -71,9 +71,12 @@ export function buildMenus(state: AppState | null, view: ViewId | 'welcome', mac
     sep,
     item('Exit', { type: 'exit' }),
   ];
+  // In the Templates view Ctrl+Z / Ctrl+Y undo template edits (see TemplatesView), so the
+  // project's Undo / Redo show no shortcut there.
+  const projectKeys = view !== 'templates';
   const edit: MenuItem[] = [
-    item(state?.undoLabel ? `Undo ${state.undoLabel}` : 'Undo', { type: 'undo' }, { enabled: !!state?.canUndo, shortcut: 'Ctrl+Z' }),
-    item(state?.redoLabel ? `Redo ${state.redoLabel}` : 'Redo', { type: 'redo' }, { enabled: !!state?.canRedo, shortcut: 'Ctrl+Y' }),
+    item(state?.undoLabel ? `Undo ${state.undoLabel}` : 'Undo', { type: 'undo' }, { enabled: !!state?.canUndo, ...(projectKeys ? { shortcut: 'Ctrl+Z' } : {}) }),
+    item(state?.redoLabel ? `Redo ${state.redoLabel}` : 'Redo', { type: 'redo' }, { enabled: !!state?.canRedo, ...(projectKeys ? { shortcut: 'Ctrl+Y' } : {}) }),
   ];
   // With no project open, Schedule (tab and View item) leads back to the welcome screen.
   const viewItems: MenuItem[] = [

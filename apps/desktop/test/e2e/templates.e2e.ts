@@ -44,7 +44,7 @@ describe('template editor', () => {
     expect(await summary.textContent()).toMatch(/^My template · 6 tasks · 12 working days/);
 
     // Edit task 4's duration in the properties panel.
-    const table = page.getByRole('table', { name: 'Template tasks' });
+    const table = page.getByRole('grid', { name: 'Template tasks' });
     await table.getByRole('row').filter({ hasText: 'Relay settings & calibration' }).click();
     const props = page.getByRole('region', { name: 'Task properties' });
     await props.getByText('Task 4 · Properties').waitFor();
@@ -106,7 +106,7 @@ describe('template editor', () => {
     await page.keyboard.type('NETA Level III');
 
     // A loop: task 1 after task 2 (which follows task 1).
-    await page.getByRole('table', { name: 'Template tasks' }).getByRole('row').filter({ hasText: 'Megger feeders' }).click();
+    await page.getByRole('grid', { name: 'Template tasks' }).getByRole('row').filter({ hasText: 'Megger feeders' }).click();
     await props.getByLabel('Predecessor').fill('2');
     await props.getByLabel('Predecessor').press('Enter');
     await editor.getByRole('button', { name: 'Save', exact: true }).click();
@@ -145,9 +145,9 @@ describe('template editor', () => {
 
     // Reorder and remove rows, then try to leave: the editor asks first.
     await page.getByRole('button', { name: 'Move task 2 up' }).click();
-    await expect.poll(() => page.getByRole('table', { name: 'Template tasks' }).getByRole('row').nth(1).textContent()).toContain('Hi-pot');
+    await expect.poll(() => page.getByRole('grid', { name: 'Template tasks' }).getByRole('row').nth(1).textContent()).toContain('Hi-pot');
     await page.getByRole('button', { name: 'Remove task 2' }).click();
-    await expect.poll(() => page.getByRole('table', { name: 'Template tasks' }).getByRole('row').count()).toBe(2);
+    await expect.poll(() => page.getByRole('grid', { name: 'Template tasks' }).getByRole('row').count()).toBe(2);
     await page
       .getByRole('list', { name: 'Starter templates' })
       .getByRole('button', { name: /Power transformer/ })
@@ -211,7 +211,7 @@ describe('template editor', () => {
     expect(await page.getByTestId('template-summary').textContent()).toContain('used by 2 assets');
     expect(await page.getByTestId('reapply-note').textContent()).toContain('Two existing assets use this template.');
 
-    await page.getByRole('table', { name: 'Template tasks' }).getByRole('row').filter({ hasText: 'Torque verification' }).click();
+    await page.getByRole('grid', { name: 'Template tasks' }).getByRole('row').filter({ hasText: 'Torque verification' }).click();
     await page.getByRole('region', { name: 'Task properties' }).getByLabel('Duration (days)').fill('3');
     const reapply = page.getByRole('button', { name: 'Re-apply to existing assets…' });
     expect(await reapply.isDisabled()).toBe(true);
@@ -238,4 +238,70 @@ describe('template editor', () => {
     s = await h.waitState((x) => torque(x).every((d) => d === 2), 'undone re-apply');
     expect(s.project!.assets.filter((a) => a.id.startsWith('lv-')).map((a) => a.templateVersion)).toEqual([1, 1]);
   });
+
+  it('undoes template edits with Ctrl+Z, pins the re-apply note, and asks before the window closes', async () => {
+    h = await launchApp({ project: 'riverside' });
+    const { page, app } = h;
+    const before = await h.state();
+    await page.getByRole('menubar').getByRole('menuitem', { name: 'Templates', exact: true }).click();
+    const editor = page.getByRole('main', { name: 'Template editor' });
+    await editor.waitFor();
+    await expect.poll(() => page.getByLabel('Template name').inputValue()).toBe('Low-voltage switchgear');
+
+    // The status bar describes the library, and the note stays in view below the properties.
+    await expect.poll(() => page.getByTestId('statusbar').textContent()).toMatch(/^Library: \d+ starters · 0 custom/);
+    expect(await page.getByTestId('statusbar').textContent()).toContain('Export to share');
+    const note = await page.getByTestId('reapply-note').boundingBox();
+    const bar = await page.getByTestId('statusbar').boundingBox();
+    expect(note!.y + note!.height).toBeLessThanOrEqual(bar!.y);
+    await h.screenshot('templates-note-pinned');
+
+    // Delete a row from the keyboard, then Ctrl+Z puts it back (the project is untouched).
+    const grid = page.getByRole('grid', { name: 'Template tasks' });
+    const rows = () => grid.getByRole('row').count();
+    const count = await rows();
+    const relay = grid.getByRole('row').filter({ hasText: 'Relay settings & calibration' });
+    await relay.click();
+    expect(await relay.getAttribute('aria-selected')).toBe('true');
+    await relay.press('Delete');
+    await expect.poll(rows).toBe(count - 1);
+    await page.getByRole('status').filter({ hasText: 'Removed task 4 "Relay settings & calibration"' }).waitFor();
+    await page.keyboard.press('Control+z');
+    await expect.poll(rows).toBe(count);
+    await page.keyboard.press('Control+y');
+    await expect.poll(rows).toBe(count - 1);
+    await page.keyboard.press('Control+z');
+    await expect.poll(rows).toBe(count);
+    expect(await editor.getByRole('button', { name: 'Save', exact: true }).isDisabled()).toBe(true);
+    const after = await h.state();
+    expect([after.revision, after.undoLabel]).toEqual([before.revision, before.undoLabel]);
+
+    // Typing a predecessor applies it at once, so Save is ready without leaving the field.
+    await grid.getByRole('row').filter({ hasText: 'Functional' }).click();
+    const props = page.getByRole('region', { name: 'Task properties' });
+    await props.getByLabel('Predecessor').fill('1');
+    expect(await editor.getByRole('button', { name: 'Save', exact: true }).isDisabled()).toBe(false);
+    expect(await props.getByLabel('Predecessor').inputValue()).toBe('1');
+
+    // Closing the window asks first; Cancel keeps it open.
+    const closeWindow = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.close());
+    await closeWindow();
+    const ask = page.getByRole('dialog', { name: 'Unsaved changes' });
+    await ask.getByText(/close the window/).waitFor();
+    await h.screenshot('templates-close-prompt');
+    await ask.getByRole('button', { name: 'Cancel' }).click();
+    await ask.waitFor({ state: 'detached' });
+    expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
+
+    // From another view too: the editor comes back to ask. Discard closes the window.
+    await page.getByRole('menubar').getByRole('menuitem', { name: 'Schedule', exact: true }).click();
+    await page.getByRole('table', { name: 'Tasks' }).waitFor();
+    await closeWindow();
+    await ask.waitFor();
+    expect(await page.getByLabel('Template name').inputValue()).toBe('Low-voltage switchgear');
+    const closed = app.waitForEvent('close');
+    await ask.getByRole('button', { name: 'Discard changes' }).click();
+    await closed;
+  });
 });
+

@@ -6,7 +6,7 @@ import { CH } from '../shared/channels.js';
 import { PROJECT_EXT, safeFileName, type Dialogs, type FileController } from './files.js';
 import { htmlToPdf, lookAheadDocument } from './print.js';
 import { failure, ok, type Session } from './session.js';
-import { checkCommand, checkId, checkName, checkNewProject, checkPaper, checkPath, checkTemplate } from './validate.js';
+import { checkCommand, checkId, checkName, checkNewProject, checkPaper, checkPath, checkTemplate, checkUnsavedWork } from './validate.js';
 
 export interface IpcContext {
   session: Session;
@@ -52,6 +52,10 @@ export function registerIpc(ctx: IpcContext): void {
   handle(CH.saveAs, () => files.saveAs());
   handle(CH.closeProject, () => files.close());
   handle(CH.chooseWorkspace, () => files.chooseWorkspace());
+  handle(CH.setUnsavedWork, (what) => {
+    session.unsavedWork = checkUnsavedWork(what);
+    return ok(undefined);
+  });
 
   handle(CH.templateList, () => session.listTemplates());
   handle(CH.templateGet, (id) => session.getTemplate(checkId(id, 'template id')));

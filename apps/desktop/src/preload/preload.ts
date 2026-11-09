@@ -24,6 +24,7 @@ const api: CxApi = {
   saveAs: () => invoke(CH.saveAs),
   closeProject: () => invoke(CH.closeProject),
   chooseWorkspace: () => invoke(CH.chooseWorkspace),
+  setUnsavedWork: (what) => invoke(CH.setUnsavedWork, what),
   templates: {
     list: () => invoke(CH.templateList),
     get: (id) => invoke(CH.templateGet, id),

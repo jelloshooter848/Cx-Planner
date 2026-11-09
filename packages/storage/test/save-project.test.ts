@@ -263,7 +263,7 @@ describe('ProjectStore.saveProject', () => {
 });
 
 describe('template snapshots', () => {
-  it('stores, replaces and lists the snapshots copied into the project', () => {
+  it('stores every version of a snapshot copied into the project', () => {
     const s = storeWith(riversideProject());
     expect(s.getTemplateSnapshots()).toEqual([]);
     const seq = s.getRevisionState().lastChangeSeq;
@@ -272,21 +272,58 @@ describe('template snapshots', () => {
     expect(s.getTemplateSnapshots()).toEqual([template]);
     const v3 = { ...template, version: 3, name: 'LV switchgear lineup' };
     s.saveTemplateSnapshot(v3, 'user');
-    expect(s.getTemplateSnapshots()).toEqual([v3]);
+    expect(s.getTemplateSnapshots()).toEqual([template, v3]);
+    expect(s.getTemplateSnapshot('tpl-lv-swgr', 2)).toEqual(template);
+    expect(s.getTemplateSnapshot('tpl-lv-swgr', 3)).toEqual(v3);
+    expect(s.getTemplateSnapshot('tpl-lv-swgr', 4)).toBeUndefined();
+    const v3b = { ...v3, name: 'LV switchgear (renamed)' };
+    s.saveTemplateSnapshot(v3b, 'user');
+    expect(s.getTemplateSnapshot('tpl-lv-swgr', 3)).toEqual(v3b);
     expect(s.changesSince(seq).map((e) => [e.entity, e.entityId, e.field, e.oldValue, e.newValue])).toEqual([
       ['template', 'tpl-lv-swgr', 'version', undefined, 2],
-      ['template', 'tpl-lv-swgr', 'version', 2, 3],
+      ['template', 'tpl-lv-swgr', 'version', undefined, 3],
+      ['template', 'tpl-lv-swgr', 'version', 3, 3],
     ]);
     // A project save leaves the snapshots alone.
     s.saveProject(riversideProject(), 'autosave');
     s.close();
     const again = ProjectStore.open(file, { backup: false });
-    expect(again.getTemplateSnapshots()).toEqual([v3]);
+    expect(again.getTemplateSnapshots()).toEqual([template, v3b]);
     again.close();
+  });
+
+  it('writes snapshots given to saveProject in the same transaction', () => {
+    const s = storeWith(riversideProject());
+    const before = s.getRevisionState().revision;
+    const p = riversideProject();
+    p.name = 'Renamed';
+    const r = s.saveProject(p, 'user', 'Apply template', [template]);
+    expect(r.revision).toBe(before + 1);
+    expect(s.getTemplateSnapshots()).toEqual([template]);
+    expect(s.changesSince(0).filter((e) => e.revision === r.revision).map((e) => e.entity)).toEqual(['template', 'project']);
+    // A failed save writes no snapshot either.
+    const bad = { ...riversideProject(), tasks: [{ ...riversideProject().tasks[0]!, durationDays: -1 }] };
+    expect(() => s.saveProject(bad, 'user', 'Bad', [{ ...template, version: 9 }])).toThrow();
+    expect(s.getTemplateSnapshot(template.id, 9)).toBeUndefined();
+    s.close();
   });
 });
 
 describe('migrations', () => {
+  it('keeps a version 3 snapshot when moving to per-version snapshots', async () => {
+    const { DatabaseSync } = await import('node:sqlite');
+    const db = new DatabaseSync(file);
+    for (const m of MIGRATIONS.slice(0, 3)) db.exec(m);
+    db.exec(`PRAGMA user_version = 3; PRAGMA application_id = ${APPLICATION_ID};`);
+    db.prepare('INSERT INTO project_template (id, version, json) VALUES (?, ?, ?)').run(template.id, template.version, JSON.stringify(template));
+    db.close();
+    const s = ProjectStore.open(file, { backup: false });
+    expect(s.getTemplateSnapshot(template.id, template.version)).toEqual(template);
+    s.saveTemplateSnapshot({ ...template, version: template.version + 1 });
+    expect(s.getTemplateSnapshots()).toHaveLength(2);
+    s.close();
+  });
+
   it('migrates a version 1 file with data to the current schema', async () => {
     const { DatabaseSync } = await import('node:sqlite');
     const db = new DatabaseSync(file);

@@ -135,5 +135,7 @@ describe('menu row', () => {
     expect(keyHint('Ctrl+Shift+S', true)).toBe('⇧⌘S');
     expect(keyHint('Ctrl+Z', false)).toBe('Ctrl+Z');
     expect(find(items(buildMenus(base, 'schedule', true), 'edit'), 'Undo Renamed 1.3')).toMatchObject({ shortcut: '⌘Z' });
+    // In the Templates view the keys undo template edits, so the project item shows none.
+    expect(find(items(buildMenus(base, 'templates'), 'edit'), 'Undo Renamed 1.3')).not.toHaveProperty('shortcut');
   });
 });

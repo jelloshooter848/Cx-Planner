@@ -3,22 +3,27 @@ import { addTemplateTask, blankTemplate, previewTemplate, type Template } from '
 import type { TemplateSummary } from '../../../shared/api';
 import { Modal } from '../../components/Modal';
 import { plural } from '../../format';
-import { useAppState, useStore } from '../../store';
-import { assetsUsing, cleanTemplate, countWord, sameTemplate, templateProblems, uniqueName } from './editor-model';
+import { isTextField } from '../../shortcuts';
+import { useAppState, useStore, useUi } from '../../store';
+import {
+  assetsUsing,
+  cleanTemplate,
+  countWord,
+  editDraft,
+  freshDraft,
+  libraryStatus,
+  sameTemplate,
+  stepDraft,
+  templateProblems,
+  uniqueName,
+  type Draft,
+} from './editor-model';
 import { ListEditor } from './ListEditor';
 import { ReapplyDialog } from './ReapplyDialog';
 import { TaskProperties } from './TaskProperties';
 import { TaskTable } from './TaskTable';
 import { TemplatePreview } from './TemplatePreview';
 import './templates.css';
-
-interface Draft {
-  /** The template as stored in the workspace. */
-  base: Template;
-  /** What the editor shows; differs from base until saved. */
-  draft: Template;
-  selectedKey: string | null;
-}
 
 /**
  * The unsaved draft survives leaving the Templates view (it is kept until the window
@@ -27,6 +32,8 @@ interface Draft {
 let kept: Draft | null = null;
 /** The workspace `kept` belongs to. */
 let keptWorkspace: string | null = null;
+/** The last close request (UiState.closeRequest) this view answered. */
+let answeredClose = 0;
 
 /** A pending step that would drop unsaved changes, waiting for the user to choose. */
 interface Pending {
@@ -50,6 +57,9 @@ export function TemplatesView() {
   const [reapplying, setReapplying] = useState(false);
   const [showProblems, setShowProblems] = useState(false);
   const [message, setMessage] = useState('');
+  /** Set when the message reports a removed row, so it can offer Undo. */
+  const [undoable, setUndoable] = useState(false);
+  const { closeRequest } = useUi();
   const [busy, setBusy] = useState(false);
   const problemsRef = useRef<HTMLDivElement>(null);
   const project = app?.project ?? null;
@@ -63,6 +73,21 @@ export function TemplatesView() {
     [workspace],
   );
   const dirty = doc !== null && !sameTemplate(doc.base, doc.draft);
+  const say = (text: string, offerUndo = false) => {
+    setMessage(text);
+    setUndoable(offerUndo);
+  };
+
+  // Main asks before closing the window or switching workspace while this is set.
+  const unsavedName = dirty ? doc.draft.name.trim() || doc.base.name : null;
+  useEffect(() => {
+    void store.api.setUnsavedWork(unsavedName === null ? null : `Template "${unsavedName}"`);
+  }, [store, unsavedName]);
+  // No cleanup on unmount: an unsaved draft is kept when the user switches views.
+
+  // The library counts replace the schedule's status line while this view shows.
+  useEffect(() => store.setStatus(libraryStatus(list)), [store, list]);
+  useEffect(() => () => store.setStatus(null), [store]);
 
   const refresh = useCallback(async () => {
     const r = await store.run(() => api.list());
@@ -74,9 +99,9 @@ export function TemplatesView() {
     async (id: string) => {
       const r = await store.run(() => api.get(id));
       if (!r.ok) return;
-      setDoc({ base: r.value, draft: r.value, selectedKey: r.value.tasks[0]?.key ?? null });
+      setDoc(freshDraft(r.value));
       setShowProblems(false);
-      setMessage('');
+      say('');
     },
     [store, api, setDoc],
   );
@@ -99,16 +124,55 @@ export function TemplatesView() {
     };
   }, [workspace, refresh, open, setDoc]);
 
-  /** Runs `step` now, or after asking when it would drop unsaved changes. */
-  const guard = (what: string, step: () => Promise<void> | void) => {
-    if (dirty) setPending({ what, run: step });
-    else void step();
+  /** Runs `run` now, or after asking when it would drop unsaved changes. */
+  const guard = (what: string, run: () => Promise<void> | void) => {
+    if (dirty) setPending({ what, run });
+    else void run();
   };
+
+  // Main asked to close the window while a draft was unsaved: ask here, then close (or not).
+  const guardRef = useRef(guard);
+  guardRef.current = guard;
+  useEffect(() => {
+    if (closeRequest <= answeredClose) return;
+    answeredClose = closeRequest;
+    guardRef.current('close the window', async () => {
+      await store.api.setUnsavedWork(null);
+      await store.dispatch({ type: 'exit' });
+    });
+  }, [store, closeRequest]);
 
   // From `kept`, which setDoc updates at once, so two changes in one event (remove a row,
   // then select its neighbour) both land.
-  const edit = (draft: Template) => kept && setDoc({ ...kept, draft });
-  const select = (selectedKey: string | null) => kept && setDoc({ ...kept, selectedKey });
+  const edit = (draft: Template) => {
+    if (kept) setDoc(editDraft(kept, draft));
+  };
+  const select = (selectedKey: string | null) => {
+    if (kept) setDoc({ ...kept, selectedKey });
+  };
+  /** Ctrl+Z / Ctrl+Y in this view step through template edits, not the project's. */
+  const step = (dir: 'undo' | 'redo') => {
+    const next = kept && stepDraft(kept, dir);
+    if (!next) return;
+    setDoc(next);
+    say(dir === 'undo' ? 'Undid the last template edit (Ctrl+Y redoes it)' : 'Redid the template edit');
+  };
+  const stepRef = useRef(step);
+  stepRef.current = step;
+  const modalOpen = pending !== null || reapplying;
+  useEffect(() => {
+    if (modalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || isTextField(e.target) || store.getSnapshot().ui.dialog) return;
+      const k = e.key.toLowerCase();
+      const dir = k === 'z' && !e.shiftKey ? 'undo' : (k === 'y' && !e.shiftKey) || (k === 'z' && e.shiftKey) ? 'redo' : null;
+      if (!dir) return;
+      e.preventDefault();
+      stepRef.current(dir);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [store, modalOpen]);
 
   const problems = useMemo(() => (doc ? templateProblems(doc.draft) : []), [doc]);
   const problemKeys = useMemo(() => new Set(problems.flatMap((p) => (p.taskKey ? [p.taskKey] : []))), [problems]);
@@ -126,9 +190,9 @@ export function TemplatesView() {
     setBusy(false);
     if (!r.ok) return false;
     const selectedKey = r.value.tasks.some((t) => t.key === doc.selectedKey) ? doc.selectedKey : (r.value.tasks[0]?.key ?? null);
-    setDoc({ base: r.value, draft: r.value, selectedKey });
+    setDoc(freshDraft(r.value, selectedKey));
     setShowProblems(false);
-    setMessage(`Saved as version ${r.value.version}`);
+    say(`Saved as version ${r.value.version}`);
     await refresh();
     return true;
   };
@@ -144,8 +208,8 @@ export function TemplatesView() {
       : await store.run(() => api.duplicate(doc.base.id, name));
     if (!r.ok) return;
     await refresh();
-    setDoc({ base: r.value, draft: r.value, selectedKey: r.value.tasks[0]?.key ?? null });
-    setMessage(
+    setDoc(freshDraft(r.value));
+    say(
       dirty ? `Copied with your unsaved changes into ${r.value.name}; ${doc.base.name} is unchanged` : `Duplicated as ${r.value.name}`,
     );
   };
@@ -154,16 +218,16 @@ export function TemplatesView() {
     const r = await store.run(() => api.save(blankTemplate(newTemplateId(), uniqueName('New template', names))));
     if (!r.ok) return;
     await refresh();
-    setDoc({ base: r.value, draft: r.value, selectedKey: null });
-    setMessage('');
+    setDoc(freshDraft(r.value, null));
+    say('');
   };
 
   const importFile = async () => {
     const r = await store.run(() => api.import());
     if (!r.ok) return;
     await refresh();
-    setDoc({ base: r.value.template, draft: r.value.template, selectedKey: r.value.template.tasks[0]?.key ?? null });
-    setMessage(
+    setDoc(freshDraft(r.value.template));
+    say(
       r.value.idChanged
         ? `Imported ${r.value.template.name} as a new template (its id was already in use)`
         : `Imported ${r.value.template.name}`,
@@ -173,14 +237,14 @@ export function TemplatesView() {
   const exportFile = async () => {
     if (!doc) return;
     const r = await store.run(() => api.export(doc.base.id));
-    if (r.ok) setMessage(`Exported to ${r.value.filePath}`);
+    if (r.ok) say(`Exported to ${r.value.filePath}`);
   };
 
   const addTask = () => {
     if (!doc) return;
     const at = doc.selectedKey ? doc.draft.tasks.findIndex((t) => t.key === doc.selectedKey) : undefined;
     const { template, key } = addTemplateTask(doc.draft, {}, at);
-    setDoc({ ...doc, draft: template, selectedKey: key });
+    setDoc(editDraft(doc, template, key));
   };
 
   const starters = list?.filter((t) => t.kind === 'starter') ?? [];
@@ -277,7 +341,7 @@ export function TemplatesView() {
               </div>
               <div className="tpl-actions">
                 {dirty && (
-                  <button type="button" className="btn btn-quiet" onClick={() => setDoc({ ...doc, draft: doc.base })}>
+                  <button type="button" className="btn btn-quiet" onClick={() => setDoc(freshDraft(doc.base, doc.selectedKey))}>
                     Discard changes
                   </button>
                 )}
@@ -307,6 +371,15 @@ export function TemplatesView() {
             {message && (
               <p className="hint tpl-message" role="status">
                 {message}
+                {undoable && doc.past.length > 0 && (
+                  <>
+                    {' · '}
+                    <button type="button" className="btn-link" onClick={() => step('undo')}>
+                      Undo
+                    </button>
+                    <span className="muted"> (Ctrl+Z)</span>
+                  </>
+                )}
               </p>
             )}
 
@@ -317,6 +390,7 @@ export function TemplatesView() {
               onSelect={select}
               onChange={edit}
               onAdd={addTask}
+              onRemoved={(what) => say(what, true)}
             />
 
             {problems.length > 0 && (
@@ -396,11 +470,13 @@ export function TemplatesView() {
           </main>
 
           <aside className="tpl-side" aria-label="Task details">
-            {selectedTask ? (
-              <TaskProperties template={doc.draft} task={selectedTask} index={selectedIndex} onChange={edit} />
-            ) : (
-              <p className="hint">Select a task in the table to edit its properties.</p>
-            )}
+            <div className="tpl-side-scroll">
+              {selectedTask ? (
+                <TaskProperties template={doc.draft} task={selectedTask} index={selectedIndex} onChange={edit} />
+              ) : (
+                <p className="hint">Select a task in the table to edit its properties.</p>
+              )}
+            </div>
             <div className="tpl-reapply" data-testid="reapply-note">
               <p>
                 Changes apply to <b>new assets</b> only.{' '}
@@ -437,10 +513,10 @@ export function TemplatesView() {
               type="button"
               className="btn"
               onClick={() => {
-                const step = pending.run;
+                const run = pending.run;
                 setPending(null);
-                if (doc) setDoc({ ...doc, draft: doc.base });
-                void step();
+                if (doc) setDoc(freshDraft(doc.base, doc.selectedKey));
+                void run();
               }}
             >
               Discard changes
@@ -449,9 +525,9 @@ export function TemplatesView() {
               type="button"
               className="btn btn-primary"
               onClick={async () => {
-                const step = pending.run;
+                const run = pending.run;
                 setPending(null);
-                if (await save()) await step();
+                if (await save()) await run();
               }}
             >
               Save
@@ -468,7 +544,7 @@ export function TemplatesView() {
           onClose={() => setReapplying(false)}
           onDone={(summary) => {
             setReapplying(false);
-            setMessage(`${summary}. Edit > Undo takes it back.`);
+            say(`${summary}. Edit > Undo takes it back.`);
           }}
         />
       )}

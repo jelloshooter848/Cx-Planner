@@ -15,6 +15,7 @@ export function TaskTable({
   onSelect,
   onChange,
   onAdd,
+  onRemoved,
 }: {
   template: Template;
   selectedKey: string | null;
@@ -23,6 +24,8 @@ export function TaskTable({
   onSelect: (key: string | null) => void;
   onChange: (t: Template) => void;
   onAdd: () => void;
+  /** Told after a row is removed, e.g. 'Removed task 3 "Megger feeders"'. */
+  onRemoved?: (what: string) => void;
 }) {
   const move = (key: string, to: number) => {
     onChange(moveTemplateTask(template, key, to));
@@ -30,8 +33,10 @@ export function TaskTable({
     requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-task-row="${CSS.escape(key)}"]`)?.focus());
   };
   const remove = (key: string, index: number) => {
+    const name = template.tasks[index]?.name.trim();
     onChange(removeTemplateTask(template, key));
     if (selectedKey === key) onSelect(template.tasks[index + 1]?.key ?? template.tasks[index - 1]?.key ?? null);
+    onRemoved?.(`Removed task ${index + 1}${name ? ` "${name}"` : ''}`);
   };
   const onRowKey = (e: KeyboardEvent, key: string, i: number) => {
     if (e.target !== e.currentTarget) return;
@@ -59,7 +64,8 @@ export function TaskTable({
 
   return (
     <div className="panel tpl-tasks">
-      <table className="grid tpl-grid" aria-label="Template tasks">
+      {/* role=grid: rows are focusable, arrow-navigable and selectable (aria-selected). */}
+      <table className="grid tpl-grid" role="grid" aria-label="Template tasks">
         <thead>
           <tr>
             <th className="col-num">#</th>

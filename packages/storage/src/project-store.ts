@@ -258,10 +258,14 @@ export class ProjectStore {
    * added, removed or moved get their position rewritten without an event.
    * Dependencies are logged as entity "dependency" with id "pred->succ"; holidays as
    * entity "holiday" with the date as id; project fields as entity "project".
-   * A save that finds nothing to change writes nothing.
+   * A save that finds nothing to change writes nothing. `templates` are snapshots to store
+   * in the same transaction (see saveTemplateSnapshot).
    */
-  saveProject(next: Project, source: string, summary?: string): SaveResult {
+  saveProject(next: Project, source: string, summary?: string, templates: readonly Template[] = []): SaveResult {
     this.tx(summary, () => {
+      // Snapshots of templates this save applies (decision D4), in the same transaction.
+      for (const t of templates) this.writeTemplateSnapshot(t, source);
+
       const db = this.db;
       const log = (entity: string, id: string, field: string | null, oldValue: unknown, newValue: unknown) =>
         this.log(source, entity, id, field, oldValue, newValue);
@@ -407,26 +411,36 @@ export class ProjectStore {
   }
 
   /**
-   * Store the snapshot of a template used by this project (decision D4), replacing an
-   * older snapshot with the same id. Logged as entity "template", field "version".
+   * Store the snapshot of a template used by this project (decision D4). Every version is
+   * kept, keyed by (id, version); saving the same id and version again replaces it.
+   * Logged as entity "template", field "version" (old value set when a stored snapshot of
+   * the same version was replaced).
    */
   saveTemplateSnapshot(template: Template, source = 'user', summary?: string): void {
-    const json = JSON.stringify(template);
-    this.tx(summary, () => {
-      const row = this.stmt('SELECT version, json FROM project_template WHERE id = ?').get(template.id) as { version: number; json: string } | undefined;
-      if (row?.json === json) return;
-      this.stmt('INSERT INTO project_template (id, version, json) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET version = excluded.version, json = excluded.json').run(
-        template.id,
-        template.version,
-        json,
-      );
-      this.log(source, 'template', template.id, 'version', row?.version, template.version);
-    });
+    this.tx(summary, () => this.writeTemplateSnapshot(template, source));
   }
 
-  /** Template snapshots stored in this project, by id. */
+  private writeTemplateSnapshot(template: Template, source: string): void {
+    const json = JSON.stringify(template);
+    const row = this.stmt('SELECT json FROM project_template WHERE id = ? AND version = ?').get(template.id, template.version) as { json: string } | undefined;
+    if (row?.json === json) return;
+    this.stmt('INSERT INTO project_template (id, version, json) VALUES (?, ?, ?) ON CONFLICT(id, version) DO UPDATE SET json = excluded.json').run(
+      template.id,
+      template.version,
+      json,
+    );
+    this.log(source, 'template', template.id, 'version', row ? template.version : undefined, template.version);
+  }
+
+  /** Every template snapshot stored in this project, by id then version. */
   getTemplateSnapshots(): Template[] {
-    return (this.db.prepare('SELECT json FROM project_template ORDER BY id').all() as Array<{ json: string }>).map((r) => JSON.parse(r.json) as Template);
+    return (this.db.prepare('SELECT json FROM project_template ORDER BY id, version').all() as Array<{ json: string }>).map((r) => JSON.parse(r.json) as Template);
+  }
+
+  /** The snapshot of one template version, as assets with that templateVersion use it. */
+  getTemplateSnapshot(id: string, version: number): Template | undefined {
+    const row = this.stmt('SELECT json FROM project_template WHERE id = ? AND version = ?').get(id, version) as { json: string } | undefined;
+    return row ? (JSON.parse(row.json) as Template) : undefined;
   }
 
   getRevisionState(): RevisionState {

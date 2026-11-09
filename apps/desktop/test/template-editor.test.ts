@@ -5,7 +5,11 @@ import {
   assetsUsing,
   cleanTemplate,
   countWord,
+  editDraft,
+  freshDraft,
+  libraryStatus,
   sameTemplate,
+  stepDraft,
   templateProblems,
   uniqueName,
 } from '../src/renderer/views/Templates/editor-model.js';
@@ -68,5 +72,32 @@ describe('template editor model', () => {
       ).map((a) => a.id),
     ).toEqual(['a']);
     expect(assetsUsing(undefined, 't')).toEqual([]);
+  });
+
+  it('undoes and redoes draft edits', () => {
+    const t = starter();
+    const d0 = freshDraft(t);
+    expect(stepDraft(d0, 'undo')).toBeNull();
+    const removed = { ...t, tasks: t.tasks.slice(1) };
+    const d1 = editDraft(d0, removed, removed.tasks[0]!.key);
+    const d2 = editDraft(d1, { ...removed, name: 'Renamed' });
+    expect(d2.past).toEqual([t, removed]);
+    const u1 = stepDraft(d2, 'undo')!;
+    expect(u1.draft).toBe(removed);
+    const u2 = stepDraft(u1, 'undo')!;
+    expect(u2.draft).toBe(t);
+    expect(stepDraft(u2, 'undo')).toBeNull();
+    expect(stepDraft(u2, 'redo')!.draft).toBe(removed);
+    // A new edit clears the redo list.
+    expect(editDraft(u1, { ...removed, name: 'Other' }).future).toEqual([]);
+    // Selection only keeps a task that still exists.
+    const gone = editDraft(d0, removed, null);
+    expect(stepDraft({ ...gone, selectedKey: t.tasks[1]!.key }, 'undo')!.selectedKey).toBe(t.tasks[1]!.key);
+  });
+
+  it('describes the library in the status bar', () => {
+    expect(libraryStatus([{ kind: 'starter' }, { kind: 'starter' }, { kind: 'custom' }]).left).toBe('Library: 2 starters · 1 custom');
+    expect(libraryStatus([{ kind: 'starter' }]).left).toBe('Library: 1 starter · 0 custom');
+    expect(libraryStatus(null).right).toContain('Export to share');
   });
 });

@@ -80,3 +80,49 @@ export function countWord(n: number): string {
   const words = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
   return words[n] ?? String(n);
 }
+
+/** The editor's working copy of one template, with its own undo history. */
+export interface Draft {
+  /** The template as stored in the workspace. */
+  base: Template;
+  /** What the editor shows; differs from base until saved. */
+  draft: Template;
+  selectedKey: string | null;
+  /** Earlier drafts, oldest first (Ctrl+Z goes back through them). */
+  past: Template[];
+  /** Drafts undone, next first (Ctrl+Y). */
+  future: Template[];
+}
+
+/** How many template edits Ctrl+Z can go back. */
+export const DRAFT_UNDO_LIMIT = 100;
+
+/** A clean draft of `t` (just opened or saved): no history. */
+export function freshDraft(t: Template, selectedKey: string | null = t.tasks[0]?.key ?? null): Draft {
+  return { base: t, draft: t, selectedKey, past: [], future: [] };
+}
+
+/** `d` with `draft` as its new content, the old one kept for undo. */
+export function editDraft(d: Draft, draft: Template, selectedKey: string | null = d.selectedKey): Draft {
+  if (draft === d.draft) return { ...d, selectedKey };
+  return { ...d, draft, selectedKey, past: [...d.past, d.draft].slice(-DRAFT_UNDO_LIMIT), future: [] };
+}
+
+/** Steps the draft back (or forward) one edit; null when there is nothing to step to. */
+export function stepDraft(d: Draft, dir: 'undo' | 'redo'): Draft | null {
+  const from = dir === 'undo' ? d.past : d.future;
+  const to = from === d.past ? from[from.length - 1] : from[0];
+  if (!to) return null;
+  const selectedKey = d.selectedKey && to.tasks.some((t) => t.key === d.selectedKey) ? d.selectedKey : (to.tasks[0]?.key ?? null);
+  return dir === 'undo'
+    ? { ...d, draft: to, selectedKey, past: d.past.slice(0, -1), future: [d.draft, ...d.future] }
+    : { ...d, draft: to, selectedKey, past: [...d.past, d.draft], future: d.future.slice(1) };
+}
+
+/** Status bar line for the Templates view, e.g. "Library: 8 starters · 1 custom". */
+export function libraryStatus(list: ReadonlyArray<{ kind: string }> | null): { left: string; right: string } {
+  const right = 'Template library stored in the workspace · Export to share';
+  if (!list) return { left: 'Library: loading…', right };
+  const starters = list.filter((t) => t.kind === 'starter').length;
+  return { left: `Library: ${starters} ${starters === 1 ? 'starter' : 'starters'} · ${list.length - starters} custom`, right };
+}

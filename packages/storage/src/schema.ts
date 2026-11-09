@@ -88,6 +88,19 @@ export const MIGRATIONS: string[] = [
     json TEXT NOT NULL
   );
   `,
+  // 3 -> 4: keep every version of a template snapshot, so assets left on (or undone back
+  // to) an older version can still read their own checklists.
+  `
+  CREATE TABLE project_template_v4 (
+    id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    json TEXT NOT NULL,
+    PRIMARY KEY (id, version)
+  );
+  INSERT INTO project_template_v4 (id, version, json) SELECT id, version, json FROM project_template;
+  DROP TABLE project_template;
+  ALTER TABLE project_template_v4 RENAME TO project_template;
+  `,
 ];
 
 /** Meta keys that hold the project's own fields (written by replaceProject/saveProject). */

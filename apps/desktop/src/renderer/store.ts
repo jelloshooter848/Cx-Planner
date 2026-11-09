@@ -25,6 +25,18 @@ export interface UiState {
   view: ViewId;
   dialog: DialogId | null;
   notice: Notice | null;
+  /**
+   * Bumped when main asks to close the window while unsaved work was reported (MenuCommand
+   * 'confirm-close'). The Templates view, which holds that work, answers it. 0 = never asked.
+   */
+  closeRequest: number;
+  /** Status bar text a view sets for itself (e.g. the template library counts); null = the project's. */
+  status: StatusLine | null;
+}
+
+export interface StatusLine {
+  left: string;
+  right: string;
 }
 
 export interface Snapshot {
@@ -67,6 +79,8 @@ export interface Store {
   closeDialog(): void;
   notify(message: string): void;
   dismissNotice(): void;
+  /** Replaces the status bar text while a view shows (null puts the project's back). */
+  setStatus(status: StatusLine | null): void;
   /** Stops listening to the main process. */
   dispose(): void;
 }
@@ -75,7 +89,7 @@ export interface Store {
 const QUIET_CODES = new Set(['canceled', 'locked', 'file-error', 'nothing-to-undo', 'nothing-to-redo']);
 
 export function createStore(api: CxApi, options: StoreOptions = {}): Store {
-  let snapshot: Snapshot = { app: null, ui: { view: 'schedule', dialog: null, notice: null } };
+  let snapshot: Snapshot = { app: null, ui: { view: 'schedule', dialog: null, notice: null, closeRequest: 0, status: null } };
   let noticeId = 0;
   const listeners = new Set<() => void>();
   const emit = () => {
@@ -106,6 +120,8 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
   const offState = api.onState(receive);
   const offMenu = api.onMenu((cmd) => {
     if (cmd === 'new-project') void store.dispatch({ type: 'new-project' });
+    // Only the template editor reports unsaved work: show it so it can ask what to do.
+    if (cmd === 'confirm-close') setUi({ view: 'templates', dialog: null, closeRequest: snapshot.ui.closeRequest + 1 });
   });
   void api.getState().then(receive, () => {});
 
@@ -165,6 +181,11 @@ export function createStore(api: CxApi, options: StoreOptions = {}): Store {
     closeDialog: () => setUi({ dialog: null }),
     notify: (message) => setUi({ notice: { id: ++noticeId, message } }),
     dismissNotice: () => setUi({ notice: null }),
+    setStatus: (status) => {
+      const cur = snapshot.ui.status;
+      if (cur === status || (cur && status && cur.left === status.left && cur.right === status.right)) return;
+      setUi({ status });
+    },
     dispose() {
       offState();
       offMenu();

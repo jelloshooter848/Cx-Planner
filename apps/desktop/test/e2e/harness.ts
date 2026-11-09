@@ -127,7 +127,10 @@ async function start(dir: string, options: LaunchOptions, launched: (app: Electr
       return path;
     },
     async close() {
+      // A window left with unsaved work would wait for an answer; don't let that hang the run.
+      const timer = setTimeout(() => app.process().kill(), 10_000);
       await app.close().catch(() => {});
+      clearTimeout(timer);
       rmSync(dir, { recursive: true, force: true });
     },
   };

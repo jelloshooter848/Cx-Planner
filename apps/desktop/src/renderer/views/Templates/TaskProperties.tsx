@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
   formatTemplatePredecessors,
   newChecklistItemId,
@@ -40,13 +40,30 @@ export function TaskProperties({
   const formatted = formatTemplatePredecessors(template, task);
   const [predText, setPredText] = useState(formatted);
   const [predError, setPredError] = useState('');
-  // Follow the draft when another task is selected or rows move.
+  /** Set while the draft's predecessors follow what the user is typing (keep their text as typed). */
+  const typing = useRef<{ key: string; formatted: string } | null>(null);
+  // Follow the draft when another task is selected, rows move or an undo changes it, but
+  // not when the change came from the text being typed here (that would eat "2, " mid-entry).
   useEffect(() => {
+    const t = typing.current;
+    typing.current = null;
+    if (t && t.key === task.key && t.formatted === formatted) return;
     setPredText(formatted);
     setPredError('');
   }, [task.key, formatted]);
+  /** Applies the text at once when it parses, so Save is enabled before the field loses focus. */
+  const typePreds = (text: string) => {
+    setPredText(text);
+    const r = parseTemplatePredecessors(template, task.key, text);
+    if (!r.ok) return; // Shown on blur / Enter; half-typed text is not an error yet.
+    setPredError('');
+    if (JSON.stringify(r.predecessors) === JSON.stringify(task.predecessors)) return;
+    typing.current = { key: task.key, formatted: formatTemplatePredecessors(template, { ...task, predecessors: r.predecessors }) };
+    update({ predecessors: r.predecessors });
+  };
   const commitPreds = () => {
     if (predText.trim() === formatted) {
+      setPredText(formatted);
       setPredError('');
       return;
     }
@@ -56,6 +73,7 @@ export function TaskProperties({
       return;
     }
     setPredError('');
+    setPredText(formatTemplatePredecessors(template, { ...task, predecessors: r.predecessors }));
     update({ predecessors: r.predecessors });
   };
 
@@ -88,7 +106,7 @@ export function TaskProperties({
             placeholder="—"
             aria-invalid={predError !== ''}
             aria-describedby={predError ? `${id}-pred` : `${id}-pred-hint`}
-            onChange={(e) => setPredText(e.target.value)}
+            onChange={(e) => typePreds(e.target.value)}
             onBlur={commitPreds}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {

@@ -14,6 +14,8 @@ export const CH = {
   saveAs: 'file:save-as',
   closeProject: 'file:close',
   chooseWorkspace: 'workspace:choose',
+  /** renderer -> main: what the renderer holds unsaved, or null (see Session.unsavedWork). */
+  setUnsavedWork: 'window:unsaved-work',
   templateList: 'template:list',
   templateGet: 'template:get',
   templateSave: 'template:save',
