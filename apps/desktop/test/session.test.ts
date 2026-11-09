@@ -2,11 +2,12 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { Project } from '@cx/core';
+import type { Project, Template } from '@cx/core';
+import { STARTER_TEMPLATES } from '@cx/templates';
 import { riversideProject } from '@cx/fixtures';
 import { ProjectStore, WorkspaceStore } from '@cx/storage';
 import type { AppState } from '../src/shared/api.js';
-import { scheduleView, Session, windowTitle } from '../src/main/session.js';
+import { scheduleView, Session, templatesUsed, windowTitle } from '../src/main/session.js';
 
 let dir: string;
 let sent: AppState[];
@@ -228,6 +229,43 @@ describe('Session', () => {
       expect(session.getTemplate(id)).toMatchObject({ ok: false, code: 'unknown-template' });
       expect(session.restoreStarters()).toEqual({ ok: true, value: [id] });
       expect(session.saveTemplate({ ...t.value, tasks: [t.value.tasks[0]!, t.value.tasks[0]!] })).toMatchObject({ ok: false, code: 'invalid-template' });
+    });
+
+    it('stores a snapshot of each template an edit applies', () => {
+      const store = openProject();
+      const template = structuredClone(STARTER_TEMPLATES[0]!) as Template;
+      expect(templatesUsed({ kind: 'batch', commands: [{ kind: 'setDataDate', date: '2026-11-09' }, { kind: 'reapplyTemplate', assetIds: [], template }] })).toEqual([template]);
+      const r = session.apply({
+        kind: 'addAssetsFromTemplate',
+        template,
+        assets: [
+          { id: 'new-1', tag: 'SWGR-9', description: 'Spare lineup' },
+          { id: 'new-2', tag: 'SWGR-10', description: 'Second lineup' },
+        ],
+      });
+      expect(r).toMatchObject({ ok: true, value: { changed: true } });
+      expect(store.getTemplateSnapshots()).toEqual([template]);
+      const snapshotOf = (assetId: string) => {
+        const a = session.project!.assets.find((x) => x.id === assetId)!;
+        return store.getTemplateSnapshot(a.templateId!, a.templateVersion!);
+      };
+      const v2: Template = { ...template, version: template.version + 1, tasks: template.tasks.map((x, i) => (i === 0 ? { ...x, durationDays: x.durationDays + 1 } : x)) };
+      // Partial re-apply: new-2 stays on the old version and keeps its own snapshot.
+      expect(session.apply({ kind: 'reapplyTemplate', assetIds: ['new-1'], template: v2 })).toMatchObject({ ok: true });
+      expect(store.getTemplateSnapshots()).toEqual([template, v2]);
+      expect(session.project!.assets.find((a) => a.id === 'new-1')!.templateVersion).toBe(v2.version);
+      expect(snapshotOf('new-1')).toEqual(v2);
+      expect(snapshotOf('new-2')).toEqual(template);
+      // One undo step takes the re-apply back, and the asset's snapshot is the old one again.
+      session.undo();
+      expect(session.project!.assets.find((a) => a.id === 'new-1')!.templateVersion).toBe(template.version);
+      expect(snapshotOf('new-1')).toEqual(template);
+      session.redo();
+      expect(snapshotOf('new-1')).toEqual(v2);
+      // A refused edit stores nothing.
+      const bad: Template = { ...template, id: 'other', tasks: [] };
+      expect(session.apply({ kind: 'reapplyTemplate', assetIds: ['nope'], template: bad }).ok).toBe(false);
+      expect(store.getTemplateSnapshots().map((x) => x.id)).toEqual([template.id, template.id]);
     });
   });
 });

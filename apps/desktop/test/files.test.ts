@@ -315,6 +315,22 @@ describe('workspace', () => {
     expect(await files.chooseWorkspace()).toEqual({ ok: true, value: { workspacePath: other } });
     expect(settings.get().workspacePath).toBe(other);
   });
+
+  it('asks before a workspace switch drops unsaved template changes', async () => {
+    const first = join(dir, 'First');
+    dialogs.push({ open: first });
+    await files.chooseWorkspace();
+    session.unsavedWork = 'Template "Spare lineup"';
+    const other = join(dir, 'Other');
+    dialogs.push({ open: other }, { message: 0, expect: 'Spare lineup.*unsaved' });
+    expect(await files.chooseWorkspace()).toMatchObject({ ok: false, code: 'canceled' });
+    expect(settings.get().workspacePath).toBe(first);
+    expect(session.unsavedWork).not.toBeNull();
+    dialogs.push({ open: other }, { message: 1 });
+    expect(await files.chooseWorkspace()).toEqual({ ok: true, value: { workspacePath: other } });
+    expect(session.unsavedWork).toBeNull();
+    expect(dialogs.remaining).toBe(0);
+  });
 });
 
 describe('template files', () => {

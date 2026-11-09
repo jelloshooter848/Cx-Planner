@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Project, Template } from '@cx/core';
 import { largeProject, riversideProject } from '@cx/fixtures';
-import { APPLICATION_ID, MIGRATIONS, ProjectStore } from '../src/index.js';
+import { APPLICATION_ID, MIGRATIONS, ProjectStore, TemplateSnapshotConflictError } from '../src/index.js';
 
 let file: string;
 beforeEach(() => {
@@ -263,7 +263,7 @@ describe('ProjectStore.saveProject', () => {
 });
 
 describe('template snapshots', () => {
-  it('stores, replaces and lists the snapshots copied into the project', () => {
+  it('stores every version of a snapshot copied into the project', () => {
     const s = storeWith(riversideProject());
     expect(s.getTemplateSnapshots()).toEqual([]);
     const seq = s.getRevisionState().lastChangeSeq;
@@ -272,17 +272,51 @@ describe('template snapshots', () => {
     expect(s.getTemplateSnapshots()).toEqual([template]);
     const v3 = { ...template, version: 3, name: 'LV switchgear lineup' };
     s.saveTemplateSnapshot(v3, 'user');
-    expect(s.getTemplateSnapshots()).toEqual([v3]);
+    expect(s.getTemplateSnapshots()).toEqual([template, v3]);
+    expect(s.getTemplateSnapshot('tpl-lv-swgr', 2)).toEqual(template);
+    expect(s.getTemplateSnapshot('tpl-lv-swgr', 3)).toEqual(v3);
+    expect(s.getTemplateSnapshot('tpl-lv-swgr', 4)).toBeUndefined();
+    // Same content with keys in another order is the same snapshot.
+    const reordered = Object.fromEntries(Object.entries(v3).reverse()) as typeof v3;
+    s.saveTemplateSnapshot(reordered, 'user');
+    // Different content under a stored (id, version), e.g. from another workspace, is refused
+    // and the stored snapshot kept, since assets on version 3 read it.
+    const v3b = { ...v3, name: 'LV switchgear (renamed)' };
+    expect(() => s.saveTemplateSnapshot(v3b, 'user')).toThrow(TemplateSnapshotConflictError);
+    expect(s.getTemplateSnapshot('tpl-lv-swgr', 3)).toEqual(v3);
     expect(s.changesSince(seq).map((e) => [e.entity, e.entityId, e.field, e.oldValue, e.newValue])).toEqual([
       ['template', 'tpl-lv-swgr', 'version', undefined, 2],
-      ['template', 'tpl-lv-swgr', 'version', 2, 3],
+      ['template', 'tpl-lv-swgr', 'version', undefined, 3],
     ]);
     // A project save leaves the snapshots alone.
     s.saveProject(riversideProject(), 'autosave');
     s.close();
     const again = ProjectStore.open(file, { backup: false });
-    expect(again.getTemplateSnapshots()).toEqual([v3]);
+    expect(again.getTemplateSnapshots()).toEqual([template, v3]);
     again.close();
+  });
+
+  it('writes snapshots given to saveProject in the same transaction', () => {
+    const s = storeWith(riversideProject());
+    const before = s.getRevisionState().revision;
+    const p = riversideProject();
+    p.name = 'Renamed';
+    const r = s.saveProject(p, 'user', 'Apply template', { templates: [template] });
+    expect(r.revision).toBe(before + 1);
+    expect(s.getTemplateSnapshots()).toEqual([template]);
+    expect(s.changesSince(0).filter((e) => e.revision === r.revision).map((e) => e.entity)).toEqual(['template', 'project']);
+    // A failed save writes no snapshot either.
+    const bad = { ...riversideProject(), tasks: [{ ...riversideProject().tasks[0]!, durationDays: -1 }] };
+    expect(() => s.saveProject(bad, 'user', 'Bad', { templates: [{ ...template, version: 9 }] })).toThrow();
+    expect(s.getTemplateSnapshot(template.id, 9)).toBeUndefined();
+    // A clashing snapshot rolls the whole save back, project edit included.
+    const p2 = riversideProject();
+    p2.name = 'Renamed again';
+    const clash = { ...template, name: 'Same version, other content' };
+    expect(() => s.saveProject(p2, 'user', 'Apply template', { templates: [clash] })).toThrow(TemplateSnapshotConflictError);
+    expect(s.loadProject().name).toBe('Renamed');
+    expect(s.getTemplateSnapshots()).toEqual([template]);
+    s.close();
   });
 
   it('stores snapshots passed to saveProject in the same revision as the edit', () => {
@@ -305,6 +339,20 @@ describe('template snapshots', () => {
 });
 
 describe('migrations', () => {
+  it('keeps a version 3 snapshot when moving to per-version snapshots', async () => {
+    const { DatabaseSync } = await import('node:sqlite');
+    const db = new DatabaseSync(file);
+    for (const m of MIGRATIONS.slice(0, 3)) db.exec(m);
+    db.exec(`PRAGMA user_version = 3; PRAGMA application_id = ${APPLICATION_ID};`);
+    db.prepare('INSERT INTO project_template (id, version, json) VALUES (?, ?, ?)').run(template.id, template.version, JSON.stringify(template));
+    db.close();
+    const s = ProjectStore.open(file, { backup: false });
+    expect(s.getTemplateSnapshot(template.id, template.version)).toEqual(template);
+    s.saveTemplateSnapshot({ ...template, version: template.version + 1 });
+    expect(s.getTemplateSnapshots()).toHaveLength(2);
+    s.close();
+  });
+
   it('migrates a version 1 file with data to the current schema', async () => {
     const { DatabaseSync } = await import('node:sqlite');
     const db = new DatabaseSync(file);

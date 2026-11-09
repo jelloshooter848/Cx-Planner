@@ -30,6 +30,13 @@ export function checkName(v: unknown, what = 'name'): string {
   return v.trim();
 }
 
+/** A short description of unsaved work, or null. */
+export function checkUnsavedWork(v: unknown): string | null {
+  if (v === null) return null;
+  if (typeof v !== 'string' || v.trim() === '' || v.length > MAX_NAME + 40) throw new InputError('Invalid unsaved-work description');
+  return v.trim();
+}
+
 export function checkPath(v: unknown): string {
   if (typeof v !== 'string' || v === '' || v.length > MAX_PATH || v.includes('\0')) throw new InputError('Invalid file path');
   return v;

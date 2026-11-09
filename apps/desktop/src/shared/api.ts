@@ -203,8 +203,12 @@ export interface PdfExported extends PrintIssued {
   notRecorded?: string;
 }
 
-/** Menu items the renderer handles itself (they need a form). */
-export type MenuCommand = 'new-project' | 'print';
+/**
+ * Commands main sends the renderer: menu items that need a form ('new-project', 'print'), and
+ * 'confirm-close' when the window is closing while the renderer reported unsaved work (it asks
+ * Save / Discard / Cancel, then closes the window itself or stays open).
+ */
+export type MenuCommand = 'new-project' | 'print' | 'confirm-close';
 
 export interface TemplateApi {
   list(): Promise<ApiResult<TemplateSummary[]>>;
@@ -244,6 +248,11 @@ export interface CxApi {
   closeProject(): Promise<ApiResult>;
   /** Shows a folder dialog and switches to (or creates) a workspace there. */
   chooseWorkspace(): Promise<ApiResult<{ workspacePath: string }>>;
+  /**
+   * Tells main what is unsaved (e.g. 'Template "LV switchgear"'), or null when nothing is.
+   * While set, closing the window sends 'confirm-close' instead and a workspace switch asks first.
+   */
+  setUnsavedWork(what: string | null): Promise<ApiResult>;
 
   templates: TemplateApi;
 

@@ -4,8 +4,8 @@ import type { ApiResult } from '../shared/api.js';
 import { CH } from '../shared/channels.js';
 import type { Dialogs, FileController } from './files.js';
 import type { PrintController } from './print-controller.js';
-import { failure, type Session } from './session.js';
-import { checkCommand, checkId, checkName, checkNewProject, checkPath, checkPrintRequest, checkTemplate } from './validate.js';
+import { failure, ok, type Session } from './session.js';
+import { checkCommand, checkId, checkName, checkNewProject, checkPath, checkPrintRequest, checkTemplate, checkUnsavedWork } from './validate.js';
 
 export interface IpcContext {
   session: Session;
@@ -52,6 +52,10 @@ export function registerIpc(ctx: IpcContext): void {
   handle(CH.saveAs, () => files.saveAs());
   handle(CH.closeProject, () => files.close());
   handle(CH.chooseWorkspace, () => files.chooseWorkspace());
+  handle(CH.setUnsavedWork, (what) => {
+    session.unsavedWork = checkUnsavedWork(what);
+    return ok(undefined);
+  });
 
   handle(CH.templateList, () => session.listTemplates());
   handle(CH.templateGet, (id) => session.getTemplate(checkId(id, 'template id')));
