@@ -358,7 +358,7 @@ function drawSheet(a: DrawArgs): string {
   out.push(...labels);
 
   // ---- Footer: legend, field notes, revisions, sign-off
-  out.push(a.footer.draw(x0, pageH - MARGIN - a.footer.height));
+  out.push(`<g class="sheet-footer">${a.footer.draw(x0, pageH - MARGIN - a.footer.height)}</g>`);
 
   const defs =
     `<defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">` +
@@ -441,9 +441,13 @@ function drawTaskRow(
     const filled = t.type !== 'witness';
     out.push(diamond(mx, mid, MARKER_R, filled));
     const label = t.type === 'hold' ? 'HOLD' : t.type === 'witness' ? 'WITNESS' : t.name;
-    const rightEdge = dayX(band[1] + 1);
-    const fitsRight = mx + LABEL_OFFSET + textWidth(label, 11, true) <= rightEdge;
-    labels.push(markerLabel(fitsRight ? mx + LABEL_OFFSET : mx - LABEL_OFFSET, mid + 4.5, label, fitsRight ? 'start' : 'end'));
+    // Labels stay inside the timeline: never across its right edge or the table/timeline divider.
+    const roomRight = dayX(band[1] + 1) - (mx + LABEL_OFFSET);
+    const roomLeft = mx - LABEL_OFFSET - (dayX(band[0]) + LABEL_HALO / 2 + 2);
+    const w = textWidth(label, 11, true);
+    const onRight = w <= roomRight || (w > roomLeft && roomRight >= roomLeft);
+    const shown = fit(label, Math.max(0, onRight ? roomRight : roomLeft), 11, true);
+    if (shown) labels.push(markerLabel(onRight ? mx + LABEL_OFFSET : mx - LABEL_OFFSET, mid + 4.5, shown, onRight ? 'start' : 'end'));
   }
   return { content: out, labels };
 }
