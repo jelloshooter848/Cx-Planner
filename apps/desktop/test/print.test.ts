@@ -144,7 +144,7 @@ describe('print jobs', () => {
   it('prints the full schedule on large-format paper', () => {
     openRiverside();
     const r = print.preview({ kind: 'full-schedule', paper: 'ansi-d', dayWidthIn: 0.42, assetIds: null, note: '' });
-    expect(r).toMatchObject({ ok: true, value: { widthIn: 34, heightIn: 22, title: 'Full Commissioning Schedule', rev: 'A' } });
+    expect(r).toMatchObject({ ok: true, value: { widthIn: 34, heightIn: 22, title: 'Full Commissioning Schedule: Nov 2 – Dec 7, 2026', rev: 'A' } });
   });
 
   it('lists tasks with checklists and prints one Letter sheet per chosen task', () => {

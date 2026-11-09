@@ -5,12 +5,14 @@
  */
 import { computeSchedule, taskChecklists, type Project, type ScheduleResult, type Template } from '@cx/core';
 import {
+  fullScheduleTitle,
   layoutSchedulePrint,
   layoutTestSheet,
   lookAheadTitle,
   lookAheadWindow,
   nextRevision,
   printDocumentHtml,
+  printedTaskRange,
   revisionLetter,
   type Paper,
   type PaperId,
@@ -149,11 +151,13 @@ export function buildPrint(input: BuildPrintInput): BuiltPrint {
       break;
     }
     case 'full-schedule': {
-      title = 'Full Commissioning Schedule';
+      const schedule = scheduleOf(project);
+      const assetIds = pickAssets(project, req.assetIds);
+      title = fullScheduleTitle(printedTaskRange({ project, schedule, assetIds }));
       paperId = req.paper;
       doc = layoutSchedulePrint({
-        project, schedule: scheduleOf(project), paper: req.paper, title,
-        assetIds: pickAssets(project, req.assetIds),
+        project, schedule, paper: req.paper, title,
+        assetIds,
         ...(req.dayWidthIn !== null ? { dayWidthIn: req.dayWidthIn } : {}),
         revision: { rev, issued }, revisions,
       });

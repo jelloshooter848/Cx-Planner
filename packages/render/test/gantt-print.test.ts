@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { computeSchedule, WorkCalendar } from '@cx/core';
 import { largeProject, riversideProject } from '@cx/fixtures';
-import { layoutSchedulePrint, packWeeks, printDocumentHtml } from '../src/index.js';
+import { fullScheduleTitle, layoutSchedulePrint, packWeeks, printDocumentHtml, printedTaskRange } from '../src/index.js';
 import { textWidth } from '../src/text.js';
 
 const riverside = riversideProject();
@@ -72,6 +72,60 @@ describe('layoutSchedulePrint', () => {
   it('wraps sheets in a document with the CSS page size', () => {
     const html = printDocumentHtml(layoutSchedulePrint({ ...base, paper: 'ansi-d' }), { title: 't' });
     expect(html).toContain('@page { size: 34in 22in; margin: 0; }');
+  });
+});
+
+describe('full schedule', () => {
+  const full = { project: riverside, schedule: base.schedule, revision: base.revision, title: 'Full' };
+
+  it('titles the sheet with the date range of the printed tasks', () => {
+    expect(printedTaskRange(full)).toEqual({ start: '2026-11-02', end: '2026-12-07' });
+    expect(fullScheduleTitle(printedTaskRange(full))).toBe('Full Commissioning Schedule: Nov 2 – Dec 7, 2026');
+    // Only the chosen assets count.
+    expect(printedTaskRange({ ...full, assetIds: ['gen-1'] })).toEqual({ start: '2026-11-19', end: '2026-12-04' });
+    expect(fullScheduleTitle({ start: '2026-11-02', end: '2027-03-21' })).toBe('Full Commissioning Schedule: Nov 2, 2026 – Mar 21, 2027');
+    expect(printedTaskRange({ ...full, assetIds: [] })).toBeNull();
+    expect(fullScheduleTitle(null)).toBe('Full Commissioning Schedule');
+  });
+
+  it('prints a Dur column on ANSI D, with milestones at 0 d', () => {
+    const svg = layoutSchedulePrint({ ...full, paper: 'ansi-d' }).sheets[0]!.svg;
+    expect(svg).toContain('>Dur<');
+    expect(svg).toContain('>4 d<');
+    const milestone = riverside.tasks.find((t) => t.durationDays === 0)!;
+    expect(milestone).toBeDefined();
+    expect(svg).toContain('>0 d<');
+  });
+
+  it('fits the whole job on the width of one ANSI D sheet by default', () => {
+    const l = layoutSchedulePrint({ ...full, paper: 'ansi-d' });
+    expect(l.timeBands).toBe(1);
+    // The timeline runs to the right margin (34 in − 0.45 in at 96 px/in), not part way across.
+    const frame = /<rect x="43.2" y="[\d.]+" width="([\d.]+)" height="[\d.]+" fill="none" stroke="#111" stroke-width="1"\/>/.exec(l.sheets[0]!.svg);
+    expect(Number(frame?.[1])).toBeCloseTo(3177.6, 1);
+  });
+
+  it('leaves Dur off look-aheads unless asked for', () => {
+    expect(layoutSchedulePrint({ ...base, paper: 'tabloid' }).sheets[0]!.svg).not.toContain('>Dur<');
+    expect(layoutSchedulePrint({ ...base, paper: 'tabloid', showDuration: true }).sheets[0]!.svg).toContain('>Dur<');
+  });
+
+  it('drops Dur first, then Responsible, when the sheet is narrow', () => {
+    // Tabloid: fitting 26 working days leaves about 0.27 in a day with every column.
+    const roomy = layoutSchedulePrint({ ...full, paper: 'tabloid' }).sheets[0]!.svg;
+    expect(roomy).toContain('>Dur<');
+    // Asking for wider days than fit: Dur goes, which is enough, so Responsible stays.
+    const narrow = layoutSchedulePrint({ ...full, paper: 'tabloid', minDayWidthIn: 0.28 }).sheets[0]!.svg;
+    expect(narrow).not.toContain('>Dur<');
+    expect(narrow).toContain('>Responsible<');
+    // A long job on Tabloid drops both and pages across sheets.
+    const large = largeProject();
+    const long = layoutSchedulePrint({ ...full, project: large, schedule: computeSchedule(large), paper: 'tabloid' });
+    expect(long.sheets[0]!.svg).not.toContain('>Dur<');
+    expect(long.sheets[0]!.svg).not.toContain('>Responsible<');
+    expect(long.timeBands).toBeGreaterThan(1);
+    // A fixed day width keeps Dur while the timeline is at least 5 in wide.
+    expect(layoutSchedulePrint({ ...full, paper: 'tabloid', dayWidthIn: 0.42 }).sheets[0]!.svg).toContain('>Dur<');
   });
 });
 

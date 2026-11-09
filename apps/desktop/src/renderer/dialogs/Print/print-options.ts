@@ -136,7 +136,9 @@ export function defaultSettings(dataDate: IsoDate, testSheetTaskIds: Id[], hasFi
   const assets: AssetScope = hasFilter ? 'filter' : 'all';
   return {
     lookAhead: { paper: 'tabloid', weeks, start: mondayOf(dataDate), assets, showTimes: true },
-    fullSchedule: { paper: 'ansi-d', dayWidthIn: 0.42, assets },
+    // Fit to the sheet width by default; the main process keeps a minimum day width and pages
+    // across sheets when a long job would fall below it.
+    fullSchedule: { paper: 'ansi-d', dayWidthIn: null, assets },
     testSheets: { taskIds: testSheetTaskIds },
     note: '',
   };
