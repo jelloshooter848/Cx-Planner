@@ -2,7 +2,7 @@ import type { Asset, IsoDate, Project, ScheduleResult, Task } from '@cx/core';
 import { TIMES_KEYS } from '@cx/core';
 import { inch, PAPER, type Paper, type PaperId } from './paper.js';
 import { diamond, timesSymbol } from './symbols.js';
-import { esc, fit, longDate, shortDate, textWidth, weekdayLetter } from './text.js';
+import { esc, fit, longDate, monthYear, shortDate, textWidth, weekdayLetter } from './text.js';
 
 export interface RevisionEntry {
   rev: string;
@@ -38,9 +38,18 @@ export interface SchedulePrintOptions {
    */
   dayWidthIn?: number;
   minDayWidthIn?: number;
+  /**
+   * Timescale of a full schedule. 'day' heads the timeline with weeks over working days; 'week'
+   * heads it with months over the Monday of each week and draws week gridlines only (bars keep
+   * their working-day positions). Omit to choose: fit-to-width full schedules whose day columns
+   * would not fit the sheet width use 'week'. Look-aheads (`window`) always use 'day'.
+   */
+  scale?: TimeScale;
   /** Space for hand-written field notes at the foot of each sheet. Default true. */
   fieldNotes?: boolean;
 }
+
+export type TimeScale = 'day' | 'week';
 
 export interface PrintSheet {
   /** 1-based sheet number in reading order. */
@@ -58,6 +67,8 @@ export interface PrintLayout {
   timeBands: number;
   /** Tasks shown, in print order. */
   taskCount: number;
+  /** Timescale the sheets use. */
+  scale: TimeScale;
 }
 
 type Row =
@@ -87,6 +98,10 @@ const HEADER_H = inch(0.95);
 const TIME_HEAD_H = inch(0.29);
 const ROW_H = inch(0.31);
 const FONT = 12; // px (9pt)
+/** Narrowest working day on a week-scale fit-to-width sheet before the time axis splits. */
+const MIN_WEEK_SCALE_DAY = inch(0.04);
+/** Optional columns go only when the timeline would otherwise be narrower than this. */
+const MIN_TIMELINE = inch(5);
 
 const BASE_COLUMNS: Column[] = [
   { key: 'id', label: 'ID', widthIn: 0.48 },
@@ -125,28 +140,37 @@ export function layoutSchedulePrint(opts: SchedulePrintOptions): PrintLayout {
   }
   const dayCount = Math.max(1, last - first + 1);
 
-  // Columns: drop optional ones on small sheets so the timeline keeps a usable width.
+  // Columns and timescale. Optional columns are dropped on small sheets so the timeline keeps a
+  // usable width. A fit-to-width full schedule keeps each day at least minDay wide; when that
+  // cannot fit the span even without the optional columns, it switches to the week scale, which
+  // keeps every column and fits the span to the timeline (down to MIN_WEEK_SCALE_DAY a day).
   const showDuration = opts.showDuration ?? !opts.window;
-  let columns = BASE_COLUMNS.filter(
+  const allColumns = BASE_COLUMNS.filter(
     (c) => !(opts.showTimes === false && c.key.startsWith('times-')) && !(!showDuration && c.key === 'dur'),
   );
   const tableWidth = (cols: Column[]) => cols.reduce((n, c) => n + inch(c.widthIn), 0);
+  const timelineOf = (cols: Column[]) => contentW - tableWidth(cols);
   const minDay = inch(opts.minDayWidthIn ?? 0.2);
-  const narrow = (cols: Column[]) => {
-    const tl = contentW - tableWidth(cols);
-    // Fit-to-width full schedules also keep each day at least minDay wide; look-aheads (a window)
-    // and fixed day widths only need the 5 in timeline floor.
-    return tl < inch(5) || (!opts.window && opts.dayWidthIn === undefined && tl / dayCount < minDay);
+  const fitting = !opts.window && opts.dayWidthIn === undefined;
+  const dropOrder = allColumns.filter((c) => c.dropOrder !== undefined).sort((a, b) => a.dropOrder! - b.dropOrder!);
+  const dropUntil = (ok: (cols: Column[]) => boolean): Column[] => {
+    let cols = allColumns;
+    for (const c of dropOrder) {
+      if (ok(cols)) break;
+      cols = cols.filter((x) => x !== c);
+    }
+    return cols;
   };
-  const dropOrder = columns.filter((c) => c.dropOrder !== undefined).sort((a, b) => a.dropOrder! - b.dropOrder!);
-  for (const c of dropOrder) {
-    if (!narrow(columns)) break;
-    columns = columns.filter((x) => x !== c);
-  }
+  const wideEnough = (cols: Column[]) => timelineOf(cols) >= MIN_TIMELINE;
+  const daysFit = (cols: Column[]) => wideEnough(cols) && (!fitting || timelineOf(cols) / dayCount >= minDay);
+  const dayColumns = dropUntil(daysFit);
+  const scale: TimeScale = opts.window ? 'day' : (opts.scale ?? (fitting && !daysFit(dayColumns) ? 'week' : 'day'));
+  const columns = scale === 'day' ? dayColumns : dropUntil(wideEnough);
   const tableW = tableWidth(columns);
   const timelineW = contentW - tableW;
 
-  const dayW = opts.dayWidthIn !== undefined ? inch(opts.dayWidthIn) : Math.max(minDay, timelineW / dayCount);
+  const floorDay = scale === 'week' ? MIN_WEEK_SCALE_DAY : minDay;
+  const dayW = opts.dayWidthIn !== undefined ? inch(opts.dayWidthIn) : Math.max(floorDay, timelineW / dayCount);
   const daysPerSheet = Math.max(1, Math.floor((timelineW + 0.01) / dayW));
   const timeBands = packWeeks(first, last, daysPerSheet, (i) => cal.dateAt(i));
 
@@ -163,6 +187,15 @@ export function layoutSchedulePrint(opts: SchedulePrintOptions): PrintLayout {
   const bodyH = pageH - 2 * MARGIN - HEADER_H - 2 * TIME_HEAD_H - footer.height;
   const rowsPerSheet = Math.max(2, Math.floor(bodyH / ROW_H));
   const rowBands = bandRows(rows, rowsPerSheet, assetsById);
+  // Full schedules draw a summary bar on each asset group row: earliest start to latest finish.
+  const assetSpans = new Map<string, [number, number]>();
+  if (!opts.window) {
+    for (const t of tasks) {
+      const s = schedule.tasks.get(t.id)!;
+      const span = assetSpans.get(t.assetId);
+      assetSpans.set(t.assetId, span ? [Math.min(span[0], s.es), Math.max(span[1], s.ef)] : [s.es, s.ef]);
+    }
+  }
 
   const sheets: PrintSheet[] = [];
   const total = rowBands.length * timeBands.length;
@@ -174,14 +207,14 @@ export function layoutSchedulePrint(opts: SchedulePrintOptions): PrintLayout {
         rowBand: ri + 1,
         timeBand: ti + 1,
         svg: drawSheet({
-          opts, paper, pageW, pageH, columns, tableW, dayW, band, rows: bandRowsList, footer,
+          opts, paper, pageW, pageH, columns, tableW, dayW, scale, assetSpans, band, rows: bandRowsList, footer,
           sheetLabel: `${number} of ${total}`,
           bandLabel: total > 1 ? `Rows ${ri + 1}/${rowBands.length} · Time ${ti + 1}/${timeBands.length}` : '',
         }),
       });
     });
   });
-  return { paper, sheets, rowBands: rowBands.length, timeBands: timeBands.length, taskCount: tasks.length };
+  return { paper, sheets, rowBands: rowBands.length, timeBands: timeBands.length, taskCount: tasks.length, scale };
 }
 
 /** The tasks a schedule print shows, in project order: asset filter, then date window. */
@@ -247,6 +280,23 @@ export function packWeeks(first: number, last: number, cap: number, dateAt: (i: 
   return bands;
 }
 
+/** Call `fn` with the first and last working-day index of each week (Monday to Sunday) in `band`. */
+function eachWeek(band: [number, number], dateAt: (i: number) => IsoDate, fn: (start: number, end: number) => void): void {
+  let start = band[0];
+  for (let i = band[0] + 1; i <= band[1] + 1; i++) {
+    if (i <= band[1] && !isNewWeek(dateAt(i - 1), dateAt(i))) continue;
+    fn(start, i - 1);
+    start = i;
+  }
+}
+
+/** The Monday of the week holding `date`. */
+function mondayOf(date: IsoDate): IsoDate {
+  const ms = Date.parse(`${date}T00:00:00Z`);
+  const back = (new Date(ms).getUTCDay() + 6) % 7;
+  return new Date(ms - back * 86_400_000).toISOString().slice(0, 10) as IsoDate;
+}
+
 function isNewWeek(prev: IsoDate, next: IsoDate): boolean {
   const day = (d: IsoDate) => Date.parse(`${d}T00:00:00Z`) / 86_400_000;
   // Week boundary: crossed a Monday (Mon=1). Days since Thursday 1970-01-01 → Monday-based week number.
@@ -284,6 +334,9 @@ interface DrawArgs {
   columns: Column[];
   tableW: number;
   dayW: number;
+  scale: TimeScale;
+  /** Asset id → [earliest start, latest finish) in working-day indexes; empty on look-aheads. */
+  assetSpans: Map<string, [number, number]>;
   band: [number, number];
   rows: Row[];
   sheetLabel: string;
@@ -343,22 +396,38 @@ function drawSheet(a: DrawArgs): string {
     out.push(text(tx, hy1 + 19, c.label, { size: FONT, weight: 600, anchor: c.align ?? 'start' }));
     cx += w;
   }
-  // Week and day headings.
-  let weekStart = band[0];
-  for (let i = band[0]; i <= band[1] + 1; i++) {
-    const boundary = i > band[1] || (i > band[0] && isNewWeek(cal.dateAt(i - 1), cal.dateAt(i)));
-    if (!boundary) continue;
-    const wx = dayX(weekStart);
-    const ww = (i - weekStart) * dayW;
-    const label = ww > inch(1.1) ? `Week of ${shortDate(cal.dateAt(weekStart))}` : shortDate(cal.dateAt(weekStart));
-    out.push(text(wx + 7, gy + 19, fit(label, ww - 10, FONT, true), { size: FONT, weight: 600 }));
-    if (weekStart > band[0]) out.push(vline(wx, gy, bodyY, GRID));
-    weekStart = i;
-  }
-  for (let i = band[0]; i <= band[1]; i++) {
-    const d = cal.dateAt(i);
-    const label = dayW >= inch(0.42) ? `${weekdayLetter(d)} ${Number(d.slice(8))}` : String(Number(d.slice(8)));
-    if (dayW >= inch(0.16)) out.push(text(dayX(i) + dayW / 2, hy1 + 19, label, { size: dayW >= inch(0.3) ? 11 : 9, fill: MUTED, anchor: 'middle' }));
+  if (a.scale === 'week') {
+    // Month headings over week columns headed by their Monday.
+    let monthStart = band[0];
+    for (let i = band[0] + 1; i <= band[1] + 1; i++) {
+      if (i <= band[1] && cal.dateAt(i).slice(0, 7) === cal.dateAt(i - 1).slice(0, 7)) continue;
+      const mx = dayX(monthStart);
+      out.push(text(mx + 7, gy + 19, fit(monthYear(cal.dateAt(monthStart)), (i - monthStart) * dayW - 10, FONT, true), { size: FONT, weight: 600 }));
+      if (monthStart > band[0]) out.push(vline(mx, gy, hy1, GRID));
+      monthStart = i;
+    }
+    eachWeek(band, (i) => cal.dateAt(i), (start, end) => {
+      // Short weeks (holidays, band edges) fall back to a smaller label, then the day number alone.
+      const monday = mondayOf(cal.dateAt(start));
+      const room = (end - start + 1) * dayW - 9;
+      const choice = ([[shortDate(monday), 11], [shortDate(monday), 10], [String(Number(monday.slice(8))), 10]] as const)
+        .find(([s, size]) => textWidth(s, size, true) <= room);
+      if (choice) out.push(text(dayX(start) + 6, hy1 + 19, choice[0], { size: choice[1], weight: 600 }));
+    });
+  } else {
+    // Week and day headings.
+    eachWeek(band, (i) => cal.dateAt(i), (start, end) => {
+      const wx = dayX(start);
+      const ww = (end - start + 1) * dayW;
+      const label = ww > inch(1.1) ? `Week of ${shortDate(cal.dateAt(start))}` : shortDate(cal.dateAt(start));
+      out.push(text(wx + 7, gy + 19, fit(label, ww - 10, FONT, true), { size: FONT, weight: 600 }));
+      if (start > band[0]) out.push(vline(wx, gy, bodyY, GRID));
+    });
+    for (let i = band[0]; i <= band[1]; i++) {
+      const d = cal.dateAt(i);
+      const label = dayW >= inch(0.42) ? `${weekdayLetter(d)} ${Number(d.slice(8))}` : String(Number(d.slice(8)));
+      if (dayW >= inch(0.16)) out.push(text(dayX(i) + dayW / 2, hy1 + 19, label, { size: dayW >= inch(0.3) ? 11 : 9, fill: MUTED, anchor: 'middle' }));
+    }
   }
 
   // ---- Body, painted in layers so nothing important is drawn over:
@@ -379,6 +448,13 @@ function drawSheet(a: DrawArgs): string {
         `<text x="${x0 + 8}" y="${mid + 4.5}" font-size="${FONT + 1}" font-weight="700" fill="${INK}">${esc(tag)}` +
           `<tspan font-weight="400" font-size="${FONT}" fill="${MUTED}" dx="6">${esc(fit(detail, tableW - 120, FONT))}</tspan></text>`,
       );
+      const span = a.assetSpans.get(row.asset.id);
+      const from = span ? Math.max(span[0], band[0]) : 0;
+      const to = span ? Math.min(span[1], band[1] + 1) : 0;
+      if (span && to > from) {
+        const h = inch(0.085);
+        content.push(`<rect class="asset-summary" x="${r1(dayX(from))}" y="${r1(mid - h / 2)}" width="${r1(dayX(to) - dayX(from))}" height="${r1(h)}" fill="${INK}"/>`);
+      }
     } else {
       const drawn = drawTaskRow(row.task, y, mid, x0, columns, opts, dayX, band, dayW);
       content.push(...drawn.content);
@@ -390,6 +466,7 @@ function drawSheet(a: DrawArgs): string {
   // Day grid lines and week dividers over the body.
   for (let i = band[0] + 1; i <= band[1]; i++) {
     const strong = isNewWeek(cal.dateAt(i - 1), cal.dateAt(i));
+    if (a.scale === 'week' && !strong) continue;
     if (strong || dayW >= inch(0.16)) grid.push(vline(dayX(i), strong ? gy + TIME_HEAD_H : hy1, bodyBottom, strong ? GRID : GRID_LIGHT));
   }
   out.push(...shading, ...grid, ...content);

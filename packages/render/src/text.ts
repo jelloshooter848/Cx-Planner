@@ -39,6 +39,13 @@ export function shortDate(iso: string): string {
   return `${MONTHS[Number(iso.slice(5, 7)) - 1]} ${Number(iso.slice(8, 10))}`;
 }
 
+/** "November 2026". */
+export function monthYear(iso: string): string {
+  return `${FULL_MONTHS[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`;
+}
+
+const FULL_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
 export function longDate(iso: string): string {
   return `${shortDate(iso)}, ${iso.slice(0, 4)}`;
 }

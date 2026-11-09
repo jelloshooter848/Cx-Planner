@@ -123,14 +123,89 @@ describe('full schedule', () => {
     const narrow = layoutSchedulePrint({ ...full, paper: 'tabloid', minDayWidthIn: 0.28 }).sheets[0]!.svg;
     expect(narrow).not.toContain('>Dur<');
     expect(narrow).toContain('>Responsible<');
-    // A long job on Tabloid drops both and pages across sheets.
+    // A long job on Tabloid switches to the week scale instead, which keeps every column while the
+    // timeline is at least 5 in wide.
     const large = largeProject();
     const long = layoutSchedulePrint({ ...full, project: large, schedule: computeSchedule(large), paper: 'tabloid' });
-    expect(long.sheets[0]!.svg).not.toContain('>Dur<');
-    expect(long.sheets[0]!.svg).not.toContain('>Responsible<');
-    expect(long.timeBands).toBeGreaterThan(1);
+    expect(long.scale).toBe('week');
+    expect(long.sheets[0]!.svg).toContain('>Dur<');
+    expect(long.sheets[0]!.svg).toContain('>Responsible<');
     // A fixed day width keeps Dur while the timeline is at least 5 in wide.
     expect(layoutSchedulePrint({ ...full, paper: 'tabloid', dayWidthIn: 0.42 }).sheets[0]!.svg).toContain('>Dur<');
+  });
+});
+
+describe('full schedule timescale', () => {
+  const large = largeProject(120);
+  const schedule = computeSchedule(large);
+  const opts = { project: large, schedule, paper: 'ansi-d' as const, title: 'Full', revision: { rev: 'A', issued: '2026-11-02' } };
+  const summaryBars = (svg: string) =>
+    [...svg.matchAll(/<rect class="asset-summary" x="([\d.]+)" y="([\d.]+)" width="([\d.]+)"/g)].map((m) => ({
+      x: Number(m[1]), y: Number(m[2]), right: Number(m[1]) + Number(m[3]),
+    }));
+
+  it('fits a long job on one ANSI D time band with week columns under month headings', () => {
+    const l = layoutSchedulePrint(opts);
+    expect(l.scale).toBe('week');
+    expect(l.timeBands).toBe(1);
+    expect(l.sheets).toHaveLength(l.rowBands);
+    const svg = l.sheets[0]!.svg;
+    expect(svg).toContain('>Dur<');
+    expect(svg).toContain('>Responsible<');
+    expect(svg).toContain('>November 2026<');
+    expect(svg).toContain('>August 2027<');
+    // Week columns are headed by their Monday; no per-day headings or "Week of" labels.
+    for (const d of ['Nov 2', 'Nov 9', 'Nov 30', 'Aug 9']) expect(svg).toContain(`>${d}<`);
+    expect(svg).not.toContain('Week of');
+    expect(svg).not.toMatch(/>[MTWF] \d+</);
+  });
+
+  it('draws a summary bar on every asset group row from first start to last finish', () => {
+    const l = layoutSchedulePrint(opts);
+    // The table/timeline divider is the last heavy line before the marker labels and footer.
+    const body0 = l.sheets[0]!.svg.slice(0, l.sheets[0]!.svg.indexOf('<g class="sheet-footer">'));
+    const tlX = Number([...body0.matchAll(/<line x1="([\d.]+)" y1="[\d.]+" x2="[\d.]+" y2="[\d.]+" stroke="#111" stroke-width="1"\/>/g)].at(-1)![1]);
+    const first = Math.min(...large.tasks.map((t) => schedule.tasks.get(t.id)!.es));
+    const last = Math.max(...large.tasks.map((t) => schedule.tasks.get(t.id)!.ef)) + 1;
+    const dayW = (34 * 96 - 43.2 - tlX) / (last - first + 1);
+    let groups = 0;
+    for (const sheet of l.sheets) {
+      const bars = summaryBars(sheet.svg);
+      // One bar per group row (including continued groups) on the sheet.
+      const tags = [...sheet.svg.matchAll(/font-size="13" font-weight="700" fill="#111">([^<]+)<tspan/g)].map((m) => m[1]!.replace(' (cont.)', ''));
+      expect(bars).toHaveLength(tags.length);
+      tags.forEach((tag, i) => {
+        const asset = large.assets.find((a) => a.tag === tag)!;
+        const own = large.tasks.filter((t) => t.assetId === asset.id).map((t) => schedule.tasks.get(t.id)!);
+        const es = Math.min(...own.map((s) => s.es));
+        const ef = Math.max(...own.map((s) => s.ef));
+        expect(bars[i]!.x).toBeCloseTo(tlX + (es - first) * dayW, 0);
+        expect(bars[i]!.right).toBeCloseTo(tlX + (ef - first) * dayW, 0);
+      });
+      groups += tags.length;
+    }
+    expect(groups).toBeGreaterThanOrEqual(120);
+  });
+
+  it('keeps short jobs on the day scale', () => {
+    const l = layoutSchedulePrint({ ...opts, project: riverside, schedule: computeSchedule(riverside) });
+    expect(l.scale).toBe('day');
+    expect(l.sheets).toHaveLength(1);
+    expect(l.sheets[0]!.svg).toContain('Week of Nov 2');
+    expect(summaryBars(l.sheets[0]!.svg).length).toBe(riverside.assets.length);
+  });
+
+  it('keeps look-aheads on the day scale without summary bars', () => {
+    const l = layoutSchedulePrint({ ...opts, paper: 'tabloid', window: { start: '2026-11-02', end: '2026-11-20' }, scale: 'week' });
+    expect(l.scale).toBe('day');
+    expect(l.sheets[0]!.svg).not.toContain('asset-summary');
+  });
+
+  it('uses the day scale for fixed day widths and the week scale on request', () => {
+    expect(layoutSchedulePrint({ ...opts, dayWidthIn: 0.42 }).scale).toBe('day');
+    const week = layoutSchedulePrint({ ...opts, project: riverside, schedule: computeSchedule(riverside), scale: 'week' });
+    expect(week.scale).toBe('week');
+    expect(week.sheets[0]!.svg).toContain('>November 2026<');
   });
 });
 

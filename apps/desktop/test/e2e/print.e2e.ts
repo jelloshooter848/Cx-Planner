@@ -64,6 +64,7 @@ describe('print / export PDF', () => {
     const pdfB = readFileSync(second);
     expect(pdfPages(pdfB)).toBe(Number(/^(\d+)/.exec((await count.textContent())!)![1]));
     expect(mediaBox(pdfB)).toEqual([0, 0, 1224, 792]);
+    h.keep(second, 'print-lookahead-tabloid.pdf');
     await expect.poll(() => rev.textContent()).toBe('C');
 
     const setup = await page.evaluate(() => window.cx.print.setup());
@@ -239,6 +240,40 @@ describe('print / export PDF', () => {
     await dialog.waitFor();
     expect(await kindRadio('Look-ahead').getAttribute('aria-checked')).toBe('true');
     await expect.poll(() => rev.textContent()).toBe('C');
+  });
+
+  it('fits a long job on one ANSI D time band in the week scale', async () => {
+    h = await launchApp({ project: 'large', largeAssets: 120 });
+    const { page } = h;
+    await page.getByRole('grid', { name: 'Tasks' }).waitFor();
+    await page.keyboard.press('Control+p');
+    const dialog = page.getByRole('dialog', { name: 'Print / Export PDF' });
+    await dialog.waitFor();
+    await dialog.getByRole('radio', { name: 'Full schedule' }).click();
+    await dialog.getByLabel('ANSI D (34 × 22 in)').check();
+    const count = dialog.getByTestId('print-sheet-count');
+    await expect.poll(() => count.textContent(), { timeout: 20_000 }).toMatch(/^\d+ sheets? · 34 × 22 in$/);
+    await dialog.getByText('Updating…').waitFor({ state: 'hidden' });
+    const sheets = Number(/^(\d+)/.exec((await count.textContent())!)![1]);
+    // 570 tasks: one time band, so only as many sheets as row bands (12 on ANSI D).
+    expect(sheets).toBeLessThanOrEqual(12);
+    const frame = dialog.locator('iframe').contentFrame();
+    await expect.poll(() => frame.locator('body').textContent()).toContain('November 2026');
+    const body = (await frame.locator('body').textContent())!;
+    expect(body).toContain('Responsible');
+    expect(body).toContain('Dur');
+    expect(body).not.toContain('Time 2/');
+    expect(await frame.locator('rect.asset-summary').count()).toBeGreaterThanOrEqual(120);
+    await h.screenshot('print-full-schedule-large');
+
+    const pdf = join(h.dir, 'Full schedule.pdf');
+    await h.answerSave(pdf);
+    await dialog.getByRole('button', { name: 'Export PDF (Rev A)' }).click();
+    await dialog.getByRole('status').getByText(`Saved Rev A: ${pdf}`).waitFor({ timeout: 60_000 });
+    const bytes = readFileSync(pdf);
+    expect(pdfPages(bytes)).toBe(sheets);
+    expect(mediaBox(bytes)).toEqual([0, 0, 2448, 1584]);
+    h.keep(pdf, 'print-full-schedule-large-ansi-d.pdf');
   });
 
   it('prints acceptance criteria entered in the template editor on the test sheet', async () => {

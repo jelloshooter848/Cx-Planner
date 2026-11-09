@@ -6,7 +6,7 @@
  * Native dialogs cannot be clicked by Playwright, so tests answer them in advance by
  * patching Electron's dialog module in the main process (answerSave / answerOpen).
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -54,6 +54,8 @@ export interface AppHarness {
   answerMessage(index: number): Promise<void>;
   /** Saves a screenshot of the window to spike-output/desktop-e2e/<name>.png (or $CX_E2E_SHOTS). */
   screenshot(name: string): Promise<string>;
+  /** Copies a file the app wrote (e.g. an exported PDF) next to the screenshots, as <name>. */
+  keep(file: string, name: string): string;
   close(): Promise<void>;
 }
 
@@ -142,6 +144,12 @@ async function start(dir: string, options: LaunchOptions, launched: (app: Electr
       mkdirSync(shotDir, { recursive: true });
       const path = join(shotDir, `${name}.png`);
       await page.screenshot({ path });
+      return path;
+    },
+    keep(file, name) {
+      mkdirSync(shotDir, { recursive: true });
+      const path = join(shotDir, name);
+      copyFileSync(file, path);
       return path;
     },
     async close() {
