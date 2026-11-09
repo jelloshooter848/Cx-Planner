@@ -157,3 +157,171 @@
 .gantt-empty p {
   margin: 0;
 }
+
+/* Collapsible side panels: a chevron on the inner edge folds a panel to a thin strip. */
+.asset-sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -4px -6px 0 0;
+}
+.panel-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+.panel-toggle:hover {
+  background: var(--bg-hover);
+  border-color: var(--line);
+  color: var(--ink);
+}
+.panel-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+.task-panel {
+  position: relative;
+}
+.task-panel-collapse {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+}
+/* Keep the panel's first line clear of the collapse button. */
+.task-panel .task-panel-head,
+.task-panel .task-panel-empty {
+  padding-right: 24px;
+}
+.panel-strip {
+  width: 32px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding-top: 8px;
+  background: var(--bg-panel);
+}
+.panel-strip-left {
+  border-right: 1px solid var(--line);
+}
+.panel-strip-right {
+  border-left: 1px solid var(--line);
+}
+.panel-strip-name {
+  writing-mode: vertical-rl;
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  cursor: pointer;
+  user-select: none;
+}
+.panel-strip-left .panel-strip-name {
+  transform: rotate(180deg);
+}
+
+/* Splitter between the Gantt's task table and its timeline. */
+.gantt-main {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* Columns that do not fit are hidden whole (visibleColumns); this only trims the 1px border. */
+.gantt-head-cells,
+.gantt-cells {
+  overflow: hidden;
+}
+/* "+N" in the header's upper band and a fade at the table's right edge mark hidden columns. */
+.gantt-cols-hidden {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  padding: 0 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg-header);
+  color: var(--ink-muted);
+  font-size: var(--fs-xs);
+  line-height: 16px;
+  cursor: help;
+}
+.gantt.has-hidden-cols .gantt-cells::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  background: linear-gradient(to right, transparent, var(--bg-panel));
+  pointer-events: none;
+}
+.gantt.has-hidden-cols .gantt-row.is-group .gantt-cells::after {
+  display: none;
+}
+.gantt-timeline-pane {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+/* The hit area sits mostly over the table so bars at the timeline's left edge stay clickable;
+   its bottom is set inline to leave the horizontal scrollbar clear. */
+.gantt-splitter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 5;
+  width: 8px;
+  margin-left: -6px;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+.gantt-splitter::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 3px;
+  background: transparent;
+  transition: background-color 0.1s;
+}
+/* Resting grip in the header band: two short rules show the border can be dragged. */
+.gantt-splitter::before {
+  content: '';
+  position: absolute;
+  top: 31px;
+  left: 4px;
+  box-sizing: content-box;
+  width: 3px;
+  height: 16px;
+  border-left: 1px solid var(--line-strong);
+  border-right: 1px solid var(--line-strong);
+  background: var(--bg-header);
+  z-index: 1;
+}
+.gantt-splitter:hover::after,
+.gantt-splitter:focus-visible::after,
+.gantt.is-resizing .gantt-splitter::after {
+  background: var(--accent);
+}
+.gantt.is-resizing {
+  cursor: col-resize;
+  user-select: none;
+}

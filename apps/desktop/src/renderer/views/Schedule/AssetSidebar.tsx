@@ -8,8 +8,10 @@ import { useEffect, useMemo, useRef } from 'react';
 import { assetProgress, type Asset, type Project } from '@cx/core';
 import { groupAssetsBySystem, matchesAssetQuery } from '../../asset-filter';
 import { useSelect, useStore } from '../../store';
+import { PanelCollapseButton } from './SidePanels';
 
-export function AssetSidebar({ project }: { project: Project }) {
+/** `onCollapse` folds the sidebar to a strip (ScheduleView owns that state). */
+export function AssetSidebar({ project, onCollapse }: { project: Project; onCollapse(): void }) {
   const store = useStore();
   const query = useSelect((s) => s.ui.assetQuery);
   const hiddenIds = useSelect((s) => s.ui.hiddenAssetIds);
@@ -26,9 +28,12 @@ export function AssetSidebar({ project }: { project: Project }) {
   return (
     <aside className="asset-sidebar" aria-label="Assets in view">
       <div className="asset-sidebar-filter">
-        <label className="field-label" htmlFor="asset-filter-input">
-          Assets in view
-        </label>
+        <div className="asset-sidebar-head">
+          <label className="field-label" htmlFor="asset-filter-input">
+            Assets in view
+          </label>
+          <PanelCollapseButton panel="assets" onToggle={onCollapse} />
+        </div>
         <input
           id="asset-filter-input"
           className="input"

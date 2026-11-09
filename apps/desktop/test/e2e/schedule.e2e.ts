@@ -127,4 +127,87 @@ describe('schedule Gantt', () => {
     await expect(selectedCode(h)).resolves.toBe(state.project!.tasks.at(-1)!.code);
     await h.screenshot('schedule-gantt-large');
   });
+
+  it('fits a 1366×768 laptop: collapsible side panels and a resizable table', async () => {
+    h = await launchApp({ project: 'riverside', size: { width: 1366, height: 768 } });
+    const { page } = h;
+    await page.getByRole('grid', { name: 'Tasks' }).waitFor();
+    const pane = page.getByTestId('gantt-timeline-pane');
+    const splitter = page.getByRole('separator', { name: 'Resize task table' });
+    const paneWidth = async () => (await pane.boundingBox())!.width;
+    const gridWidth = async () => Number(await splitter.getAttribute('aria-valuenow'));
+    const cellsWidth = async () => (await page.locator('.gantt-head-cells').boundingBox())!.width;
+    const assets = page.getByRole('complementary', { name: 'Assets in view', exact: true });
+    const details = page.getByRole('complementary', { name: 'Task details' });
+
+    // Both panels open: the table gives way so the timeline keeps its minimum width.
+    await page.locator('#gantt-row-t1\\.4 .gc-task').click();
+    expect(await paneWidth()).toBeGreaterThanOrEqual(240);
+    await h.screenshot('schedule-1366-panels-open');
+
+    // Fold both panels from their chevrons; focus lands on the button that opens them again.
+    await assets.getByRole('button', { name: 'Hide assets in view panel' }).click();
+    const showAssets = page.getByRole('button', { name: 'Show assets in view panel' });
+    await expect.poll(() => showAssets.evaluate((el) => el === document.activeElement)).toBe(true);
+    await details.getByRole('button', { name: 'Hide details panel' }).click();
+    expect(await assets.count()).toBe(0);
+    expect(await details.count()).toBe(0);
+    await expect.poll(paneWidth).toBeGreaterThanOrEqual(600);
+    // Selecting another task leaves the details panel folded.
+    await page.locator('#gantt-row-t2\\.2 .gc-task').click();
+    expect(await details.count()).toBe(0);
+    await h.screenshot('schedule-1366-panels-collapsed');
+
+    // Drag the splitter: the table widens and the timeline narrows by the same amount.
+    const before = { grid: await gridWidth(), pane: await paneWidth(), cells: await cellsWidth() };
+    const box = (await splitter.boundingBox())!;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(box.x + box.width / 2, y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 60, y, { steps: 4 });
+    await page.mouse.move(box.x + box.width / 2 + 100, y, { steps: 4 });
+    await page.mouse.up();
+    await expect.poll(gridWidth).toBe(before.grid + 100);
+    expect(await cellsWidth()).toBeCloseTo(before.cells + 100, 0);
+    expect(await paneWidth()).toBeCloseTo(before.pane - 100, 0);
+    expect((await h.page.evaluate(() => localStorage.getItem('cx.scheduleLayout.v1'))) ?? '').toContain(`"gridWidth":${before.grid + 100}`);
+
+    // Keyboard: arrows move it 16 px, Home goes to the narrowest table; double-click resets.
+    await splitter.focus();
+    await page.keyboard.press('ArrowLeft');
+    await expect.poll(gridWidth).toBe(before.grid + 84);
+    await page.keyboard.press('Home');
+    await expect.poll(gridWidth).toBe(320);
+    expect(await cellsWidth()).toBeCloseTo(320, 0);
+    // Columns that do not fit are hidden whole, and the header says how many.
+    await expect(page.getByTestId('gantt-cols-hidden').textContent()).resolves.toBe('+3');
+    expect(await page.locator('.gantt-colheads [role="columnheader"]').allTextContents()).toEqual(['ID', 'Task', 'Dur', 'Start', 'Timeline']);
+    await h.screenshot('schedule-1366-narrow-table');
+
+    // The layout comes back after a reload: the same table width, both panels still folded.
+    await page.reload();
+    await page.getByRole('grid', { name: 'Tasks' }).waitFor();
+    await expect.poll(gridWidth).toBe(320);
+    await showAssets.waitFor();
+    await page.getByRole('button', { name: 'Show details panel' }).waitFor();
+    expect(await assets.count()).toBe(0);
+    expect(await details.count()).toBe(0);
+    await expect.poll(paneWidth).toBeGreaterThanOrEqual(600);
+    // The selection is not part of the layout; pick the task again (the panel stays folded).
+    await page.locator('#gantt-row-t2\\.2 .gc-task').click();
+    expect(await details.count()).toBe(0);
+    await splitter.dblclick();
+    await expect.poll(gridWidth).toBe(before.grid);
+
+    // View menu items and the strips' buttons open the panels again, as they were.
+    await page.getByRole('menubar').getByRole('menuitem', { name: 'View' }).click();
+    await page.getByRole('menuitemcheckbox', { name: 'Assets panel' }).click();
+    await assets.waitFor();
+    await page.getByRole('button', { name: 'Show details panel' }).click();
+    await details.waitFor();
+    await expect(details.textContent()).resolves.toContain('Task 2.2');
+    await expect.poll(paneWidth).toBeLessThan(600);
+    expect(await paneWidth()).toBeGreaterThanOrEqual(240);
+    await h.screenshot('schedule-1366-panels-reopened');
+  });
 });
