@@ -430,7 +430,6 @@ describe('project-level commands', () => {
     expect('subtitle' in r.project).toBe(false);
     const noSub = r.project;
     roundTrip(noSub, { kind: 'updateProjectInfo', subtitle: 'Back again' });
-    roundTrip(sample(), { kind: 'updateProjectInfo' });
     expectError(sample(), { kind: 'updateProjectInfo', name: '' }, 'empty-name');
     expectError(sample(), { kind: 'updateProjectInfo', startDate: '2026-1-1' }, 'invalid-date');
   });
@@ -442,6 +441,78 @@ describe('project-level commands', () => {
     expectError(sample(), { kind: 'setCalendar', calendar: { workWeekdays: [7], holidays: [] } }, 'invalid-calendar');
     expectError(sample(), { kind: 'setCalendar', calendar: { workWeekdays: [1, 1], holidays: [] } }, 'invalid-calendar');
     expectError(sample(), { kind: 'setCalendar', calendar: { workWeekdays: [1], holidays: ['xmas'] } }, 'invalid-date');
+  });
+
+  it('refuses malformed project and calendar payloads with CommandError', () => {
+    const bad = (c: unknown) => c as Command;
+    expectError(sample(), bad({ kind: 'updateProjectInfo', name: 5 }), 'invalid-field');
+    expectError(sample(), bad({ kind: 'updateProjectInfo', subtitle: 7 }), 'invalid-field');
+    expectError(sample(), bad({ kind: 'setCalendar', calendar: {} }), 'invalid-calendar');
+    expectError(sample(), bad({ kind: 'setCalendar', calendar: null }), 'invalid-calendar');
+    expectError(sample(), bad({ kind: 'setCalendar', calendar: { workWeekdays: [1], holidays: [], x: 1 } }), 'invalid-field');
+    expectError(sample(), bad({ kind: 'batch', commands: 'x' }), 'invalid-field');
+  });
+});
+
+describe('command shape', () => {
+  it('refuses unknown command kinds and non-objects', () => {
+    expectError(sample(), { kind: 'frobnicate' } as unknown as Command, 'unknown-command');
+    expectError(sample(), {} as unknown as Command, 'unknown-command');
+    expectError(sample(), null as unknown as Command, 'unknown-command');
+  });
+
+  it('refuses malformed new-asset input', () => {
+    const add = (assets: unknown): Command => ({ kind: 'addAssetsFromTemplate', template: panelTemplate(), assets: assets as never });
+    expectError(sample(), add('PNL'), 'invalid-field');
+    expectError(sample(), add([{ tag: 5, description: 'Panel' }]), 'invalid-field');
+    expectError(sample(), add([{ tag: 'PNL-9' }]), 'invalid-field');
+    expectError(sample(), add([{ tag: 'PNL-9', description: 3 }]), 'invalid-field');
+    expectError(sample(), add([{ tag: 'PNL-9', description: 'Panel', evil: 1 }]), 'invalid-field');
+    expectError(sample(), add([null]), 'invalid-field');
+  });
+
+  it('runs shape checks on undo commands but not range checks', () => {
+    const p = sample();
+    const restoreTask = (t: unknown): Command => ({ kind: 'restoreTask', task: t as Task, index: 0, dependencies: [] });
+    const fresh = task('t9', 'a1', '1.4');
+    expectError(p, restoreTask({ ...fresh, type: 'zzz' }), 'invalid-type');
+    expectError(p, restoreTask({ ...fresh, evil: 1 }), 'invalid-field');
+    expectError(p, restoreTask({ ...fresh, name: undefined }), 'invalid-field');
+    expectError(p, restoreTask({ ...fresh, percentComplete: '5' }), 'invalid-field');
+    expectError(p, restoreTask({ ...fresh, readiness: { T: 'ready' } }), 'invalid-field');
+    expectError(p, restoreTask('x'), 'invalid-field');
+    expectError(p, { kind: 'restoreTask', task: fresh, index: 0, dependencies: [
+      { item: { predecessorId: 't1', successorId: 't9', type: 'XX', lagDays: 0 } as never, index: 0 },
+    ] }, 'invalid-type');
+    // Out-of-range values from an unchecked file are still put back.
+    expect(applyCommand(p, restoreTask({ ...fresh, percentComplete: 150 })).project.tasks[0]!.percentComplete).toBe(150);
+
+    const removed = applyCommand(p, { kind: 'removeAsset', id: 'a2' });
+    const inv = removed.inverse as Extract<Command, { kind: 'restoreAsset' }>;
+    expectError(removed.project, { ...inv, asset: { ...inv.asset, evil: 1 } as never }, 'invalid-field');
+    expectError(removed.project, { ...inv, asset: { id: 'a2' } as never }, 'invalid-field');
+    expectError(removed.project, { ...inv, tasks: [{ item: { ...inv.tasks[0]!.item, type: 'zzz' } as never, index: inv.tasks[0]!.index }] }, 'invalid-type');
+
+    const up = (patch: Record<string, unknown>): Command => ({ kind: 'updateTask', id: 't1', patch, restore: true });
+    expectError(p, up({ type: 'zzz' }), 'invalid-type');
+    expectError(p, up({ percentComplete: '9' }), 'invalid-field');
+    expectError(p, up({ evil: 1 }), 'invalid-field');
+    expectError(p, up({ name: null }), 'invalid-field');
+    expectError(p, { kind: 'updateAsset', id: 'a1', patch: { tag: 5 } as never, restore: true }, 'invalid-field');
+    expect(applyCommand(p, up({ percentComplete: 900 })).project.tasks[0]!.percentComplete).toBe(900);
+  });
+
+  it('refuses edits that change nothing', () => {
+    const p = sample();
+    expectError(p, { kind: 'updateTask', id: 't1', patch: {} }, 'no-change');
+    expectError(p, { kind: 'updateTask', id: 't1', patch: { name: undefined } }, 'no-change');
+    expectError(p, { kind: 'updateAsset', id: 'a1', patch: {} }, 'no-change');
+    expectError(p, { kind: 'updateDependency', predecessorId: 't1', successorId: 't2', patch: {} }, 'no-change');
+    expectError(p, { kind: 'updateProjectInfo' }, 'no-change');
+    expectError(p, { kind: 'moveTask', id: 't1', toAssetId: 'a1', toIndex: 0 }, 'no-change');
+    expectError(p, { kind: 'moveTask', id: 't3', toAssetId: 'a1', toIndex: 2 }, 'no-change');
+    // A real move next door still works.
+    roundTrip(sample(), { kind: 'moveTask', id: 't1', toAssetId: 'a1', toIndex: 1 });
   });
 });
 
@@ -576,6 +647,21 @@ describe('setPredecessorsCommand', () => {
     const r = roundTrip(p, setPredecessorsCommand(p, 't5', [])!);
     expect(formatPredecessors(r.project, 't5')).toBe('');
     expect(r.summary).toBe('Removed predecessors of 2.2');
+  });
+
+  it('rejects a predecessor listed twice', () => {
+    const p = sample();
+    let err: unknown;
+    try {
+      setPredecessorsCommand(p, 't5', [
+        { predecessorId: 't1', type: 'FS', lagDays: 0 },
+        { predecessorId: 't1', type: 'SS', lagDays: 0 },
+      ]);
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(CommandError);
+    expect((err as CommandError).code).toBe('duplicate-dependency');
   });
 
   it('rejects a loop when applied', () => {
