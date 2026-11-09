@@ -84,9 +84,21 @@ function pickAssets(project: Project, ids: readonly string[] | null): string[] |
   return picked;
 }
 
-/** Earlier revisions of this kind plus the one being issued, for the sheets' revision history. A blank note reads "Issued". */
-function revisionHistory(history: readonly PrintRecord[], kind: PrintKind, current: RevisionEntry): RevisionEntry[] {
-  return [...history.filter((r) => r.kind === kind).map((r) => ({ rev: r.rev, date: r.issued, note: r.note })), current].map((r) => ({ ...r, note: r.note || 'Issued' }));
+/** Sheets show this many revisions, the one being issued included. */
+const REVISIONS_SHOWN = 3;
+
+/**
+ * The last two earlier revisions of this kind (in issue order, by record id) plus the one being
+ * issued, for the sheets' revision history. Capping here keeps the current revision on its own
+ * sheet even when the data date moved back before an earlier issue. A blank note reads "Issued".
+ */
+export function revisionHistory(history: readonly PrintRecord[], kind: PrintKind, current: RevisionEntry): RevisionEntry[] {
+  const earlier = history
+    .filter((r) => r.kind === kind)
+    .sort((a, b) => a.id - b.id)
+    .slice(-(REVISIONS_SHOWN - 1))
+    .map((r) => ({ rev: r.rev, date: r.issued, note: r.note }));
+  return [...earlier, current].map((r) => ({ ...r, note: r.note || 'Issued' }));
 }
 
 function scheduleOf(project: Project): ScheduleResult {

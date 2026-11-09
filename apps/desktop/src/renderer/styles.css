@@ -253,7 +253,8 @@
   padding: 0 18px;
   font-size: var(--fs-md);
 }
-.btn[aria-pressed='true'] {
+.btn[aria-pressed='true'],
+.btn[role='radio'][aria-checked='true'] {
   background: var(--accent-soft);
   border-color: var(--accent);
   font-weight: var(--fw-semibold);
@@ -280,7 +281,8 @@
 .seg .btn:last-child {
   border-radius: 0 var(--radius) var(--radius) 0;
 }
-.seg .btn[aria-pressed='true'] {
+.seg .btn[aria-pressed='true'],
+.seg .btn[role='radio'][aria-checked='true'] {
   position: relative;
 }
 

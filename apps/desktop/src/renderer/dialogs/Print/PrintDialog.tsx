@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { PAPER, type PaperId } from '@cx/render';
 import type { Asset, Id } from '@cx/core';
 import {
@@ -7,6 +7,7 @@ import {
   LOOK_AHEAD_WEEKS,
   PRINT_KINDS,
   type ChecklistTaskSummary,
+  type PrintKind,
   type PrintPreview,
   type PrintSetup,
 } from '../../../shared/api';
@@ -72,9 +73,46 @@ interface FormProps {
   onClose(): void;
 }
 
+/** The kind switcher: a radio group with a roving tabindex, so arrow keys move between kinds. */
+function KindChoice({ value, onChange }: { value: PrintKind; onChange(kind: PrintKind): void }) {
+  const refs = useRef(new Map<PrintKind, HTMLButtonElement>());
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+    if (step === 0) return;
+    e.preventDefault();
+    const i = PRINT_KINDS.indexOf(value);
+    const next = PRINT_KINDS[(i + step + PRINT_KINDS.length) % PRINT_KINDS.length]!;
+    onChange(next);
+    refs.current.get(next)?.focus();
+  };
+  return (
+    <div className="seg pd-kinds" role="radiogroup" aria-label="Kind of print" onKeyDown={onKeyDown}>
+      {PRINT_KINDS.map((k) => (
+        <button
+          key={k}
+          ref={(el) => {
+            if (el) refs.current.set(k, el);
+            else refs.current.delete(k);
+          }}
+          type="button"
+          role="radio"
+          aria-checked={value === k}
+          tabIndex={value === k ? 0 : -1}
+          className="btn"
+          onClick={() => onChange(k)}
+        >
+          {KIND_LABELS[k]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function PrintForm({ setup, assets, onSetup, onClose }: FormProps) {
   const store = useStore();
   const kind = useSelect((s) => s.ui.printKind);
+  // TODO(M1 Gantt asset filter): nothing calls store.setAssetFilter yet, so "Current asset filter"
+  // stays disabled until the sidebar filter lands (see docs/ROADMAP.md, M1 Gantt view).
   const filter = useAssetFilter();
   const [settings, setSettings] = useState<PrintSettings>(() => defaultSettings(setup.dataDate, setup.checklistTasks.map((t) => t.taskId), filter !== null));
   const [preview, setPreview] = useState<PrintPreview | null>(null);
@@ -82,7 +120,7 @@ function PrintForm({ setup, assets, onSetup, onClose }: FormProps) {
   const [updating, setUpdating] = useState(false);
   const [page, setPage] = useState(1);
   const [busy, setBusy] = useState<'pdf' | 'printer' | null>(null);
-  const [saved, setSaved] = useState<{ path: string; rev: string } | null>(null);
+  const [saved, setSaved] = useState<{ path: string; rev: string; notRecorded?: string } | null>(null);
   const [status, setStatus] = useState('');
 
   const request = useMemo(() => printRequest(kind, settings, filter), [kind, settings, filter]);
@@ -136,7 +174,7 @@ function PrintForm({ setup, assets, onSetup, onClose }: FormProps) {
     try {
       const r = await store.run(() => store.api.print.exportPdf(request));
       if (r.ok) {
-        setSaved({ path: r.value.filePath, rev: r.value.rev });
+        setSaved({ path: r.value.filePath, rev: r.value.rev, notRecorded: r.value.notRecorded });
         setSettings((s) => ({ ...s, note: '' }));
         await refreshSetup();
       }
@@ -168,13 +206,7 @@ function PrintForm({ setup, assets, onSetup, onClose }: FormProps) {
     <form className="pd-form" onSubmit={(e) => void exportPdf(e)}>
       <div className="pd-body">
         <div className="pd-options">
-          <div className="seg pd-kinds" role="radiogroup" aria-label="Kind of print">
-            {PRINT_KINDS.map((k) => (
-              <button key={k} type="button" role="radio" aria-checked={kind === k} aria-pressed={kind === k} className="btn" onClick={() => store.setPrintKind(k)}>
-                {KIND_LABELS[k]}
-              </button>
-            ))}
-          </div>
+          <KindChoice value={kind} onChange={(k) => store.setPrintKind(k)} />
 
           {kind === 'lookahead' && (
             <fieldset className="pd-group">
@@ -287,6 +319,7 @@ function PrintForm({ setup, assets, onSetup, onClose }: FormProps) {
             <>
               <span className="pd-saved" title={saved.path}>
                 Saved Rev {saved.rev}: {saved.path}
+                {saved.notRecorded && ` (not recorded: ${saved.notRecorded})`}
               </span>
               <button type="button" className="btn btn-quiet" onClick={() => void store.run(() => store.api.print.showInFolder(saved.path))}>
                 Open folder

@@ -44,7 +44,6 @@ export interface ChangeEvent {
   summary?: string;
 }
 
-/** Where the file stands: bumped by every write that changes the project. */
 /** A print to record with ProjectStore.recordPrint. */
 export interface NewPrintRecord {
   /** Print kind, e.g. "lookahead", "full-schedule", "test-sheets". Revisions count per kind. */
@@ -71,6 +70,7 @@ export interface PrintRecord extends Required<NewPrintRecord> {
   lastChangeSeq: number;
 }
 
+/** Where the file stands: bumped by every write that changes the project. */
 export interface RevisionState {
   /** 0 for a new file; +1 per write that changed anything. */
   revision: number;

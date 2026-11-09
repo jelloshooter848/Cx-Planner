@@ -193,6 +193,16 @@ export interface PrintIssued {
   title: string;
 }
 
+/** An exported PDF. */
+export interface PdfExported extends PrintIssued {
+  filePath: string;
+  /**
+   * Set when the PDF was written but could not be recorded in the project's print records
+   * (e.g. the project was closed meanwhile), so its revision letter will be issued again.
+   */
+  notRecorded?: string;
+}
+
 /** Menu items the renderer handles itself (they need a form). */
 export type MenuCommand = 'new-project' | 'print';
 
@@ -243,7 +253,7 @@ export interface CxApi {
     /** Lays out a print without issuing it, with the revision it would get. */
     preview(req: PrintRequest): Promise<ApiResult<PrintPreview>>;
     /** Shows a save dialog, writes the PDF and records the print (its revision is used up). */
-    exportPdf(req: PrintRequest): Promise<ApiResult<PrintIssued & { filePath: string }>>;
+    exportPdf(req: PrintRequest): Promise<ApiResult<PdfExported>>;
     /** Shows the system print dialog at the print's paper size and records the print. */
     toPrinter(req: PrintRequest): Promise<ApiResult<PrintIssued>>;
     /** Shows a PDF written by exportPdf in the file manager (other paths are refused). */

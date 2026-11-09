@@ -110,7 +110,7 @@ Also in M0: repo scaffold, CI (lint, typecheck, tests, Windows build), licence, 
   - assets grouped
   - day, week and month zoom
   - edit panel, linking and indenting
-  - asset filter.
+  - asset filter. The sidebar filter must call the renderer store's `setAssetFilter`; the Print dialog's "Current asset filter" option reads it and stays disabled until then.
 - Simple progress entry (actual dates and % complete). The full weekly-update screen comes in M7, but progress has to be recorded from the first week.
 - Printing: 3-week look-ahead [3] on Letter or Tabloid, full schedule [13] on ANSI D or ARCH D, and test sheets [4] built from template checklists. Each print saves a PrintRecord with its revision.
 

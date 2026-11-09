@@ -6,7 +6,7 @@
  */
 import { basename, dirname, join } from 'node:path';
 import type { Paper } from '@cx/render';
-import type { ApiResult, PrintIssued, PrintPreview, PrintRequest, PrintSetup } from '../shared/api.js';
+import type { ApiResult, PdfExported, PrintIssued, PrintPreview, PrintRequest, PrintSetup } from '../shared/api.js';
 import { PROJECT_EXT, safeFileName, type FileController } from './files.js';
 import { buildPrint, printSetup, type BuiltPrint } from './print-jobs.js';
 import { failure, ok, type Session } from './session.js';
@@ -44,7 +44,11 @@ export class PrintController {
     return ok({ html: p.html, sheets: p.sheets, widthIn: p.paper.widthIn, heightIn: p.paper.heightIn, title: p.title, rev: p.rev, issued: p.issued });
   }
 
-  async exportPdf(req: PrintRequest): Promise<ApiResult<PrintIssued & { filePath: string }>> {
+  /**
+   * Writes the PDF and records it. When the PDF was written but recording fails, the export
+   * still succeeds (the file is on disk) and `notRecorded` says why.
+   */
+  async exportPdf(req: PrintRequest): Promise<ApiResult<PdfExported>> {
     const built = this.build(req);
     if (!built.ok) return built;
     const p = built.value;
@@ -59,9 +63,10 @@ export class PrintController {
     });
     if (!saved.ok) return saved;
     this.written.add(saved.value.filePath);
+    const filePath = saved.value.filePath;
     const recorded = this.record(p, projectFile);
-    if (!recorded.ok) return recorded;
-    return ok({ ...recorded.value, filePath: saved.value.filePath });
+    if (!recorded.ok) return ok({ rev: p.rev, sheets: p.sheets, title: p.title, filePath, notRecorded: recorded.message });
+    return ok({ ...recorded.value, filePath });
   }
 
   async toPrinter(req: PrintRequest): Promise<ApiResult<PrintIssued>> {

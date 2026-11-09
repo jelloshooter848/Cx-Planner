@@ -104,9 +104,33 @@ describe('print / export PDF', () => {
     expect(pdfPages(pdfT)).toBe(sheetsT);
     expect(mediaBox(pdfT)).toEqual([0, 0, 612, 792]);
 
-    // Full schedule from the Schedule toolbar.
-    await dialog.getByRole('radio', { name: 'Full schedule' }).click();
+    // Arrow keys move between kinds (a radio group with one Tab stop).
+    const kindRadio = (name: string) => dialog.getByRole('radio', { name });
+    await kindRadio('Test sheets').focus();
+    await page.keyboard.press('ArrowLeft');
+    expect(await kindRadio('Full schedule').getAttribute('aria-checked')).toBe('true');
+    await expect.poll(() => page.evaluate(() => document.activeElement?.textContent)).toBe('Full schedule');
+    expect(await kindRadio('Look-ahead').getAttribute('tabindex')).toBe('-1');
+    expect(await kindRadio('Full schedule').getAttribute('tabindex')).toBe('0');
     await expect.poll(() => count.textContent()).toMatch(/· 34 × 22 in$/);
     await h.screenshot('print-dialog-full-schedule');
+    await dialog.getByRole('button', { name: 'Close' }).click();
+    await dialog.waitFor({ state: 'detached' });
+
+    // The Schedule toolbar's Print… opens on the last kind used.
+    await page.getByRole('toolbar', { name: 'Schedule tools' }).getByRole('button', { name: 'Print…' }).click();
+    await dialog.waitFor();
+    expect(await kindRadio('Full schedule').getAttribute('aria-checked')).toBe('true');
+    await dialog.getByRole('button', { name: 'Close' }).click();
+    await dialog.waitFor({ state: 'detached' });
+
+    // The look-ahead report's Print / Export PDF… opens on the look-ahead.
+    const bar = page.getByRole('menubar');
+    await bar.getByRole('menuitem', { name: 'Reports', exact: true }).click();
+    await page.getByRole('menu', { name: 'Reports' }).getByRole('menuitemcheckbox', { name: '3-week look-ahead' }).click();
+    await page.getByRole('button', { name: 'Print / Export PDF…' }).click();
+    await dialog.waitFor();
+    expect(await kindRadio('Look-ahead').getAttribute('aria-checked')).toBe('true');
+    await expect.poll(() => rev.textContent()).toBe('C');
   });
 });

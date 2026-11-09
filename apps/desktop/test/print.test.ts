@@ -8,7 +8,7 @@ import { starterTemplate } from '@cx/templates';
 import { FileController } from '../src/main/files.js';
 import { RecentFiles, SettingsFile } from '../src/main/prefs.js';
 import { PrintController } from '../src/main/print-controller.js';
-import { buildPrint } from '../src/main/print-jobs.js';
+import { buildPrint, revisionHistory } from '../src/main/print-jobs.js';
 import { ScriptedDialogs } from '../src/main/scripted-dialogs.js';
 import { Session } from '../src/main/session.js';
 import { checkPrintRequest } from '../src/main/validate.js';
@@ -99,6 +99,19 @@ describe('print jobs', () => {
     expect(session.printHistory()).toEqual([]);
   });
 
+  it('still reports a written PDF when it cannot be recorded', async () => {
+    openRiverside();
+    dialogs.push({ save: join(dir, 'la.pdf') });
+    vi.spyOn(session, 'recordPrint').mockImplementationOnce(() => {
+      throw new Error('disk full');
+    });
+    const r = await print.exportPdf(lookAhead());
+    expect(r).toMatchObject({ ok: true, value: { filePath: join(dir, 'la.pdf'), rev: 'A', notRecorded: expect.stringContaining('disk full') } });
+    expect(readFileSync(join(dir, 'la.pdf'), 'latin1')).toMatch(/^%PDF/);
+    expect(session.printHistory()).toEqual([]);
+    expect(print.showInFolder(join(dir, 'la.pdf'))).toEqual({ ok: true, value: undefined });
+  });
+
   it('records a print sent to the printer, but not a cancelled one', async () => {
     openRiverside();
     toPrinter.mockResolvedValueOnce(false);
@@ -157,6 +170,18 @@ describe('print jobs', () => {
     expect(p).toMatchObject({ rev: 'D', kind: 'lookahead', paperId: 'tabloid' });
     // A blank note reads "Issued" in the revision history.
     expect(p.html).toMatch(/>C<\/tspan> · Oct 30 · Issued/);
+  });
+});
+
+describe('revisionHistory', () => {
+  const rec = (id: number, rev: string, issued: string, kind = 'lookahead') =>
+    ({ id, kind, rev, issued, printedAt: '', paper: 'tabloid', sheets: 1, dataDate: issued, lastChangeSeq: 0, note: '', title: '' });
+
+  it('keeps the revision being issued, even when the data date moved back', () => {
+    const history = [rec(1, 'A', '2026-10-02'), rec(2, 'B', '2026-10-09'), rec(4, 'D', '2026-10-23'), rec(3, 'C', '2026-10-16'), rec(5, 'A', '2026-10-30', 'test-sheets')];
+    const revs = revisionHistory(history, 'lookahead', { rev: 'E', date: '2026-10-01', note: 'Re-issue' });
+    expect(revs.map((r) => r.rev)).toEqual(['C', 'D', 'E']);
+    expect(revs.map((r) => r.note)).toEqual(['Issued', 'Issued', 'Re-issue']);
   });
 });
 
