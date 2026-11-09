@@ -148,14 +148,29 @@ describe('M1 end to end', () => {
     await dd.waitFor({ state: 'detached' });
     const moved = s;
 
-    // 5. Undo and redo the data date move.
+    // 5. Undo back past the progress and the cross-asset link, then redo it all.
     const grid = page.getByRole('grid', { name: 'Tasks' });
     await grid.focus();
-    await page.keyboard.press('Control+z');
-    s = await h.waitState((x) => x.project!.dataDate === '2026-11-02', 'undo of the data date');
+    const hasLink = (x: AppState) => x.project!.dependencies.some((d) => d.predecessorId === func.id && d.successorId === energize.id);
+    const step = async (key: 'Control+z' | 'Control+y', ok: (x: AppState) => boolean, what: string) => {
+      const seq = (await h!.state()).seq;
+      await page.keyboard.press(key);
+      return h!.waitState((x) => x.seq > seq && ok(x), what);
+    };
+    s = await step('Control+z', (x) => x.project!.dataDate === '2026-11-02', 'undo of the data date');
     expect(s.canRedo).toBe(true);
-    await page.keyboard.press('Control+y');
-    s = await h.waitState((x) => x.project!.dataDate === '2026-11-04', 'redo of the data date');
+    await step('Control+z', (x) => taskOf(x, vmiX.id).actualFinish == null, 'undo of the transformer actual finish');
+    await step('Control+z', (x) => taskOf(x, vmiX.id).actualStart == null, 'undo of the transformer actual start');
+    s = await step('Control+z', (x) => taskOf(x, vmi1.id).percentComplete === 0, 'undo of the 50% entry');
+    expect(hasLink(s)).toBe(true);
+    s = await step('Control+z', (x) => !hasLink(x), 'undo of the predecessor link');
+    expect(s.schedule[energize.id]!.start < s.schedule[func.id]!.finish).toBe(true);
+    await step('Control+y', hasLink, 'redo of the predecessor link');
+    await step('Control+y', (x) => taskOf(x, vmi1.id).percentComplete === 50, 'redo of the 50% entry');
+    await step('Control+y', (x) => taskOf(x, vmiX.id).actualStart === '2026-11-02', 'redo of the transformer actual start');
+    await step('Control+y', (x) => taskOf(x, vmiX.id).percentComplete === 100, 'redo of the transformer actual finish');
+    s = await step('Control+y', (x) => x.project!.dataDate === '2026-11-04', 'redo of the data date');
+    expect(s.canRedo).toBe(false);
     expect(s.project).toEqual(moved.project);
     expect(s.schedule).toEqual(moved.schedule);
 
@@ -215,8 +230,20 @@ describe('M1 end to end', () => {
       await d.getByLabel('Tabloid (17 × 11 in)').check();
       await d.getByLabel('Note for this revision').fill('Progress to Nov 4');
       await d.getByRole('list', { name: 'Earlier revisions' }).getByText(/Issued for field use/).waitFor();
-      await expect.poll(() => d.locator('iframe').contentFrame().locator('body').textContent()).toContain('Progress to Nov 4');
+      // The sheet's revision box lists Rev B with its note, under Rev A, not just the note text.
+      const sheet = () => d.locator('iframe').contentFrame().locator('body').textContent();
+      await expect.poll(sheet).toMatch(/A · [^·]+ · Issued for field use/);
+      await expect.poll(sheet).toMatch(/B · [^·]+ · Progress to Nov 4/);
     }, 'm1-print-dialog');
     expect(mediaBox(pdfB)).toEqual([0, 0, 1224, 792]);
+    // The stored print records: B was issued and recorded as B.
+    const after = await page.evaluate(() => window.cx.print.setup());
+    if (!after.ok) throw new Error(after.message);
+    expect(after.value.history.map((p) => [p.kind, p.rev, p.paper, p.note])).toEqual([
+      ['lookahead', 'A', 'tabloid', 'Issued for field use'],
+      ['test-sheets', 'A', 'letter', expect.any(String)],
+      ['lookahead', 'B', 'tabloid', 'Progress to Nov 4'],
+    ]);
+    expect(after.value.nextRevision.lookahead).toBe('C');
   });
 });

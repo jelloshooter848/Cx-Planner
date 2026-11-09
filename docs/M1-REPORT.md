@@ -2,7 +2,7 @@
 
 M1's goal (from [ROADMAP.md](ROADMAP.md)): **you can set up a real job, keep its schedule, and hand the field a revisioned look-ahead and blank test sheets every week.**
 
-One end-to-end test walks exactly that story in the real Electron app, and CI runs it on every push: `apps/desktop/test/e2e/m1-flow.e2e.ts`. The screenshots below come from that run. All names, tags and dates are made up.
+One end-to-end test walks exactly that story in the real Electron app, and the CI workflow is set up to run it on every push (it has not yet run on GitHub): `apps/desktop/test/e2e/m1-flow.e2e.ts`. The screenshots below come from that run. All names, tags and dates are made up.
 
 ## What M1 delivers
 
@@ -70,14 +70,35 @@ The first blank test sheet from the same run (mockup board 4).
 
 ![Test sheet](screenshots/m1/test-sheet.png)
 
+### Regenerating the screenshots
+
+Run `pnpm desktop:e2e` (or just the M1 flow), then copy from `spike-output/desktop-e2e/` (or `$CX_E2E_SHOTS`):
+
+| e2e output | docs file |
+|---|---|
+| `m1-schedule.png` | `schedule-view.png` |
+| `m1-templates.png` | `template-editor.png` |
+| `m1-add-assets.png` | `add-assets-dialog.png` |
+| `m1-print-dialog.png` | `print-dialog.png` |
+| `m1-flow/Look-ahead Rev B.pdf`, page 1 | `lookahead-rev-b.png` |
+| `m1-flow/Test sheets Rev A.pdf`, page 1 | `test-sheet.png` |
+
+The two PDF pages are rendered with poppler's `pdftoppm`, for example:
+
+```bash
+cd spike-output/desktop-e2e/m1-flow
+pdftoppm -png -r 100 -f 1 -l 1 -singlefile "Look-ahead Rev B.pdf" ../../../docs/screenshots/m1/lookahead-rev-b
+pdftoppm -png -r 80 -f 1 -l 1 -singlefile "Test sheets Rev A.pdf" ../../../docs/screenshots/m1/test-sheet
+```
+
 ## Checks
 
 - `pnpm lint && pnpm typecheck && pnpm test`: 501 unit tests in 40 files.
-- `pnpm desktop:e2e`: 37 Electron UI tests in 11 files, including the M1 flow. About a minute on the CI Linux runner, under `xvfb-run` with `--no-sandbox`.
+- `pnpm desktop:e2e`: 37 Electron UI tests in 11 files, including the M1 flow. About a minute locally under `xvfb-run` with `--no-sandbox`; the CI timing is not confirmed yet.
 
 ## Notes and known gaps
 
 - The undo history covers the current session; it starts empty when a project is reopened (the change log in the file keeps every edit).
-- A milestone sits at the start of the working day after its predecessor finishes, while "Critical path ends …" in the status bar names the last working day of work. So a project whose last item is an energization milestone on Nov 20 shows "Critical path ends Nov 19". This is the scheduling engine's documented convention; worth deciding in M2 whether the status bar should name the milestone date instead.
+- A milestone sits at the start of the working day after its predecessor finishes, while "Critical path ends …" in the status bar names the last working day of work. So a project whose last item is an energization milestone on Nov 20 shows "Critical path ends Nov 19". This is the scheduling engine's documented convention; it is tracked in the M2 section of [ROADMAP.md](ROADMAP.md) to decide whether the status bar should name the milestone date instead.
 - The **Baseline** button on the Schedule toolbar is a placeholder until baselines arrive in M2.
 - Still to confirm by you: print the Tabloid look-ahead and a test sheet on the office printer, and open one project from the shared drive on two PCs.

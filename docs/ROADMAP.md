@@ -132,6 +132,7 @@ Also in M0: repo scaffold, CI (lint, typecheck, tests, Windows build), licence, 
   - **Commodity code** defaults from the part number (`AS-MA-01606` → MA). Custom items without a part number pick a code by hand.
   - The real workbook holds names and contact details, so it is never committed; tests use a made-up workbook in the same layout.
 - Baselines (snapshot and slip in workdays). They're cheap to add here, and capturing a baseline early on a job is worth a lot later.
+- Decide which end date the status bar names (carried over from M1). "Critical path ends …" gives the last working day of work, while a closing milestone (an energization, say) sits on the next working day, so the bar can say Nov 19 while the Gantt row and the printed look-ahead say Nov 20. Either name the milestone date when the critical path ends on a milestone, or label the two dates clearly.
 
 **Done when:** the look-ahead shows what is blocking each task, and you can raise orders straight from it.
 
