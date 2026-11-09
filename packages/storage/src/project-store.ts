@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
-import type { Asset, Dependency, Project, Readiness, Task, Template } from '@cx/core';
+import { TIMES_KEYS, type Asset, type Dependency, type Project, type Readiness, type Task, type Template } from '@cx/core';
 import { backupBeforeOpen } from './backup.js';
 import { FileLock } from './lock.js';
 import { APPLICATION_ID, MIGRATIONS, PROJECT_META_KEYS, REVISION_META_KEYS } from './schema.js';
@@ -97,6 +97,7 @@ const DEPENDENCY_FIELDS: Record<'type' | 'lagDays', string> = { type: 'type', la
 const PROJECT_FIELDS: Record<(typeof PROJECT_META_KEYS)[number], { field: string; get: (p: Project) => string }> = {
   id: { field: 'id', get: (p) => p.id },
   name: { field: 'name', get: (p) => p.name },
+  // An empty subtitle and no subtitle are the same: stored as '', loaded as absent.
   subtitle: { field: 'subtitle', get: (p) => p.subtitle ?? '' },
   start_date: { field: 'startDate', get: (p) => p.startDate },
   data_date: { field: 'dataDate', get: (p) => p.dataDate },
@@ -108,6 +109,56 @@ function enc(v: unknown): Sql {
   if (v === undefined || v === null) return null;
   if (typeof v === 'object') return JSON.stringify(v);
   return v as string | number;
+}
+
+/**
+ * Readiness as JSON with a fixed key order (T, I, M, E, S, then any others sorted), so
+ * the same readiness always encodes to the same string whatever order its keys came in.
+ */
+function encReadiness(r: Readiness | undefined): Sql {
+  if (r === undefined || r === null) return null;
+  const rec = r as Record<string, unknown>;
+  const known: readonly string[] = TIMES_KEYS;
+  const keys = [...known.filter((k) => k in rec), ...Object.keys(rec).filter((k) => !known.includes(k)).sort()];
+  return JSON.stringify(Object.fromEntries(keys.map((k) => [k, rec[k]])));
+}
+
+/** Model value -> value of column `col`. */
+function encColumn(col: string, v: unknown): Sql {
+  return col === 'readiness' ? encReadiness(v as Readiness | undefined) : enc(v);
+}
+
+/**
+ * Keys that moved, given the stored rows' ranks (their position in the stored order) and
+ * the next order. The longest run of kept rows whose stored order is unchanged counts as
+ * staying put (rows that only shifted because something was added, removed or moved
+ * before them); every other kept row was moved.
+ */
+function movedKeys(nextKeys: string[], oldRank: Map<string, number>): Set<string> {
+  const kept = nextKeys.filter((k) => oldRank.has(k));
+  const ranks = kept.map((k) => oldRank.get(k)!);
+  // Longest increasing subsequence in O(n log n), keeping links to rebuild it.
+  const tails: number[] = [];
+  const prev = new Array<number>(ranks.length).fill(-1);
+  for (let i = 0; i < ranks.length; i++) {
+    let lo = 0;
+    let hi = tails.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (ranks[tails[mid]!]! < ranks[i]!) lo = mid + 1;
+      else hi = mid;
+    }
+    if (lo > 0) prev[i] = tails[lo - 1]!;
+    tails[lo] = i;
+  }
+  const stay = new Set<string>();
+  for (let i = tails.length ? tails[tails.length - 1]! : -1; i >= 0; i = prev[i]!) stay.add(kept[i]!);
+  return new Set(kept.filter((k) => !stay.has(k)));
+}
+
+/** Stored rows in their stored order (ties, from older files, by insertion order). */
+function rankOf(rows: Row[], key: (r: Row) => string): Map<string, number> {
+  return new Map(rows.map((r, i) => [key(r), i]));
 }
 
 function dependencyKey(d: { predecessorId: string; successorId: string }): string {
@@ -180,10 +231,10 @@ export class ProjectStore {
       const db = this.db;
       db.exec('DELETE FROM dependency; DELETE FROM task; DELETE FROM asset; DELETE FROM calendar_holiday;');
       for (const key of PROJECT_META_KEYS) this.writeMeta(key, PROJECT_FIELDS[key].get(p));
-      for (const h of new Set(p.calendar.holidays)) this.stmt('INSERT INTO calendar_holiday (date) VALUES (?)').run(h);
+      [...new Set(p.calendar.holidays)].forEach((h, i) => this.stmt('INSERT INTO calendar_holiday (date, sort) VALUES (?, ?)').run(h, i));
       p.assets.forEach((a, i) => this.insertAsset(a, i));
       p.tasks.forEach((t, i) => this.insertTask(t, i));
-      for (const d of p.dependencies) this.insertDependency(d);
+      p.dependencies.forEach((d, i) => this.insertDependency(d, i));
       this.log(source, 'project', p.id, null, null, { assets: p.assets.length, tasks: p.tasks.length });
     });
   }
@@ -191,7 +242,9 @@ export class ProjectStore {
   /**
    * Save `next` by writing only the rows that differ from the stored project, in one
    * transaction. Logs one change event per changed field, per added or removed row
-   * (field null, with the whole row as new or old value) and per moved row (field "sort").
+   * (field null, with the whole row as new or old value) and per row the caller moved
+   * (field "sort", old and new position). Rows that only shifted because another row was
+   * added, removed or moved get their position rewritten without an event.
    * Dependencies are logged as entity "dependency" with id "pred->succ"; holidays as
    * entity "holiday" with the date as id; project fields as entity "project".
    * A save that finds nothing to change writes nothing.
@@ -215,27 +268,41 @@ export class ProjectStore {
       }
 
       // Holidays.
-      const oldHolidays = new Set((db.prepare('SELECT date FROM calendar_holiday').all() as Array<{ date: string }>).map((r) => r.date));
-      const newHolidays = new Set(next.calendar.holidays);
-      for (const h of oldHolidays) {
+      const holidayRows = db.prepare('SELECT date, sort FROM calendar_holiday ORDER BY sort, rowid').all() as Row[];
+      const oldHolidays = byKey(holidayRows, (r) => String(r.date));
+      const nextHolidays = [...new Set(next.calendar.holidays)];
+      const newHolidays = new Set(nextHolidays);
+      const movedHolidays = movedKeys(nextHolidays, rankOf(holidayRows, (r) => String(r.date)));
+      for (const h of oldHolidays.keys()) {
         if (newHolidays.has(h)) continue;
         this.stmt('DELETE FROM calendar_holiday WHERE date = ?').run(h);
         log('holiday', h, null, h, undefined);
       }
-      for (const h of newHolidays) {
-        if (oldHolidays.has(h)) continue;
-        this.stmt('INSERT INTO calendar_holiday (date) VALUES (?)').run(h);
-        log('holiday', h, null, undefined, h);
-      }
+      nextHolidays.forEach((h, i) => {
+        const row = oldHolidays.get(h);
+        if (!row) {
+          this.stmt('INSERT INTO calendar_holiday (date, sort) VALUES (?, ?)').run(h, i);
+          log('holiday', h, null, undefined, h);
+          return;
+        }
+        if (row.sort === i) return;
+        this.stmt('UPDATE calendar_holiday SET sort = ? WHERE date = ?').run(i, h);
+        if (movedHolidays.has(h)) log('holiday', h, 'sort', row.sort, i);
+      });
 
-      const oldAssets = byKey(db.prepare('SELECT * FROM asset').all() as Row[], (r) => String(r.id));
-      const oldTasks = byKey(db.prepare('SELECT * FROM task').all() as Row[], (r) => String(r.id));
-      const oldDeps = byKey(db.prepare('SELECT * FROM dependency').all() as Row[], (r) =>
-        dependencyKey({ predecessorId: String(r.predecessor_id), successorId: String(r.successor_id) }),
-      );
+      const assetRows = db.prepare('SELECT * FROM asset ORDER BY sort, rowid').all() as Row[];
+      const taskRows = db.prepare('SELECT * FROM task ORDER BY sort, rowid').all() as Row[];
+      const depRows = db.prepare('SELECT * FROM dependency ORDER BY sort, rowid').all() as Row[];
+      const depRowKey = (r: Row) => dependencyKey({ predecessorId: String(r.predecessor_id), successorId: String(r.successor_id) });
+      const oldAssets = byKey(assetRows, (r) => String(r.id));
+      const oldTasks = byKey(taskRows, (r) => String(r.id));
+      const oldDeps = byKey(depRows, depRowKey);
       const nextAssetIds = new Set(next.assets.map((a) => a.id));
       const nextTaskIds = new Set(next.tasks.map((t) => t.id));
       const nextDepKeys = new Set(next.dependencies.map(dependencyKey));
+      const movedAssets = movedKeys(next.assets.map((a) => a.id), rankOf(assetRows, (r) => String(r.id)));
+      const movedTasks = movedKeys(next.tasks.map((t) => t.id), rankOf(taskRows, (r) => String(r.id)));
+      const movedDeps = movedKeys(next.dependencies.map(dependencyKey), rankOf(depRows, depRowKey));
 
       // Order matters for foreign keys: remove links and tasks before their assets,
       // add assets before the tasks that point at them, and links last.
@@ -256,7 +323,7 @@ export class ProjectStore {
           log('asset', a.id, null, undefined, a);
           return;
         }
-        this.updateRow('asset', 'id = ?', [a.id], row, ASSET_FIELDS, a, i, (field, o, n) => log('asset', a.id, field, o, n));
+        this.updateRow('asset', 'id = ?', [a.id], row, ASSET_FIELDS, a, i, movedAssets.has(a.id), (field, o, n) => log('asset', a.id, field, o, n));
       });
       next.tasks.forEach((t, i) => {
         const row = oldTasks.get(t.id);
@@ -265,25 +332,25 @@ export class ProjectStore {
           log('task', t.id, null, undefined, t);
           return;
         }
-        this.updateRow('task', 'id = ?', [t.id], row, TASK_FIELDS, t, i, (field, o, n) => log('task', t.id, field, o, n));
+        this.updateRow('task', 'id = ?', [t.id], row, TASK_FIELDS, t, i, movedTasks.has(t.id), (field, o, n) => log('task', t.id, field, o, n));
       });
       for (const [id, row] of oldAssets) {
         if (nextAssetIds.has(id)) continue;
         this.stmt('DELETE FROM asset WHERE id = ?').run(id);
         log('asset', id, null, rowToAsset(row), undefined);
       }
-      for (const d of next.dependencies) {
+      next.dependencies.forEach((d, i) => {
         const key = dependencyKey(d);
         const row = oldDeps.get(key);
         if (!row) {
-          this.insertDependency(d);
+          this.insertDependency(d, i);
           log('dependency', key, null, undefined, d);
-          continue;
+          return;
         }
-        this.updateRow('dependency', 'predecessor_id = ? AND successor_id = ?', [d.predecessorId, d.successorId], row, DEPENDENCY_FIELDS, d, undefined, (field, o, n) =>
+        this.updateRow('dependency', 'predecessor_id = ? AND successor_id = ?', [d.predecessorId, d.successorId], row, DEPENDENCY_FIELDS, d, i, movedDeps.has(key), (field, o, n) =>
           log('dependency', key, field, o, n),
         );
-      }
+      });
     });
     return { changes: this.lastTxEvents, revision: this.getRevisionState().revision };
   }
@@ -291,10 +358,10 @@ export class ProjectStore {
   loadProject(): Project {
     const db = this.db;
     const meta = this.readMeta();
-    const assets = (db.prepare('SELECT * FROM asset ORDER BY sort').all() as Row[]).map(rowToAsset);
-    const tasks = (db.prepare('SELECT * FROM task ORDER BY sort').all() as Row[]).map(rowToTask);
-    const dependencies = (db.prepare('SELECT * FROM dependency').all() as Row[]).map(rowToDependency);
-    const holidays = (db.prepare('SELECT date FROM calendar_holiday ORDER BY date').all() as Array<{ date: string }>).map((r) => r.date);
+    const assets = (db.prepare('SELECT * FROM asset ORDER BY sort, rowid').all() as Row[]).map(rowToAsset);
+    const tasks = (db.prepare('SELECT * FROM task ORDER BY sort, rowid').all() as Row[]).map(rowToTask);
+    const dependencies = (db.prepare('SELECT * FROM dependency ORDER BY sort, rowid').all() as Row[]).map(rowToDependency);
+    const holidays = (db.prepare('SELECT date FROM calendar_holiday ORDER BY sort, rowid').all() as Array<{ date: string }>).map((r) => r.date);
     const subtitle = meta.get('subtitle');
     const weekdays = meta.get('work_weekdays');
     return {
@@ -320,8 +387,9 @@ export class ProjectStore {
         const col = TASK_FIELDS[key];
         if (!col) throw new Error(`Unknown task field ${key}`);
         const oldValue = before[key];
-        if (JSON.stringify(oldValue ?? null) === JSON.stringify(value ?? null)) continue;
-        this.db.prepare(`UPDATE task SET ${col} = ? WHERE id = ?`).run(enc(value), id);
+        const encoded = encColumn(col, value);
+        if ((row[col] ?? null) === encoded) continue;
+        this.db.prepare(`UPDATE task SET ${col} = ? WHERE id = ?`).run(encoded, id);
         this.log(source, 'task', id, key, oldValue, value);
       }
     });
@@ -423,17 +491,18 @@ export class ProjectStore {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       t.id, t.assetId, t.code, t.name, t.type, t.durationDays, t.percentComplete, enc(t.responsible), enc(t.startNoEarlierThan),
-      enc(t.actualStart), enc(t.actualFinish), enc(t.readiness), enc(t.templateKey), enc(t.notes), sort,
+      enc(t.actualStart), enc(t.actualFinish), encReadiness(t.readiness), enc(t.templateKey), enc(t.notes), sort,
     );
   }
 
-  private insertDependency(d: Dependency): void {
-    this.stmt('INSERT INTO dependency (predecessor_id, successor_id, type, lag_days) VALUES (?, ?, ?, ?)').run(d.predecessorId, d.successorId, d.type, d.lagDays);
+  private insertDependency(d: Dependency, sort: number): void {
+    this.stmt('INSERT INTO dependency (predecessor_id, successor_id, type, lag_days, sort) VALUES (?, ?, ?, ?, ?)').run(d.predecessorId, d.successorId, d.type, d.lagDays, sort);
   }
 
   /**
    * Compare a stored row with the next model value column by column and write only the
-   * columns that differ (plus `sort` when the row moved), reporting each change.
+   * columns that differ (plus `sort` when its position changed), reporting each changed
+   * field, and the position only when `moved` (the caller moved this row itself).
    */
   private updateRow<T extends object>(
     table: string,
@@ -442,23 +511,24 @@ export class ProjectStore {
     row: Row,
     fields: Partial<Record<keyof T, string>>,
     next: T,
-    sort: number | undefined,
+    sort: number,
+    moved: boolean,
     report: (field: string, oldValue: unknown, newValue: unknown) => void,
   ): void {
     const sets: string[] = [];
     const args: Sql[] = [];
     for (const [field, col] of Object.entries(fields) as Array<[string, string]>) {
-      const value = enc((next as Record<string, unknown>)[field]);
+      const value = encColumn(col, (next as Record<string, unknown>)[field]);
       const old = row[col] ?? null;
       if (old === value) continue;
       sets.push(`${col} = ?`);
       args.push(value);
       report(field, decodeColumn(col, old), (next as Record<string, unknown>)[field]);
     }
-    if (sort !== undefined && row.sort !== sort) {
+    if (row.sort !== sort) {
       sets.push('sort = ?');
       args.push(sort);
-      report('sort', row.sort, sort);
+      if (moved) report('sort', row.sort, sort);
     }
     if (sets.length) this.stmt(`UPDATE ${table} SET ${sets.join(', ')} WHERE ${where}`).run(...args, ...whereArgs);
   }
@@ -562,9 +632,9 @@ function rowToAsset(r: Row): Asset {
     id: String(r.id),
     tag: String(r.tag),
     description: String(r.description ?? ''),
-    ...(r.location ? { location: String(r.location) } : {}),
-    ...(r.system ? { system: String(r.system) } : {}),
-    ...(r.template_id ? { templateId: String(r.template_id) } : {}),
+    ...(r.location !== null && r.location !== undefined ? { location: String(r.location) } : {}),
+    ...(r.system !== null && r.system !== undefined ? { system: String(r.system) } : {}),
+    ...(r.template_id !== null && r.template_id !== undefined ? { templateId: String(r.template_id) } : {}),
     ...(r.template_version !== null && r.template_version !== undefined ? { templateVersion: Number(r.template_version) } : {}),
   };
 }

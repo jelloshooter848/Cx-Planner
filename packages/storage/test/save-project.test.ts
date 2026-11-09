@@ -104,11 +104,11 @@ describe('ProjectStore.saveProject', () => {
         'dependency t1.6->t5.1 -',
       ]),
     );
-    // UPS removal: 1 asset, 4 tasks, 4 links (3 in chain + one in). Gen tasks move up 4 places.
-    const sortEvents = keys.filter((k) => k.endsWith(' sort'));
-    expect(sortEvents).toEqual(['asset gen-1 sort', 'task t4.1 sort', 'task t4.2 sort', 'task t4.3 sort', 'task t4.4 sort']);
-    // The 16 above, the other two UPS tasks and two UPS links, and the moves.
-    expect(keys).toHaveLength(16 + 2 + 2 + sortEvents.length);
+    // UPS removal: 1 asset, 4 tasks, 4 links (3 in chain + one in). The generator rows only
+    // shift up, so they get no "sort" events.
+    expect(keys.filter((k) => k.endsWith(' sort'))).toEqual([]);
+    // The 16 above, and the other two UPS tasks and two UPS links.
+    expect(keys).toHaveLength(16 + 2 + 2);
     expect(r.changes).toBe(keys.length);
 
     const events = s.changesSince(seq);
@@ -155,6 +155,55 @@ describe('ProjectStore.saveProject', () => {
     s.saveProject(next, 'user');
     expect(eventKeys(s, seq)).toEqual(['task t2.1 assetId', 'task t2.1 responsible', 'task t2.1 actualStart']);
     expect(s.loadProject()).toEqual(next);
+    s.close();
+  });
+
+  it('logs only the rows the caller moved, and keeps link and holiday order', () => {
+    const s = storeWith(riversideProject());
+    const seq = s.getRevisionState().lastChangeSeq;
+    const next = riversideProject();
+    // Move the last task to the top; every other task shifts down by one.
+    next.tasks.unshift(next.tasks.pop()!);
+    // Insert a new task in the middle (its neighbours below shift).
+    next.tasks.splice(5, 0, { id: 't9.1', assetId: 'gen-1', code: '9.1', name: 'Load bank', type: 'task', durationDays: 1, percentComplete: 0 });
+    next.dependencies.reverse();
+    next.calendar.holidays.reverse();
+    s.saveProject(next, 'user');
+    const keys = eventKeys(s, seq);
+    const last = riversideProject().tasks.at(-1)!.id;
+    const n = next.dependencies.length;
+    // One move for the task, n - 1 for the reversed links, one for the reversed holidays, one insert.
+    expect(keys.filter((k) => k.startsWith('task '))).toEqual([`task ${last} sort`, 'task t9.1 -']);
+    expect(keys.filter((k) => k.startsWith('dependency ')).length).toBe(n - 1);
+    expect(keys.filter((k) => k.startsWith('holiday ')).length).toBe(1);
+    expect(s.loadProject()).toEqual(next);
+    expect(s.saveProject(s.loadProject(), 'autosave').changes).toBe(0);
+    s.close();
+  });
+
+  it('saving the loaded project writes nothing, with edge values', () => {
+    const p = riversideProject();
+    p.assets[0]!.location = '';
+    p.assets[0]!.system = '';
+    p.assets[1]!.templateId = '';
+    p.subtitle = '';
+    const t = p.tasks.find((x) => x.readiness)!;
+    const r = t.readiness!;
+    // Same readiness, keys in reverse order.
+    t.readiness = Object.fromEntries(Object.entries(r).reverse()) as typeof r;
+    p.dependencies.reverse();
+    p.calendar.holidays.reverse();
+    const s = storeWith(p);
+    const loaded = s.loadProject();
+    expect(loaded.assets[0]).toMatchObject({ location: '', system: '' });
+    expect(loaded.assets[1]!.templateId).toBe('');
+    expect(loaded.dependencies).toEqual(p.dependencies);
+    expect(loaded.calendar.holidays).toEqual(p.calendar.holidays);
+    expect(s.saveProject(loaded, 'autosave').changes).toBe(0);
+    // Readiness in yet another key order is still no change, for saveProject and updateTask.
+    expect(s.saveProject(p, 'autosave').changes).toBe(0);
+    s.updateTask(t.id, { readiness: { ...r } });
+    expect(s.getRevisionState().revision).toBe(1);
     s.close();
   });
 

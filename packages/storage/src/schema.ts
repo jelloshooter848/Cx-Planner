@@ -73,8 +73,12 @@ export const MIGRATIONS: string[] = [
   `,
   // 2 -> 3: task notes, and the template snapshots copied into the project (decision D4).
   // Revision state lives in meta under the keys in REVISION_META_KEYS; no table needed.
+  // Links and holidays keep the order they were saved in (rows from older files share
+  // sort 0 and fall back to insertion order).
   `
   ALTER TABLE task ADD COLUMN notes TEXT;
+  ALTER TABLE dependency ADD COLUMN sort INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE calendar_holiday ADD COLUMN sort INTEGER NOT NULL DEFAULT 0;
   -- Events written by one save share its revision number and summary (undo, history).
   ALTER TABLE change_event ADD COLUMN revision INTEGER;
   ALTER TABLE change_event ADD COLUMN summary TEXT;
